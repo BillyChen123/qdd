@@ -1,0 +1,17 @@
+node_modules/
+tmp/
+*.tgz
+
+# Local agent/bootstrap state for this repo
+.agents/
+.claude/
+.codex/
+
+# Non-core development/vendor workspace
+OpenSpec/
+openspec/
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.swo

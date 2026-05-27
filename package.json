@@ -1,0 +1,31 @@
+{
+  "name": "qdd",
+  "version": "0.1.0",
+  "description": "Question-Driven Discovery CLI",
+  "type": "module",
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "docs/04-installation-guide.md"
+  ],
+  "bin": {
+    "qdd": "./bin/qdd.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-runtime-assets.mjs",
+    "dev": "tsc --watch -p tsconfig.json",
+    "test": "node --test dist/test"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.0",
+    "typescript": "^5.9.3"
+  }
+}

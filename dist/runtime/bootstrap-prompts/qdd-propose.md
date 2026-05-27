@@ -1,0 +1,247 @@
+Enter QDD propose mode.
+
+Turn a human-supplied research direction into one complete first-pass `study.md` plus one corresponding initial `TASK-XXX.md`.
+
+**IMPORTANT: Propose writes.** This is the workflow step that creates the first usable study/task pair. Do not leave the project with only a vague intention if there is already enough information to write a conservative first pass.
+
+**This is artifact creation, not long-form debate.** If the user wants to question assumptions, compare options, or revise an existing study after seeing the first pass, that belongs in `qdd-explore`.
+
+---
+
+## Input
+
+The argument after `qdd-propose` is an abstract question, hypothesis, or study direction.
+
+Examples:
+
+- `qdd-propose Why is ALOX12B low in a subset of keratinocytes?`
+- `qdd-propose Re-check whether our current skin scRNA dataset can support a barrier-state question`
+- `qdd-propose Use the existing AD dataset to frame one bounded first-pass study`
+
+---
+
+## What Propose Owns
+
+- create or refresh one bounded `study.md`
+- create one initial evidence-producing task for that study
+- make conservative decisions when the direction is broad but still actionable
+- use the existing QDD templates rather than inventing new artifact shapes
+- leave the project ready for `qdd-explore` or `qdd-apply`
+
+## What Propose Does Not Own
+
+- extended discussion of whether the study should be reframed after the first pass exists
+- implementation of analysis code or execution of the task
+- closing the study or deciding `question_delta`
+- building a large task tree up front
+
+---
+
+## Preflight
+
+1. If the current directory is not a QDD project, run `qdd init` first.
+2. Read `.qdd/instructions.md`.
+3. Run `qdd status --json`.
+4. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
+5. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --json` and the existing `study/task` files before writing.
+
+---
+
+## Procedure
+
+### 1. Crystallize one bounded question
+
+Convert the user's direction into one study-sized question.
+
+Good propose questions are:
+
+- narrow enough to judge in one study
+- connected to available data or realistic blockers
+- concrete enough to imply one first task
+
+Bad propose questions are:
+
+- entire programs of work
+- vague aspirations with no evidence path
+- mixtures of multiple unrelated hypotheses
+
+### 2. Create the study scaffold
+
+Use `qdd add-study` to create the next `STUDY-XXX` record.
+
+Then edit `studies/STUDY-XXX/study.md` directly so it records a complete first pass, not placeholders.
+
+At minimum, fill in:
+
+- the bounded question
+- the working hypothesis or expectation
+- why this study matters now
+- resource fit
+- evidence plan
+- blockers
+
+### 3. Create the initial task immediately
+
+Use `qdd add-task STUDY-XXX` to create one initial task.
+
+Then edit `studies/STUDY-XXX/tasks/TASK-XXX.md` directly so it matches the real first move.
+
+By default, create **one** initial task.
+
+Only create more than one initial task if the study would be misleading or unusable with a single first task.
+
+### 4. Keep the study and task aligned
+
+The task should be the first evidence-producing move implied by the study.
+
+Examples:
+
+- if the study question is about feasibility, the first task may be a data or environment reality check
+- if the study question is already feasible, the first task may be the first real analysis step
+- if the main uncertainty is annotation validity, the first task may be a focused validation task rather than a full pipeline run
+
+### 5. Stop once the first pass is usable
+
+Do not stay in propose mode trying to optimize everything.
+
+Stop when the project has:
+
+- one clear study
+- one concrete initial task
+- enough written context for later discussion in `qdd-explore`
+
+---
+
+## How To Write The Study
+
+Use the existing `study.md` template sections.
+
+Write them concretely:
+
+- `## Question`: one bounded question only
+- `## Hypothesis`: a falsifiable expectation, not a slogan
+- `## Why Now`: why this belongs in the current loop
+- `## Resource Fit`: what data, runtime, biology, or prior artifacts matter
+- `## Evidence Plan`: what outputs would make the study judgeable
+- `## Blockers`: real blockers, not generic uncertainty
+- `## Tasks`: list the initial task you just created
+
+Do not leave these as generic filler if you already know the answer.
+
+---
+
+## How To Write The Initial Task
+
+Use the existing `task.md` template sections.
+
+Write them concretely:
+
+- `## Depends On`: real dependencies or `None`
+- `## Input`: actual study/context/artifact inputs
+- `## Expected Output`: the specific evidence this task should produce
+- `## Checklist`: rewrite the scaffold into task-specific executable steps
+- `## Skills`: only list skills or capabilities that genuinely matter
+
+The initial task should be:
+
+- evidence-producing
+- minimal
+- auditable
+- obviously connected to the study question
+
+---
+
+## Mode Handling
+
+### human
+
+- Prefer making a conservative first pass directly.
+- Ask the user only when missing information would make the study misleading.
+- Do not drift into a long `explore`-style debate here.
+
+### assist
+
+- Same artifact-writing behavior as `human`.
+- You may make slightly stronger drafting decisions, but keep them reversible.
+- Preserve obvious places for later discussion in `qdd-explore`.
+
+### auto
+
+- Proceed directly if the context is sufficient.
+- Keep the first pass minimal so later execution does not inherit a bloated plan.
+
+---
+
+## When To Ask The User
+
+Ask only if one of these is true:
+
+- the research direction is too ambiguous to define one bounded question
+- there are multiple incompatible study framings and the choice is consequential
+- a missing resource assumption would invalidate the task you are about to create
+- the user explicitly asks to compare options before writing
+
+Otherwise, write the first pass and keep moving.
+
+---
+
+## Example Entry Points
+
+**User brings a broad idea**
+
+```text
+User: I want to use our AD dataset to understand ALOX12B-low keratinocytes.
+
+You:
+1. Read qdd status/context
+2. Create STUDY-XXX with one bounded question
+3. Create one initial task such as a data-and-metadata reality check
+4. Report what you created and what should be explored next
+```
+
+**User brings a partially formed hypothesis**
+
+```text
+User: I think ALOX12B-low might mark a barrier-impaired KC state.
+
+You:
+- write that as the working hypothesis
+- keep the study question bounded to what the current dataset can test
+- create one first task that can produce evidence for or against that claim
+```
+
+**User already has a study but wants a first task**
+
+```text
+User: The study exists but it has no good initial task.
+
+You:
+- read the current study
+- create exactly one first-pass task
+- update the study's Tasks section so the pair is aligned
+```
+
+---
+
+## What To Report Back
+
+When propose work is done, report succinctly:
+
+- study id
+- task id
+- bounded question
+- task goal
+- main blocker or key uncertainty, if any
+- whether the next best step is `qdd-explore` or `qdd-apply`
+
+---
+
+## Guardrails
+
+- Do not build a large task tree in propose mode.
+- Do not leave the created study or task in obvious placeholder form if you had enough context to be concrete.
+- Do not turn propose into implementation.
+- Do not turn propose into a free-form discussion session.
+- Keep the first task minimal and evidence-producing.
+- Rewrite the default task checklist so it matches the actual task.
+- Stay within QDD's research-native object model.

@@ -1,0 +1,1 @@
+{"version":3,"file":"add-study.d.ts","sourceRoot":"","sources":["../../src/commands/add-study.ts"],"names":[],"mappings":"AAGA,MAAM,WAAW,sBAAsB;IACrC,QAAQ,CAAC,EAAE,MAAM,CAAC;IAClB,UAAU,CAAC,EAAE,MAAM,CAAC;IACpB,QAAQ,CAAC,EAAE,MAAM,EAAE,CAAC;IACpB,iBAAiB,CAAC,EAAE,MAAM,EAAE,CAAC;CAC9B;AAED,wBAAsB,eAAe,CAAC,OAAO,GAAE,sBAA2B,GAAG,OAAO,CAAC,IAAI,CAAC,CAazF"}
