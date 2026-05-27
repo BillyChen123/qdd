@@ -2,6 +2,22 @@
 
 这份文档回答一个很实际的问题：**别的用户怎么安装 QDD，并且在自己的目录里使用，而不是依赖你当前这个仓库路径。**
 
+在安装之前，先记住 QDD 对外只保留的最小工作流：
+
+1. `qdd-init`：创建脚手架，把生物背景、数据资源、运行环境注入 `context/`
+2. `qdd-proposal`：人给模糊研究计划，Agent 创建 `study.md` 和 `task.md`
+3. `qdd-explore`：人和 Agent 讨论并完善 `study.md` / `task.md`
+4. `qdd-apply`：Agent 读取假设和任务要求，写代码、跑结果、产出证据
+5. `qdd-close`：Agent 评判假设，把可复用内容写回 `context` / `artifacts`，并给出 follow-up 方向
+
+当前代码中的实际入口分别是：
+
+- `qdd-init` -> `qdd init`
+- `qdd-proposal` -> 安装后的 `qdd-propose`
+- `qdd-explore` -> 安装后的 `qdd-explore`
+- `qdd-apply` -> 安装后的 `qdd-apply`
+- `qdd-close` -> 安装后的 `qdd-close`
+
 ## 前提
 
 目标用户需要：
@@ -160,6 +176,11 @@ qdd init . --tool codex
 qdd init . --refresh-bootstrap
 ```
 
+初始化后，先由人补两个项目级真相源：
+
+- `contract.yaml`
+- `context/resources.md`
+
 ---
 
 ## 安装后会写到哪里
@@ -206,15 +227,25 @@ $CODEX_HOME/prompts/
 
 ```bash
 qdd init .
-qdd add-study --question "..." --hypothesis "..."
-qdd add-task STUDY-001 --goal "..."
+```
+
+然后让 Agent 按这条最小循环工作：
+
+1. `qdd-propose`
+2. `qdd-explore`
+3. `qdd-apply`
+4. `qdd-close`
+
+如果 Agent 需要结构化读取边界，最常用的是：
+
+```bash
 qdd status --json
 qdd instructions STUDY-001 --json
 qdd instructions TASK-001 --json
 qdd validate --json
 ```
 
-然后让 agent 在这个项目内工作。
+这一套就够了。对外介绍时，不需要把 QDD 讲成更多层命令系统。
 
 ---
 

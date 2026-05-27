@@ -2,26 +2,103 @@
 
 QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Driven Discovery`。
 
-它的目标不是替你做科研，而是把研究问题、study、task、evidence 和 `question_delta` 固定到一个清晰的文件系统协议里，让 Claude、Codex 这类 agent 能在同一个项目里持续工作，而不是每次从一段聊天重新开始。
+它只做一件事：把科研协作压缩成一条尽量简单、可持续复用的工作流，让人和 Agent 围绕同一组 `context / study / task / evidence / question_delta` 文件工作，而不是每次从聊天重新开始。
 
-## 当前定位
+## QDD 只保留这 5 个流程
 
-当前仓库是 **可用的原型版**，已经支持一条最小研究闭环：
+下面是 QDD 对外应该强调的最小工作流。左边是概念名，右边是当前实际入口。
 
-`qdd init -> qdd add-study -> qdd add-task -> qdd instructions -> qdd close-study`
+### 0. `qdd-init`
 
-并且已经接上了两类 agent bootstrap：
+实际入口：`qdd init`
 
-- Claude Code: 项目内 `.claude/commands/` 和 `.claude/skills/`
-- Codex: 用户级 `~/.codex/prompts/` 和项目内 `.codex/skills/`
+作用：创建项目脚手架，并把三类项目级先验信息注入 `context/`：
+
+- 生物背景
+- 数据资源
+- 运行环境
+
+初始化后，项目里最重要的人工维护文件是：
+
+- `contract.yaml`
+- `context/resources.md`
+
+### 1. `qdd-proposal`
+
+当前安装的 workflow surface：`qdd-propose`
+
+作用：人输入一个模糊研究计划，Agent 调用 QDD CLI 去创建第一版：
+
+- `studies/STUDY-XXX/study.md`
+- `studies/STUDY-XXX/tasks/TASK-XXX.md`
+
+这里的重点不是把计划说得很完美，而是先把一个可执行的 study 边界和初始 task 落到文件里。
+
+### 2. `qdd-explore`
+
+当前安装的 workflow surface：`qdd-explore`
+
+作用：人和 Agent 一起讨论，持续完善：
+
+- `study.md`
+- `task.md`
+
+这一阶段的重点是把问题边界、资源匹配、blocker、evidence plan 讨论清楚，而不是直接跑分析。
+
+### 3. `qdd-apply`
+
+当前安装的 workflow surface：`qdd-apply`
+
+作用：Agent 调用 QDD CLI 读取当前假设和任务需求，然后开始：
+
+- 写代码
+- 跑结果
+- 产出证据
+
+主要会围绕这些位置工作：
+
+- `qdd instructions STUDY-XXX --json`
+- `qdd instructions TASK-XXX --json`
+- `studies/STUDY-XXX/output/`
+
+当前约定下，实质分析要尽量留下：
+
+- `output/code/` 里的脚本
+- `output/figures/` 里的关键图
+- `output/reports/` / `output/tables/` 里的摘要和证据
+
+### 4. `qdd-close`
+
+当前安装的 workflow surface：`qdd-close`
+
+作用：Agent 读取结果和证据，对当前 hypothesis 做评判，并完成收尾：
+
+- 把可复用的稳定结果写进 `context/`
+- 把证据登记进 `artifacts/`
+- 写入 `question_delta`
+- 从 project 层给出一组 follow-up 研究方向
+
+这个阶段的重点不是写一个漂亮总结，而是把“哪些能复用、问题下一步怎么走”说清楚。
+
+## 项目里真正重要的文件
+
+QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
+
+- `contract.yaml`：项目边界和模式
+- `context/resources.md`：项目级背景、数据、环境
+- `studies/STUDY-XXX/study.md`：一个研究问题的边界
+- `studies/STUDY-XXX/tasks/TASK-XXX.md`：证据生产任务
+- `studies/STUDY-XXX/output/`：代码、图、表、报告等本地证据
+- `artifacts/index.yaml`：明确登记过的可复用证据
+- `evolution.yaml`：问题如何演化
 
 ## 安装
 
-QDD 目前**还没有发布到 npm registry**。安装方式见详细指南：
+QDD 目前还没有发布到 npm registry。安装方式见：
 
 - [安装指南](./docs/04-installation-guide.md)
 
-最常见的源码安装方式是：
+最常见的源码安装方式：
 
 ```bash
 git clone <your-qdd-repo-url>
@@ -31,14 +108,7 @@ npm run build
 npm install -g .
 ```
 
-安装完成后，任意目录都可以使用：
-
-```bash
-qdd --version
-qdd init my-qdd-project
-```
-
-## 快速开始
+安装完成后，在任意目录都可以初始化一个项目：
 
 ```bash
 mkdir my-qdd-project
@@ -46,69 +116,55 @@ cd my-qdd-project
 qdd init .
 ```
 
-初始化后，先补两处最关键的人工上下文：
+## 快速开始
+
+### 1. 初始化项目
+
+```bash
+qdd init .
+```
+
+然后先补人工上下文：
 
 - `contract.yaml`
 - `context/resources.md`
 
-然后开始第一个 study：
+### 2. 进入 proposal / explore / apply / close 循环
 
-```bash
-qdd add-study \
-  --question "ALOX12B 是否定义了一个可复现的 KC state？" \
-  --hypothesis "ALOX12B-high KC 在病例组中呈现稳定状态特征"
+`qdd init` 会自动安装给 Agent 用的 bootstrap 文件。当前默认会同时安装：
 
-qdd add-task STUDY-001 \
-  --goal "做第一轮数据现实性检查和状态验证"
-```
+- Claude Code bootstrap
+- Codex bootstrap
 
-执行前，让 agent 先读取结构化边界：
+后续实际协作顺序就是：
+
+1. `qdd-propose`
+2. `qdd-explore`
+3. `qdd-apply`
+4. `qdd-close`
+
+如果 Agent 要读结构化边界，最常用的 CLI 是：
 
 ```bash
 qdd status --json
 qdd instructions STUDY-001 --json
 qdd instructions TASK-001 --json
-```
-
-收尾时常用：
-
-```bash
 qdd validate --json
-qdd artifacts:list --json
-qdd close-study STUDY-001 \
-  --question-after "下一步是否需要跨样本验证？" \
-  --change-type refinement \
-  --change-driver "初步证据支持存在状态，但跨样本稳定性仍待确认"
 ```
 
-## 你会得到什么
+## 当前定位
 
-`qdd init` 会创建一个最小 QDD 项目骨架：
+这个仓库现在是一个**可用的原型**，不是完整产品。它更适合：
 
-```text
-project-root/
-├── contract.yaml
-├── evolution.yaml
-├── context/
-├── studies/
-├── artifacts/
-└── .qdd/
-```
+- 做单项目 dogfood
+- 打磨研究工作流协议
+- 把 Agent 行为固定到一套清楚的文件系统约定
 
-并额外安装 agent 需要的 bootstrap 文件。当前默认会同时安装 `claude` 和 `codex`。
+而不是：
 
-## 常用命令
-
-- `qdd init [path]`
-- `qdd status --json`
-- `qdd instructions <id> --json`
-- `qdd add-study`
-- `qdd add-task STUDY-XXX`
-- `qdd register-artifact <path>`
-- `qdd close-study STUDY-XXX`
-- `qdd validate --json`
-- `qdd artifacts:list --json`
-- `qdd context --json`
+- 大而全的科研平台
+- 自动化 pipeline 引擎
+- 多人协作平台
 
 ## 更多文档
 
@@ -116,10 +172,3 @@ project-root/
 - [代码原型图](./docs/02-code-prototype-map.md)
 - [开发原型说明](./docs/01-development-prototype.md)
 - [产品需求文档](./docs/00-product-requirements-document.md)
-
-## 现阶段限制
-
-- 还没有发布到 npm
-- 还没有 `qdd close-task`
-- 还没有 plugin 系统和 auto mode
-- 更适合先做单项目、小范围 dogfood，再继续打磨协议
