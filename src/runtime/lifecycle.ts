@@ -26,6 +26,7 @@ import {
   writeMarkdownDocument,
   writeYamlFile,
 } from './store.js';
+import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
 
 const STUDY_ID_PATTERN = /^STUDY-(\d{3})$/;
 const TASK_ID_PATTERN = /^TASK-(\d{3})$/;
@@ -181,7 +182,8 @@ function buildTaskBody(record: TaskRecord, studyId: string, inputs: string[]): s
     `- [ ] Add only promotion-worthy outputs to \`${getStudyArtifactCandidatesPath(studyId)}\``,
     '- [ ] Register reusable artifacts only if this task produced them and immediate registration is warranted',
   ].join('\n');
-  const skillLines = record.skills && record.skills.length > 0 ? record.skills.map((value) => `- ${value}`).join('\n') : '- None specified.';
+  const normalizedSkills = normalizeTaskSkillIds(record.skills ?? []);
+  const skillLines = normalizedSkills.length > 0 ? normalizedSkills.map((value) => `- ${value}`).join('\n') : '- None specified.';
 
   return [
     '## Depends On',
@@ -314,6 +316,20 @@ export async function createTask(projectRoot: string, studyId: string, options: 
   const study = await readStudyDocument(projectRoot, studyId);
   const taskId = await nextTaskId(projectRoot);
   const relativePath = `${PATHS.studiesDir}/${studyId}/tasks/${taskId}.md`;
+  const normalizedSkills = normalizeTaskSkillIds(options.skills);
+  const resolvedSkills = await resolveLocalSkills(projectRoot, normalizedSkills);
+
+  if (resolvedSkills.disallowedWorkflow.length > 0) {
+    throw new Error(
+      `Task skills must not include workflow skills: ${resolvedSkills.disallowedWorkflow.join(', ')}. Use concrete domain skills instead.`
+    );
+  }
+
+  if (resolvedSkills.missing.length > 0) {
+    throw new Error(
+      `Task skills must already exist under ${PATHS.codexSkillsDir}/ before they are referenced: ${resolvedSkills.missing.join(', ')}.`
+    );
+  }
 
   const taskRecord: TaskRecord = {
     task_id: taskId,
@@ -322,7 +338,7 @@ export async function createTask(projectRoot: string, studyId: string, options: 
     status: 'pending',
     expected_outputs: options.expectedOutputs ?? [],
     depends_on: options.dependsOn ?? [],
-    skills: options.skills ?? [],
+    skills: normalizedSkills,
     artifact_ids: [],
     updated_at: new Date().toISOString(),
   };

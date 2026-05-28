@@ -3,7 +3,7 @@ export type QuestionChangeType = 'refinement' | 'confirmation' | 'pivot' | 'diss
 export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
-export type BootstrapWorkflow = 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
+export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
 export interface ResearchContract {
     theme: string;
     initial_question: string;
@@ -106,7 +106,7 @@ export interface StatusJson {
 }
 export interface InstructionsJson {
     target: {
-        kind: 'study' | 'task';
+        kind: 'project' | 'study' | 'task';
         id: string;
     };
     read: string[];
@@ -143,6 +143,10 @@ export interface ArtifactListJson {
 }
 export interface ContextJson {
     context: ContextEntry[];
+}
+export interface LocalSkillEntry {
+    id: string;
+    path: string;
 }
 export interface BootstrapAssetRecord {
     workflow: BootstrapWorkflow;

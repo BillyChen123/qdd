@@ -17,23 +17,31 @@ test('qdd init creates minimal project structure', async () => {
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'contract.yaml')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'evolution.yaml')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'context')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, 'data')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'context', 'resources.md')));
   await assert.rejects(fs.access(path.join(projectRoot, 'context', 'datasets.yaml')));
   await assert.rejects(fs.access(path.join(projectRoot, 'context', 'environment.yaml')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'instructions.md')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'bootstrap.yaml')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-explore.md')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd-propose', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd-explore', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd-apply', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd-close', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-propose', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-explore', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-apply', 'SKILL.md')));
-  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-close', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-start', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-propose', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-explore', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-apply', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-close', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-start', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-propose', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-explore', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-apply', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-close', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'env', 'fix-cache-layout', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'env', 'fix-cache-layout', 'scripts', 'ensure_cache_layout.sh')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'env', 'fix-cache-layout', 'SKILL.md')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'env', 'fix-cache-layout', 'scripts', 'ensure_cache_layout.sh')));
 
   const status = await buildStatus(projectRoot);
   assert.equal(status.project.mode, 'human');
@@ -46,39 +54,53 @@ test('qdd init creates minimal project structure', async () => {
   assert.match(instructions, /## Workflow/);
   assert.match(instructions, /## Validation Checklist/);
   assert.match(instructions, /context\/resources\.md/);
+  assert.match(instructions, /qdd-start/);
   assert.match(instructions, /qdd-propose/);
   assert.match(instructions, /qdd-explore/);
   assert.match(instructions, /qdd-apply/);
   assert.match(instructions, /qdd-close/);
+  assert.match(instructions, /\.codex\/skills\//);
+  assert.match(instructions, /qdd instructions PROJECT --json/);
 
   const resources = await fs.readFile(path.join(projectRoot, 'context', 'resources.md'), 'utf-8');
+  assert.match(resources, /## Research Theme/);
   assert.match(resources, /## Runtime Environments/);
   assert.match(resources, /## Biological Background/);
-  assert.match(resources, /## Data/);
+  assert.match(resources, /## Data Resources/);
+  assert.match(resources, /## Local Skills/);
 
   const bootstrapConfig = await fs.readFile(path.join(projectRoot, '.qdd', 'bootstrap.yaml'), 'utf-8');
   assert.match(bootstrapConfig, /tool: claude/);
   assert.match(bootstrapConfig, /tool: codex/);
+  assert.match(bootstrapConfig, /workflow: qdd-start/);
   assert.match(bootstrapConfig, /workflow: qdd-propose/);
+
+  const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
+  assert.match(startCommand, /qdd instructions PROJECT --json/);
+  assert.match(startCommand, /ln -s/);
+  assert.match(startCommand, /\.codex\/skills\//);
 
   const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
   assert.match(proposeCommand, /qdd add-study/);
   assert.match(proposeCommand, /qdd add-task STUDY-XXX/);
   assert.match(proposeCommand, /qdd init/);
+  assert.match(proposeCommand, /complete `qdd-start` first/);
   assert.match(proposeCommand, /## How To Write The Initial Task/);
   assert.match(proposeCommand, /rewrite the scaffold into task-specific executable steps/);
+  assert.match(proposeCommand, /never write `qdd\/\*` workflow skills into a task record/);
 
   const exploreCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-explore.md'), 'utf-8');
   assert.match(exploreCommand, /qdd instructions STUDY-XXX --json/);
   assert.match(exploreCommand, /In `human` and `assist` mode, do not modify `study.md` or `task` files until the user confirms/);
   assert.match(exploreCommand, /## The Stance/);
 
-  const applySkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd-apply', 'SKILL.md'), 'utf-8');
+  const applySkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-apply', 'SKILL.md'), 'utf-8');
   assert.match(applySkill, /name: qdd-apply/);
   assert.match(applySkill, /Treat the study, not the single task, as the execution unit/);
   assert.match(applySkill, /Rewrite the weak checklist scaffold into task-specific steps/);
   assert.match(applySkill, /output\/code/);
   assert.match(applySkill, /artifact-candidates\.yaml/);
+  assert.match(applySkill, /hard-blocked/);
 });
 
 test('qdd init can install codex prompts and refresh bootstrap assets', async () => {
@@ -90,16 +112,18 @@ test('qdd init can install codex prompts and refresh bootstrap assets', async ()
   try {
     await initCommand(projectRoot, { tools: ['claude', 'codex'] });
 
+    await assert.doesNotReject(fs.access(path.join(codexHome, 'prompts', 'qdd-start.md')));
     await assert.doesNotReject(fs.access(path.join(codexHome, 'prompts', 'qdd-propose.md')));
     await assert.doesNotReject(fs.access(path.join(codexHome, 'prompts', 'qdd-close.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-propose', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd-close', 'SKILL.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-start', 'SKILL.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-propose', 'SKILL.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-close', 'SKILL.md')));
 
     const codexPrompt = await fs.readFile(path.join(codexHome, 'prompts', 'qdd-apply.md'), 'utf-8');
     assert.match(codexPrompt, /description: Execute the current approved study\/task set until the study reaches a decision point/);
     assert.match(codexPrompt, /qdd register-artifact/);
 
-    const codexSkill = await fs.readFile(path.join(projectRoot, '.codex', 'skills', 'qdd-explore', 'SKILL.md'), 'utf-8');
+    const codexSkill = await fs.readFile(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-explore', 'SKILL.md'), 'utf-8');
     assert.match(codexSkill, /name: qdd-explore/);
     assert.match(codexSkill, /## The Stance/);
     assert.match(codexSkill, /Discussion comes first/);
@@ -118,6 +142,58 @@ test('qdd init can install codex prompts and refresh bootstrap assets', async ()
       process.env.CODEX_HOME = previousCodexHome;
     }
   }
+});
+
+test('qdd init projects central domain skills into project tool directories', async () => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-domain-skills-project-'));
+  const domainSkillsSourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-domain-skills-source-'));
+
+  await fs.mkdir(path.join(domainSkillsSourceDir, 'plot', 'marker-heatmap', 'scripts'), { recursive: true });
+  await fs.writeFile(
+    path.join(domainSkillsSourceDir, 'plot', 'marker-heatmap', 'SKILL.md'),
+    '# plot/marker-heatmap\n\nUse this skill to generate marker heatmaps.\n',
+    'utf-8'
+  );
+  await fs.writeFile(
+    path.join(domainSkillsSourceDir, 'plot', 'marker-heatmap', 'scripts', 'render.py'),
+    'print("marker heatmap")\n',
+    'utf-8'
+  );
+
+  await initCommand(projectRoot, {
+    tools: ['claude', 'codex'],
+    domainSkillsSourceDir,
+  });
+
+  const codexSkillPath = path.join(projectRoot, '.codex', 'skills', 'plot', 'marker-heatmap', 'SKILL.md');
+  const claudeSkillPath = path.join(projectRoot, '.claude', 'skills', 'plot', 'marker-heatmap', 'SKILL.md');
+  const codexScriptPath = path.join(projectRoot, '.codex', 'skills', 'plot', 'marker-heatmap', 'scripts', 'render.py');
+  const claudeScriptPath = path.join(projectRoot, '.claude', 'skills', 'plot', 'marker-heatmap', 'scripts', 'render.py');
+
+  await assert.doesNotReject(fs.access(codexSkillPath));
+  await assert.doesNotReject(fs.access(claudeSkillPath));
+  await assert.doesNotReject(fs.access(codexScriptPath));
+  await assert.doesNotReject(fs.access(claudeScriptPath));
+
+  await fs.writeFile(codexSkillPath, '# local override\n', 'utf-8');
+  await fs.writeFile(
+    path.join(domainSkillsSourceDir, 'plot', 'marker-heatmap', 'SKILL.md'),
+    '# plot/marker-heatmap\n\nUpdated upstream content.\n',
+    'utf-8'
+  );
+
+  await initCommand(projectRoot, {
+    tools: ['claude', 'codex'],
+    domainSkillsSourceDir,
+  });
+  assert.equal(await fs.readFile(codexSkillPath, 'utf-8'), '# local override\n');
+
+  await initCommand(projectRoot, {
+    tools: ['claude', 'codex'],
+    refreshBootstrap: true,
+    domainSkillsSourceDir,
+  });
+  assert.match(await fs.readFile(codexSkillPath, 'utf-8'), /Updated upstream content/);
 });
 
 test('qdd status aggregates study/task frontmatter from the prototype layout', async () => {
@@ -172,13 +248,28 @@ test('qdd status aggregates study/task frontmatter from the prototype layout', a
   assert.deepEqual(status.tasks.completed, []);
 });
 
-test('qdd instructions returns study and task guidance for existing prototype records', async () => {
+test('qdd instructions returns project, study, and task guidance for existing prototype records', async () => {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-instr-'));
   await initCommand(projectRoot);
 
   await fs.writeFile(
     path.join(projectRoot, 'context', 'datasets.yaml'),
     ['datasets:', '  - id: DS-001', '    type: table', '    status: ready', '    path: /tmp/data.csv', ''].join('\n'),
+    'utf-8'
+  );
+  const sourceDatasetPath = path.join(projectRoot, 'external-source.h5ad');
+  await fs.writeFile(sourceDatasetPath, 'fake-data', 'utf-8');
+  await fs.symlink(sourceDatasetPath, path.join(projectRoot, 'data', 'study-source.h5ad'));
+  await fs.mkdir(path.join(projectRoot, '.codex', 'skills', 'analysis', 'reporting'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.codex', 'skills', 'analysis', 'reporting', 'SKILL.md'),
+    '# analysis/reporting\n',
+    'utf-8'
+  );
+  await fs.mkdir(path.join(projectRoot, '.claude', 'skills', 'analysis', 'reporting'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.claude', 'skills', 'analysis', 'reporting', 'SKILL.md'),
+    '# analysis/reporting\n',
     'utf-8'
   );
 
@@ -210,6 +301,8 @@ test('qdd instructions returns study and task guidance for existing prototype re
       'study_id: STUDY-001',
       'goal: Produce one evidence artifact.',
       'status: pending',
+      'skills:',
+      '  - analysis/reporting',
       'expected_outputs:',
       '  - report',
       '---',
@@ -218,9 +311,24 @@ test('qdd instructions returns study and task guidance for existing prototype re
       '',
       'A report artifact.',
       '',
+      '## Skills',
+      '',
+      '- analysis/reporting',
+      '',
     ].join('\n'),
     'utf-8'
   );
+
+  const projectInstructions = await buildInstructions(projectRoot, 'PROJECT');
+  assert.equal(projectInstructions.target.kind, 'project');
+  assert.ok(projectInstructions.read.includes('contract.yaml'));
+  assert.ok(projectInstructions.read.includes('context/resources.md'));
+  assert.ok(projectInstructions.read.includes('data/'));
+  assert.ok(projectInstructions.read.includes('.codex/skills/'));
+  assert.ok(projectInstructions.read.includes('.codex/skills/qdd/qdd-start/SKILL.md'));
+  assert.ok(projectInstructions.read.includes('.claude/skills/qdd/qdd-start/SKILL.md'));
+  assert.ok(projectInstructions.write.includes('data/'));
+  assert.ok(projectInstructions.rules.includes('Create dataset entrypoints under data/ as symlinks rather than copying raw data by default.'));
 
   const studyInstructions = await buildInstructions(projectRoot, 'STUDY-001');
   assert.equal(studyInstructions.target.kind, 'study');
@@ -228,6 +336,10 @@ test('qdd instructions returns study and task guidance for existing prototype re
   assert.equal(studyInstructions.write[1], 'studies/STUDY-001/tasks/');
   assert.ok(studyInstructions.write.includes('studies/STUDY-001/output/artifact-candidates.yaml'));
   assert.ok(studyInstructions.read.includes('context/resources.md'));
+  assert.ok(studyInstructions.read.includes('data/study-source.h5ad'));
+  assert.ok(studyInstructions.read.includes('.codex/skills/analysis/reporting/SKILL.md'));
+  assert.ok(studyInstructions.read.includes('.claude/skills/analysis/reporting/SKILL.md'));
+  assert.deepEqual(studyInstructions.required_skills, ['analysis/reporting']);
   assert.ok(studyInstructions.rules.includes('qdd-propose owns the first-pass study and initial task creation.'));
   assert.ok(studyInstructions.rules.includes('In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.'));
   assert.ok(studyInstructions.rules.includes('Use studies/STUDY-XXX/output/artifact-candidates.yaml as the explicit promotion boundary for reusable study outputs.'));
@@ -239,9 +351,14 @@ test('qdd instructions returns study and task guidance for existing prototype re
   assert.ok(taskInstructions.read.includes('studies/STUDY-001/tasks/TASK-001.md'));
   assert.ok(taskInstructions.read.includes('context/resources.md'));
   assert.ok(taskInstructions.read.includes('context/datasets.yaml'));
+  assert.ok(taskInstructions.read.includes('data/study-source.h5ad'));
+  assert.ok(taskInstructions.read.includes('.codex/skills/analysis/reporting/SKILL.md'));
+  assert.ok(taskInstructions.read.includes('.claude/skills/analysis/reporting/SKILL.md'));
+  assert.deepEqual(taskInstructions.required_skills, ['analysis/reporting']);
   assert.ok(taskInstructions.rules.includes('Keep task checklist progress in the task Markdown body.'));
   assert.ok(taskInstructions.rules.includes('Rewrite the weak checklist scaffold into task-specific executable steps before or during execution.'));
   assert.ok(taskInstructions.rules.includes('Keep the task minimal and evidence-producing.'));
+  assert.ok(taskInstructions.rules.includes('Only rely on domain task skills that exist under .codex/skills/.'));
   assert.ok(taskInstructions.rules.includes('Add only promotion-worthy outputs to studies/STUDY-XXX/output/artifact-candidates.yaml; do not treat all local outputs as artifacts.'));
 });
 
@@ -267,6 +384,8 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'tables')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'reports')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'artifact-candidates.yaml')));
+  await fs.mkdir(path.join(projectRoot, '.codex', 'skills', 'analysis', 'reporting'), { recursive: true });
+  await fs.writeFile(path.join(projectRoot, '.codex', 'skills', 'analysis', 'reporting', 'SKILL.md'), '# analysis/reporting\n', 'utf-8');
 
   const createdTask = await createTask(projectRoot, createdStudy.studyId, {
     goal: 'Produce a summary report',
@@ -281,6 +400,8 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   assert.match(originalTaskContent, /Replace this scaffold with 3-7 task-specific executable steps/);
   assert.match(originalTaskContent, /output\/code/);
   assert.match(originalTaskContent, /artifact-candidates\.yaml/);
+  assert.match(originalTaskContent, /## Skills/);
+  assert.match(originalTaskContent, /- analysis\/reporting/);
 
   const completedTaskContent = originalTaskContent
     .replace('status: pending', 'status: completed')
@@ -407,7 +528,45 @@ test('qdd inspection commands expose artifacts and context without mutating stat
   assert.equal(typeof datasetsEntry?.data, 'object');
 });
 
-test('qdd validate reports malformed state and closed studies with open tasks', async () => {
+test('qdd createTask rejects missing or workflow task skills', async () => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-task-skill-'));
+  await initCommand(projectRoot);
+
+  const createdStudy = await createStudy(projectRoot, {
+    question: 'Can task skill validation stay strict?',
+    hypothesis: 'Invalid task skills should be rejected before task creation.',
+  });
+
+  await assert.rejects(
+    createTask(projectRoot, createdStudy.studyId, {
+      goal: 'Use a missing domain skill',
+      skills: ['plot/missing-skill'],
+    }),
+    /must already exist under \.codex\/skills\//
+  );
+
+  await fs.mkdir(path.join(projectRoot, '.codex', 'skills', 'plot', 'marker-heatmap'), { recursive: true });
+  await fs.writeFile(path.join(projectRoot, '.codex', 'skills', 'plot', 'marker-heatmap', 'SKILL.md'), '# plot/marker-heatmap\n', 'utf-8');
+
+  await assert.rejects(
+    createTask(projectRoot, createdStudy.studyId, {
+      goal: 'Try to use a workflow skill',
+      skills: ['qdd/qdd-apply', 'plot/marker-heatmap'],
+    }),
+    /must not include workflow skills/
+  );
+});
+
+test('qdd validate warns on placeholder onboarding state and reports broken links / missing local skills', async () => {
+  const placeholderProjectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-validate-placeholders-'));
+  await initCommand(placeholderProjectRoot);
+
+  const placeholderValidation = await validateProject(placeholderProjectRoot);
+  assert.equal(placeholderValidation.valid, true);
+  assert.ok(placeholderValidation.issues.some((issue) => issue.code === 'placeholder_theme'));
+  assert.ok(placeholderValidation.issues.some((issue) => issue.code === 'placeholder_initial_question'));
+  assert.ok(placeholderValidation.issues.some((issue) => issue.code === 'placeholder_project_resources'));
+
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-validate-'));
   await initCommand(projectRoot);
 
@@ -439,7 +598,13 @@ test('qdd validate reports malformed state and closed studies with open tasks', 
       'study_id: STUDY-001',
       'goal: Keep one task pending',
       'status: pending',
+      'skills:',
+      '  - analysis/missing-skill',
       '---',
+      '',
+      '## Skills',
+      '',
+      '- analysis/missing-skill',
       '',
       '## Checklist',
       '',
@@ -450,6 +615,7 @@ test('qdd validate reports malformed state and closed studies with open tasks', 
   );
 
   await fs.writeFile(path.join(projectRoot, 'context', 'bad.yaml'), 'not: [valid', 'utf-8');
+  await fs.symlink('/tmp/definitely-missing-qdd-dataset.h5ad', path.join(projectRoot, 'data', 'broken-dataset.h5ad'));
   await fs.mkdir(path.join(projectRoot, 'studies', 'STUDY-001', 'output'), { recursive: true });
   await fs.writeFile(
     path.join(projectRoot, 'studies', 'STUDY-001', 'output', 'artifact-candidates.yaml'),
@@ -462,4 +628,6 @@ test('qdd validate reports malformed state and closed studies with open tasks', 
   assert.ok(validation.issues.some((issue) => issue.code === 'closed_study_with_open_tasks'));
   assert.ok(validation.issues.some((issue) => issue.code === 'invalid_context_yaml' && issue.path === 'context/bad.yaml'));
   assert.ok(validation.issues.some((issue) => issue.code === 'invalid_artifact_candidate_type'));
+  assert.ok(validation.issues.some((issue) => issue.code === 'broken_data_link' && issue.path === 'data/broken-dataset.h5ad'));
+  assert.ok(validation.issues.some((issue) => issue.code === 'missing_local_skill_reference'));
 });

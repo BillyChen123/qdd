@@ -114,7 +114,7 @@ program
     .option('--depends-on <taskIds...>', 'Task dependencies')
     .option('--input <path...>', 'Task input hints')
     .option('--expected-output <text...>', 'Expected output lines')
-    .option('--skill <name...>', 'Suggested skills')
+    .option('--skill <name...>', 'Concrete domain skill IDs such as plot/marker-heatmap')
     .action(async (studyId, options) => {
     try {
         await addTaskCommand(studyId, {
@@ -172,7 +172,7 @@ program
 });
 program
     .command('instructions <id>')
-    .description('Read execution instructions for an existing study or task')
+    .description('Read onboarding or execution instructions for PROJECT, STUDY-XXX, or TASK-XXX')
     .option('--json', 'Output as JSON')
     .action(async (id, options) => {
     try {

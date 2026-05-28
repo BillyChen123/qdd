@@ -46,6 +46,7 @@ If omitted:
 5. Use `qdd context --json` and `qdd artifacts:list --json` when inputs or reuse matter.
 
 Treat the returned `read` and `write` paths as authoritative bounds.
+Treat missing local skills reported by `qdd instructions` as real blockers.
 
 ---
 
@@ -56,10 +57,13 @@ Before executing, answer these questions:
 - which task is the current first move?
 - which expected output makes the study more judgeable?
 - are there blockers already recorded that must be resolved first?
+- do the declared domain skills actually exist under `.codex/skills/`?
 
 If the study has multiple tasks, make the execution order explicit.
 
 If the study has only one task, start there.
+
+If a task declares missing local skills, stop immediately. In this case `qdd-apply` is hard-blocked until the missing skill is installed under `.codex/skills/` or the task is rewritten through `qdd-explore`.
 
 ---
 
@@ -76,6 +80,8 @@ Before or during execution:
 If the task file is too vague to execute responsibly, say so.
 
 In `human` or `assist` mode, bring that problem back to `qdd-explore` if it requires real plan reshaping.
+
+Do not add new task skills here. `qdd-apply` consumes the declared task skill list; it does not invent one.
 
 ---
 

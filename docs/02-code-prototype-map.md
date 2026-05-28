@@ -9,7 +9,7 @@ The repository now has a **minimal executable CLI runtime** for Question-Driven 
 
 It is now strong enough for a **first human-mode end-to-end demo loop**:
 
-`init -> qdd-propose -> qdd-explore -> qdd-apply -> qdd-close`
+`qdd init -> qdd-start -> qdd-propose -> qdd-explore -> qdd-apply -> qdd-close`
 
 Under the hood, the current bootstrap still drives the existing CLI protocol:
 
@@ -34,7 +34,10 @@ Installed by `qdd init` today:
 
 - `.qdd/instructions.md`
 - `.qdd/bootstrap.yaml`
-- Claude command surfaces: `qdd-propose`, `qdd-explore`, `qdd-apply`, `qdd-close`
+- categorized local skill inventory under `.codex/skills/`
+- mirrored Claude skill surface under `.claude/skills/`
+- all central domain skills from `domain-skills/` projected into project-local skill trees
+- Claude command surfaces: `qdd-start`, `qdd-propose`, `qdd-explore`, `qdd-apply`, `qdd-close`
 - Optional Codex global prompts via `qdd init --tool codex`
 
 Not implemented yet:
@@ -69,6 +72,7 @@ src/
 │   ├── inspection.ts
 │   ├── instructions.ts
 │   ├── lifecycle.ts
+│   ├── local-skills.ts
 │   ├── paths.ts
 │   ├── status.ts
 │   └── store.ts
@@ -143,6 +147,7 @@ Commands
 Runtime
   bootstrap.ts
     -> runtime/constants.ts
+    -> runtime/local-skills.ts
     -> runtime/store.ts
     -> utils/file-system.ts
     -> types.ts
@@ -154,6 +159,7 @@ Runtime
     -> types.ts
 
   instructions.ts
+    -> runtime/local-skills.ts
     -> runtime/store.ts
     -> runtime/constants.ts
     -> utils/file-system.ts
@@ -162,6 +168,7 @@ Runtime
   inspection.ts
     -> runtime/discovery.ts
     -> runtime/lifecycle.ts
+    -> runtime/local-skills.ts
     -> runtime/store.ts
     -> runtime/constants.ts
     -> utils/file-system.ts
@@ -242,6 +249,7 @@ Files:
 - [src/runtime/inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts)
 - [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
 - [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
+- [src/runtime/local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts)
 - [src/runtime/paths.ts](/data/chenyz/project/qdd/src/runtime/paths.ts)
 - [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
 - [src/runtime/store.ts](/data/chenyz/project/qdd/src/runtime/store.ts)
@@ -250,7 +258,10 @@ Responsibility:
 
 - define the filesystem protocol
 - install and refresh tool-facing bootstrap assets
+- maintain the categorized local skill contract under `.codex/skills/` and mirrored `.claude/skills/`
+- project all central domain skills from `domain-skills/` into new projects
 - read and write core YAML state plus open `context/` resources
+- expose project-level onboarding instructions through `PROJECT`
 - read study/task Markdown frontmatter
 - scaffold study/task Markdown templates
 - maintain study-local evidence packaging rules and promotion candidates
@@ -284,25 +295,41 @@ Responsibility:
 
 ```text
 project-root/
-├── contract.yaml
-├── evolution.yaml
-├── context/
-│   └── resources.md
-├── studies/
-├── artifacts/
-│   ├── index.yaml
+├── domain-skills/                  # central source tree in this repository
+│   └── <category>/<skill>/SKILL.md
+│       ...
+│
+├── [target project created by qdd init]
+│   ├── contract.yaml
+│   ├── evolution.yaml
+│   ├── context/
+│   │   └── resources.md
 │   ├── data/
-│   ├── code/
-│   ├── figures/
-│   └── reports/
-└── .qdd/
-    ├── instructions.md
-    └── bootstrap.yaml
+│   ├── studies/
+│   ├── artifacts/
+│   │   ├── index.yaml
+│   │   ├── data/
+│   │   ├── code/
+│   │   ├── figures/
+│   │   └── reports/
+│   ├── .codex/
+│   │   └── skills/
+│   │       ├── qdd/
+│   │       └── <category>/<skill>/
+│   ├── .claude/
+│   │   ├── commands/
+│   │   └── skills/
+│   │       ├── qdd/
+│   │       └── <category>/<skill>/
+│   └── .qdd/
+│       ├── instructions.md
+│       └── bootstrap.yaml
 ```
 
 Depending on selected tools, `qdd init` also writes bootstrap assets to locations such as:
 
 ```text
+.claude/commands/qdd-start.md
 .claude/commands/qdd-propose.md
 .claude/commands/qdd-explore.md
 .claude/commands/qdd-apply.md
@@ -339,6 +366,10 @@ studies/
 - project root detection
 - YAML store helpers
 - Markdown-first context bootstrap (`context/resources.md`)
+- central `domain-skills/` source tree for reusable domain skills
+- categorized task-skill inventory under `.codex/skills/`
+- mirrored Claude skill surface under `.claude/skills/`
+- projection of all central domain skills into initialized projects
 - Markdown document read/write helpers
 - study/task frontmatter discovery
 - study creation command
@@ -349,7 +380,7 @@ studies/
 - artifact inspection command
 - context inspection command
 - status JSON aggregation
-- instructions JSON for existing study/task records
+- instructions JSON for `PROJECT`, study, and task records
 - validation and inspection runtime helpers
 - bootstrap installation/runtime helpers
 - lifecycle smoke test covering init -> study -> task -> artifact -> closure
@@ -362,7 +393,6 @@ studies/
 
 ### Partially Implemented
 
-- `instructions` for study/task only
 - task progression still happens by direct Markdown updates; there is no dedicated `qdd close-task`
 - the bootstrap layer currently targets Claude by default and Codex optionally; richer multi-tool support is still narrow
 - `artifacts:list` and `context` currently expose whole-file inspection surfaces; there is no richer filtering yet
@@ -395,11 +425,11 @@ In short: the core loop exists, but the usability and hardening layer is still t
 You can already run one bounded study manually:
 
 1. `qdd init`
-2. fill `contract.yaml`, then edit `context/resources.md` and add optional `context/*.md` or `context/*.yaml` sidecars only when needed
+2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `data/`, and the local skill trees under `.codex/skills/`
 3. `qdd add-study --question ... --hypothesis ...`
 4. `qdd add-task STUDY-001 --goal ...`
-5. let the agent read `qdd instructions STUDY-001 --json` and update `TASK-XXX.md` during execution
-6. write outputs into `studies/STUDY-001/output/{code,figures,tables,reports}/` as appropriate
+5. let the agent read `qdd instructions PROJECT --json` and `qdd instructions STUDY-001 --json`
+6. update `TASK-XXX.md` and write outputs into `studies/STUDY-001/output/{code,figures,tables,reports}/` as appropriate
 7. keep promotion-worthy outputs in `studies/STUDY-001/output/artifact-candidates.yaml`
 8. optionally `qdd register-artifact ...` immediately for outputs that should be registered now
 9. `qdd close-study STUDY-001 --question-after ... --change-type ... --change-driver ...`

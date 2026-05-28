@@ -3,6 +3,7 @@ export declare const PATHS: {
     readonly evolution: "evolution.yaml";
     readonly contextDir: "context";
     readonly contextResources: "context/resources.md";
+    readonly dataDir: "data";
     readonly studiesDir: "studies";
     readonly artifactsDir: "artifacts";
     readonly artifactIndex: "artifacts/index.yaml";
@@ -11,6 +12,12 @@ export declare const PATHS: {
     readonly artifactFiguresDir: "artifacts/figures";
     readonly artifactReportsDir: "artifacts/reports";
     readonly artifactCandidatesFileName: "artifact-candidates.yaml";
+    readonly claudeDir: ".claude";
+    readonly claudeCommandsDir: ".claude/commands";
+    readonly claudeSkillsDir: ".claude/skills";
+    readonly codexDir: ".codex";
+    readonly codexSkillsDir: ".codex/skills";
+    readonly workflowSkillCategory: "qdd";
     readonly qddDir: ".qdd";
     readonly instructions: ".qdd/instructions.md";
     readonly bootstrapConfig: ".qdd/bootstrap.yaml";

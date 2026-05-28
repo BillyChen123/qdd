@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import * as fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { BootstrapConfig, BootstrapTool, BootstrapToolRecord, BootstrapWorkflow } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
@@ -20,12 +21,24 @@ interface WorkflowContent {
 interface InstallBootstrapOptions {
   tools: BootstrapTool[];
   refresh: boolean;
+  domainSkillsSourceDir?: string;
 }
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const bootstrapPromptDir = path.join(moduleDir, 'bootstrap-prompts');
+const packageRootDir = path.resolve(moduleDir, '..', '..');
+const defaultDomainSkillsSourceDir = path.join(packageRootDir, 'domain-skills');
+
+interface DomainSkillSource {
+  id: string;
+  sourceDir: string;
+}
 
 const WORKFLOW_METADATA: Record<BootstrapWorkflow, { description: string; tags: string[] }> = {
+  'qdd-start': {
+    description: 'Onboard project context, dataset links, and local skill boundaries before the first study',
+    tags: ['qdd', 'research', 'workflow', 'start'],
+  },
   'qdd-propose': {
     description: 'Frame one bounded study from a human-supplied research question or hypothesis',
     tags: ['qdd', 'research', 'workflow', 'propose'],
@@ -112,10 +125,69 @@ function resolveToolAssetPath(projectRoot: string, tool: BootstrapTool, workflow
 function resolveToolSkillPath(projectRoot: string, tool: BootstrapTool, workflowId: BootstrapWorkflow): string {
   switch (tool) {
     case 'claude':
-      return path.join(projectRoot, '.claude', 'skills', workflowId, 'SKILL.md');
+      return path.join(projectRoot, PATHS.claudeSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
     case 'codex':
-      return path.join(projectRoot, '.codex', 'skills', workflowId, 'SKILL.md');
+      return path.join(projectRoot, PATHS.codexSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
   }
+}
+
+function resolveToolSkillDir(projectRoot: string, tool: BootstrapTool, skillId: string): string {
+  switch (tool) {
+    case 'claude':
+      return path.join(projectRoot, PATHS.claudeSkillsDir, skillId);
+    case 'codex':
+      return path.join(projectRoot, PATHS.codexSkillsDir, skillId);
+  }
+}
+
+async function discoverDomainSkills(sourceRoot: string): Promise<DomainSkillSource[]> {
+  if (!(await FileSystemUtils.directoryExists(sourceRoot))) {
+    return [];
+  }
+
+  const categories = await fs.readdir(sourceRoot, { withFileTypes: true });
+  const results: DomainSkillSource[] = [];
+
+  for (const categoryEntry of categories) {
+    if (!categoryEntry.isDirectory()) {
+      continue;
+    }
+
+    const categoryDir = path.join(sourceRoot, categoryEntry.name);
+    const skills = await fs.readdir(categoryDir, { withFileTypes: true });
+
+    for (const skillEntry of skills) {
+      if (!skillEntry.isDirectory()) {
+        continue;
+      }
+
+      const skillDir = path.join(categoryDir, skillEntry.name);
+      if (!(await FileSystemUtils.fileExists(path.join(skillDir, 'SKILL.md')))) {
+        continue;
+      }
+
+      results.push({
+        id: `${categoryEntry.name}/${skillEntry.name}`,
+        sourceDir: skillDir,
+      });
+    }
+  }
+
+  return results.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function projectDomainSkill(sourceDir: string, targetDir: string, refresh: boolean): Promise<void> {
+  const targetSkillFile = path.join(targetDir, 'SKILL.md');
+  if (!refresh && (await FileSystemUtils.fileExists(targetSkillFile))) {
+    return;
+  }
+
+  if (refresh) {
+    await fs.rm(targetDir, { recursive: true, force: true });
+  }
+
+  await FileSystemUtils.createDirectory(path.dirname(targetDir));
+  await fs.cp(sourceDir, targetDir, { recursive: true });
 }
 
 function formatToolAsset(tool: BootstrapTool, content: WorkflowContent): string {
@@ -171,6 +243,7 @@ export async function resolveBootstrapToolsForInit(projectRoot: string, requeste
 export async function installBootstrap(projectRoot: string, options: InstallBootstrapOptions): Promise<BootstrapConfig> {
   const toolRecords: BootstrapToolRecord[] = [];
   const workflowContents = await getWorkflowContents();
+  const domainSkills = await discoverDomainSkills(options.domainSkillsSourceDir ?? defaultDomainSkillsSourceDir);
 
   for (const tool of options.tools) {
     const assets = [] as BootstrapToolRecord['assets'];
@@ -193,6 +266,11 @@ export async function installBootstrap(projectRoot: string, options: InstallBoot
         workflow: workflow.id,
         path: normalizeProjectPath(projectRoot, skillPath),
       });
+    }
+
+    for (const domainSkill of domainSkills) {
+      const targetDir = resolveToolSkillDir(projectRoot, tool, domainSkill.id);
+      await projectDomainSkill(domainSkill.sourceDir, targetDir, options.refresh);
     }
 
     toolRecords.push({

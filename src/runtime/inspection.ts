@@ -18,6 +18,7 @@ import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import { getStudyArtifactCandidatesPath } from './evidence.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
+import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
 import { readMarkdownDocument, readYamlFile } from './store.js';
 
 function isContextFileName(fileName: string): boolean {
@@ -75,6 +76,24 @@ function validateResearchContract(contract: ResearchContract, issues: Validation
       code: 'invalid_termination_type',
       path: PATHS.contract,
       message: `contract.yaml has invalid termination_type '${String(contract.termination_type)}'.`,
+    });
+  }
+
+  if (contract.theme === 'Unspecified research theme') {
+    pushIssue(issues, {
+      level: 'warning',
+      code: 'placeholder_theme',
+      path: PATHS.contract,
+      message: 'contract.yaml still uses the default placeholder theme. Complete qdd-start before real study work.',
+    });
+  }
+
+  if (contract.initial_question === 'Unspecified initial question') {
+    pushIssue(issues, {
+      level: 'warning',
+      code: 'placeholder_initial_question',
+      path: PATHS.contract,
+      message: 'contract.yaml still uses the default placeholder initial_question. Complete qdd-start before real study work.',
     });
   }
 }
@@ -243,6 +262,59 @@ function validateTaskRecord(task: TaskRecord, issues: ValidationIssue[]): void {
       message: `Task file has invalid status '${String(task.status)}'.`,
     });
   }
+
+  if (task.skills !== undefined && !Array.isArray(task.skills)) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'invalid_task_skills',
+      path: taskPath,
+      message: 'Task file must store skills as an array when provided.',
+    });
+  }
+}
+
+function extractBulletSection(body: string, heading: string): string[] | null {
+  const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n## |$)`);
+  const match = body.match(pattern);
+  if (!match) {
+    return null;
+  }
+
+  const lines = match[1]
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '));
+
+  if (lines.length === 1 && lines[0] === '- None specified.') {
+    return [];
+  }
+
+  return lines.map((line) => line.slice(2).trim()).filter((line) => line.length > 0);
+}
+
+function validateTaskSkillSection(relativePath: string, task: TaskRecord, body: string, issues: ValidationIssue[]): void {
+  const normalizedFrontmatterSkills = normalizeTaskSkillIds(task.skills ?? []);
+  const bodySkills = extractBulletSection(body, 'Skills');
+
+  if (bodySkills === null) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'missing_task_skills_section',
+      path: relativePath,
+      message: 'Task markdown body must include a ## Skills section.',
+    });
+    return;
+  }
+
+  const normalizedBodySkills = normalizeTaskSkillIds(bodySkills);
+  if (JSON.stringify(normalizedFrontmatterSkills) !== JSON.stringify(normalizedBodySkills)) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'task_skill_section_mismatch',
+      path: relativePath,
+      message: 'Task frontmatter skills and ## Skills section must stay identical after normalization.',
+    });
+  }
 }
 
 function validateArtifactCandidateManifest(
@@ -366,6 +438,16 @@ async function listContextPaths(projectRoot: string): Promise<string[]> {
     .sort();
 }
 
+async function listDataPaths(projectRoot: string): Promise<string[]> {
+  const dataDir = path.join(projectRoot, PATHS.dataDir);
+  if (!(await FileSystemUtils.directoryExists(dataDir))) {
+    return [];
+  }
+
+  const entries = await fs.readdir(dataDir, { withFileTypes: true });
+  return entries.map((entry) => `${PATHS.dataDir}/${entry.name}`).sort();
+}
+
 export async function validateProject(projectRoot: string): Promise<ValidationResult> {
   const issues: ValidationIssue[] = [];
 
@@ -420,6 +502,15 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
   const contextPaths = await listContextPaths(projectRoot);
   checked.contextFiles = contextPaths;
 
+  if (!contextPaths.includes(PATHS.contextResources)) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'missing_resources_context',
+      path: PATHS.contextResources,
+      message: 'context/resources.md is required as the default project resource document.',
+    });
+  }
+
   for (const relativePath of contextPaths) {
     try {
       if (relativePath.endsWith('.md')) {
@@ -431,6 +522,25 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
             path: relativePath,
             message: 'Context markdown file is empty.',
           });
+        }
+
+        if (relativePath === PATHS.contextResources) {
+          const placeholderMarkers = [
+            'Theme statement: unspecified',
+            'Current biological focus: unspecified',
+            'Biological system: unspecified',
+            'Python: unspecified',
+            'Linked datasets under `data/`: none yet',
+          ];
+
+          if (placeholderMarkers.some((marker) => data.includes(marker))) {
+            pushIssue(issues, {
+              level: 'warning',
+              code: 'placeholder_project_resources',
+              path: relativePath,
+              message: 'context/resources.md still contains scaffold placeholders. Complete qdd-start before real study work.',
+            });
+          }
         }
       } else {
         const data = await readYamlFile<unknown>(projectRoot, relativePath);
@@ -447,6 +557,51 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
       pushIssue(issues, {
         level: 'error',
         code: relativePath.endsWith('.md') ? 'invalid_context_markdown' : 'invalid_context_yaml',
+        path: relativePath,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  const localSkillsDir = path.join(projectRoot, PATHS.codexSkillsDir);
+  if (!(await FileSystemUtils.directoryExists(localSkillsDir))) {
+    pushIssue(issues, {
+      level: 'warning',
+      code: 'missing_local_skill_registry',
+      path: PATHS.codexSkillsDir,
+      message: 'Project-local skill inventory .codex/skills/ is missing.',
+    });
+  }
+
+  const dataPaths = await listDataPaths(projectRoot);
+  for (const relativePath of dataPaths) {
+    const absolutePath = path.join(projectRoot, relativePath);
+    try {
+      const stats = await fs.lstat(absolutePath);
+      if (stats.isSymbolicLink()) {
+        try {
+          await fs.stat(absolutePath);
+        } catch {
+          pushIssue(issues, {
+            level: 'error',
+            code: 'broken_data_link',
+            path: relativePath,
+            message: 'Dataset entrypoint symlink is broken.',
+          });
+        }
+        continue;
+      }
+
+      pushIssue(issues, {
+        level: 'warning',
+        code: 'non_symlink_data_entry',
+        path: relativePath,
+        message: 'Data entrypoint is not a symlink. Prefer linking source data into data/ instead of copying it.',
+      });
+    } catch (error) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_data_entry',
         path: relativePath,
         message: (error as Error).message,
       });
@@ -475,7 +630,30 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
 
   for (const task of tasks) {
     validateTaskRecord(task, issues);
-    await validateMarkdownStructure(projectRoot, `${PATHS.studiesDir}/${task.study_id}/tasks/${task.task_id}.md`, issues);
+    const taskRelativePath = `${PATHS.studiesDir}/${task.study_id}/tasks/${task.task_id}.md`;
+    await validateMarkdownStructure(projectRoot, taskRelativePath, issues);
+
+    const taskDocument = await readMarkdownDocument<TaskRecord>(projectRoot, taskRelativePath);
+    validateTaskSkillSection(taskRelativePath, taskDocument.frontmatter, taskDocument.body, issues);
+
+    const resolvedSkills = await resolveLocalSkills(projectRoot, task.skills ?? []);
+    for (const workflowSkillId of resolvedSkills.disallowedWorkflow) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'workflow_skill_not_allowed_in_task',
+        path: taskRelativePath,
+        message: `Task references workflow skill '${workflowSkillId}'. Task skills must be concrete domain dependencies, not qdd/* workflow surfaces.`,
+      });
+    }
+
+    for (const missingSkillId of resolvedSkills.missing) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'missing_local_skill_reference',
+        path: taskRelativePath,
+        message: `Task references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+      });
+    }
   }
 
   for (const study of studies) {

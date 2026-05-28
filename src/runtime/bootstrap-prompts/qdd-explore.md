@@ -61,6 +61,8 @@ qdd context --json
 qdd artifacts:list --json
 ```
 
+If the current task set mentions domain skills, inspect `.codex/skills/` and treat missing local skills as blockers instead of hidden assumptions.
+
 Read the actual `study.md` and current task files listed by the instructions output.
 
 ### When no study exists yet
@@ -110,6 +112,7 @@ Depending on what the user brings, you might:
 
 - Do we really have the data?
 - Do we really have the runtime environment?
+- Do we really have the required local skills?
 - Are there blockers hidden inside the current task?
 
 **Test the evidence plan**
@@ -160,6 +163,7 @@ Ask:
 - do current data actually support this study?
 - are there environment blockers?
 - are we ignoring reusable prior outputs?
+- do any current task skills point outside the installed `.codex/skills/` inventory?
 
 ### 4. Pressure-test the evidence plan
 

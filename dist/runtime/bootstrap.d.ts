@@ -2,6 +2,7 @@ import type { BootstrapConfig, BootstrapTool } from '../types.js';
 interface InstallBootstrapOptions {
     tools: BootstrapTool[];
     refresh: boolean;
+    domainSkillsSourceDir?: string;
 }
 export declare function resolveBootstrapTools(requestedTools?: string[]): BootstrapTool[];
 export declare function readBootstrapConfig(projectRoot: string): Promise<BootstrapConfig | null>;

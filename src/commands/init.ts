@@ -14,6 +14,7 @@ import { writeYamlFile } from '../runtime/store.js';
 export interface InitCommandOptions {
   tools?: string[];
   refreshBootstrap?: boolean;
+  domainSkillsSourceDir?: string;
 }
 
 export async function initCommand(targetPath = '.', options: InitCommandOptions = {}): Promise<void> {
@@ -52,6 +53,7 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
 
   await Promise.all([
     FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.contextDir)),
+    FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.dataDir)),
     FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.studiesDir)),
     FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactDataDir)),
     FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactCodeDir)),
@@ -64,5 +66,6 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
   await installBootstrap(projectRoot, {
     tools: bootstrapTools,
     refresh: options.refreshBootstrap ?? false,
+    domainSkillsSourceDir: options.domainSkillsSourceDir,
   });
 }

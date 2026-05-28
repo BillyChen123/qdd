@@ -4,7 +4,7 @@
 
 在安装之前，先记住 QDD 对外只保留的最小工作流：
 
-1. `qdd-init`：创建脚手架，把生物背景、数据资源、运行环境注入 `context/`
+1. `qdd-start`：完成项目 onboarding，把生物背景、数据资源、运行环境注入共享上下文
 2. `qdd-proposal`：人给模糊研究计划，Agent 创建 `study.md` 和 `task.md`
 3. `qdd-explore`：人和 Agent 讨论并完善 `study.md` / `task.md`
 4. `qdd-apply`：Agent 读取假设和任务要求，写代码、跑结果、产出证据
@@ -12,11 +12,15 @@
 
 当前代码中的实际入口分别是：
 
-- `qdd-init` -> `qdd init`
+- `qdd-start` -> 安装后的 `qdd-start`
 - `qdd-proposal` -> 安装后的 `qdd-propose`
 - `qdd-explore` -> 安装后的 `qdd-explore`
 - `qdd-apply` -> 安装后的 `qdd-apply`
 - `qdd-close` -> 安装后的 `qdd-close`
+
+另外，底层脚手架命令仍然是：
+
+- `qdd init`
 
 ## 前提
 
@@ -181,6 +185,10 @@ qdd init . --refresh-bootstrap
 - `contract.yaml`
 - `context/resources.md`
 
+更推荐直接让 Agent 先走：
+
+- `qdd-start`
+
 ---
 
 ## 安装后会写到哪里
@@ -193,6 +201,7 @@ qdd init . --refresh-bootstrap
 .qdd/
 .claude/
 .codex/skills/
+data/
 contract.yaml
 evolution.yaml
 context/
@@ -216,10 +225,48 @@ $CODEX_HOME/prompts/
 
 也就是说：
 
-- `.codex/skills/` 是**项目级**的
+- `.codex/skills/` 是**项目级**的，并且是 task skill 的校验真相源
+- `.claude/skills/` 是**项目级**的镜像 skill surface
 - `~/.codex/prompts/` 是**用户级**的
 
 这和 OpenSpec 的做法一致，便于多个项目共用同一组 Codex prompt 名称。
+
+当前推荐的 skill 目录结构是：
+
+```text
+domain-skills/
+├── plot/
+│   └── marker-heatmap/
+│       ├── SKILL.md
+│       └── scripts/
+├── genomics/
+└── env/
+```
+
+其中：
+
+- `domain-skills/` 是仓库里的中央领域 skill 源目录
+- `qdd init` 会把这里的全部 skill 复制到目标项目的 `.codex/skills/` 和 `.claude/skills/`
+- `qdd/*` 是 workflow skill，不应写进 task `skills:`
+- task `skills:` 只应引用领域 skill，例如 `plot/...`、`genomics/...`、`env/...`
+
+投影后的项目内布局大致是：
+
+```text
+.codex/skills/
+├── qdd/
+├── plot/
+├── genomics/
+└── env/
+```
+
+如果你更新了仓库里的 `domain-skills/`，对某个项目执行：
+
+```bash
+qdd init . --refresh-bootstrap
+```
+
+就会把最新的领域 skill 重新同步到该项目。
 
 ---
 
@@ -231,15 +278,17 @@ qdd init .
 
 然后让 Agent 按这条最小循环工作：
 
-1. `qdd-propose`
-2. `qdd-explore`
-3. `qdd-apply`
-4. `qdd-close`
+1. `qdd-start`
+2. `qdd-propose`
+3. `qdd-explore`
+4. `qdd-apply`
+5. `qdd-close`
 
 如果 Agent 需要结构化读取边界，最常用的是：
 
 ```bash
 qdd status --json
+qdd instructions PROJECT --json
 qdd instructions STUDY-001 --json
 qdd instructions TASK-001 --json
 qdd validate --json

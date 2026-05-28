@@ -6,6 +6,7 @@
   "files": [
     "bin/",
     "dist/",
+    "domain-skills/",
     "README.md",
     "docs/04-installation-guide.md"
   ],

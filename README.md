@@ -8,11 +8,13 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 
 下面是 QDD 对外应该强调的最小工作流。左边是概念名，右边是当前实际入口。
 
-### 0. `qdd-init`
+### 0. `qdd-start`
 
-实际入口：`qdd init`
+前置脚手架命令：`qdd init`
 
-作用：创建项目脚手架，并把三类项目级先验信息注入 `context/`：
+实际 workflow surface：安装后的 `qdd-start`
+
+作用：先由 `qdd init` 创建项目骨架，再由 `qdd-start` 把三类项目级先验信息注入共享上下文：
 
 - 生物背景
 - 数据资源
@@ -22,6 +24,10 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 
 - `contract.yaml`
 - `context/resources.md`
+- `data/`
+- `domain-skills/`：本仓库维护的中央领域 skill 源目录
+- `.codex/skills/`
+- `.claude/skills/`
 
 ### 1. `qdd-proposal`
 
@@ -86,6 +92,10 @@ QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
 
 - `contract.yaml`：项目边界和模式
 - `context/resources.md`：项目级背景、数据、环境
+- `data/`：项目级数据入口，默认用软连接挂真实数据
+- `domain-skills/`：中央维护的领域 skill 源目录，`qdd init` 会把它们投影到项目内
+- `.codex/skills/`：项目级 local skill inventory，task `skills:` 以它为校验真相源
+- `.claude/skills/`：Claude 侧的镜像 skill surface
 - `studies/STUDY-XXX/study.md`：一个研究问题的边界
 - `studies/STUDY-XXX/tasks/TASK-XXX.md`：证据生产任务
 - `studies/STUDY-XXX/output/`：代码、图、表、报告等本地证据
@@ -124,10 +134,16 @@ qdd init .
 qdd init .
 ```
 
-然后先补人工上下文：
+然后先走项目 onboarding：
+
+- `qdd-start`
+
+如果你不用 Agent，也至少先补这些真相源：
 
 - `contract.yaml`
 - `context/resources.md`
+- `data/`
+- `domain-skills/`（如果你要维护可复用领域 skill）
 
 ### 2. 进入 proposal / explore / apply / close 循环
 
@@ -135,9 +151,11 @@ qdd init .
 
 - Claude Code bootstrap
 - Codex bootstrap
+- 当前仓库 `domain-skills/` 里的全部领域 skill
 
 后续实际协作顺序就是：
 
+0. `qdd-start`
 1. `qdd-propose`
 2. `qdd-explore`
 3. `qdd-apply`
@@ -147,10 +165,24 @@ qdd init .
 
 ```bash
 qdd status --json
+qdd instructions PROJECT --json
 qdd instructions STUDY-001 --json
 qdd instructions TASK-001 --json
 qdd validate --json
 ```
+
+task 里的 `skills:` 现在有两个硬约束：
+
+- 只写真实的领域 skill，例如 `plot/marker-heatmap`
+- 不能写 `qdd/*` 这种 workflow skill
+
+领域 skill 的维护方式现在是：
+
+1. 把 skill 写在仓库根目录的 `domain-skills/<category>/<skill>/`
+2. 运行 `qdd init .` 或 `qdd init . --refresh-bootstrap`
+3. QDD 会把它们复制到目标项目的 `.codex/skills/` 和 `.claude/skills/`
+
+可以把 `domain-skills/` 当成中央源，而把项目里的 `.codex/.claude` skill 目录当成 bootstrap 投影。
 
 ## 当前定位
 

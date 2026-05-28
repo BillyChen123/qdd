@@ -31,6 +31,7 @@ export async function initCommand(targetPath = '.', options = {}) {
     }
     await Promise.all([
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.contextDir)),
+        FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.dataDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.studiesDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactDataDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactCodeDir)),
@@ -42,6 +43,7 @@ export async function initCommand(targetPath = '.', options = {}) {
     await installBootstrap(projectRoot, {
         tools: bootstrapTools,
         refresh: options.refreshBootstrap ?? false,
+        domainSkillsSourceDir: options.domainSkillsSourceDir,
     });
 }
 //# sourceMappingURL=init.js.map

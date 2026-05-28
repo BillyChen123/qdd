@@ -42,8 +42,9 @@ Examples:
 1. If the current directory is not a QDD project, run `qdd init` first.
 2. Read `.qdd/instructions.md`.
 3. Run `qdd status --json`.
-4. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
-5. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --json` and the existing `study/task` files before writing.
+4. If project context is still placeholder-level, complete `qdd-start` first.
+5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
+6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --json` and the existing `study/task` files before writing.
 
 ---
 
@@ -140,7 +141,8 @@ Write them concretely:
 - `## Input`: actual study/context/artifact inputs
 - `## Expected Output`: the specific evidence this task should produce
 - `## Checklist`: rewrite the scaffold into task-specific executable steps
-- `## Skills`: only list skills or capabilities that genuinely matter
+- `## Skills`: only list concrete domain skills that genuinely matter and already exist under `.codex/skills/`
+- never write `qdd/*` workflow skills into a task record
 
 The initial task should be:
 
