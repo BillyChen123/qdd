@@ -51,7 +51,7 @@ qdd status --json
 Then read the active study bounds:
 
 ```bash
-qdd instructions STUDY-XXX --json
+qdd instructions STUDY-XXX --command qdd-explore --json
 ```
 
 When resource fit or reuse matters, also inspect:

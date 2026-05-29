@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from '../runtime/constants.js';
-import { createDefaultArtifactIndex, createDefaultEvolutionTrail, createDefaultInstructionsMarkdown, createDefaultResourcesMarkdown, createDefaultResearchContract, } from '../runtime/defaults.js';
+import { createDefaultArtifactIndex, createDefaultEvolutionTrail, createDefaultInstructionsMarkdown, createDefaultLayerPolicy, createDefaultResourcesMarkdown, createDefaultResearchContract, } from '../runtime/defaults.js';
 import { installBootstrap, resolveBootstrapToolsForInit } from '../runtime/bootstrap.js';
 import { writeYamlFile } from '../runtime/store.js';
 export async function initCommand(targetPath = '.', options = {}) {
@@ -12,6 +12,7 @@ export async function initCommand(targetPath = '.', options = {}) {
     const artifactIndexPath = path.join(projectRoot, PATHS.artifactIndex);
     const instructionsPath = path.join(projectRoot, PATHS.instructions);
     const resourcesPath = path.join(projectRoot, PATHS.contextResources);
+    const layerPolicyPath = path.join(projectRoot, PATHS.layerPolicy);
     // Bootstrap only the minimum durable state needed for later CLI reads.
     // Study/task records are created by later workflow commands, not at init time.
     if (!(await FileSystemUtils.fileExists(contractPath))) {
@@ -29,9 +30,11 @@ export async function initCommand(targetPath = '.', options = {}) {
     if (!(await FileSystemUtils.fileExists(resourcesPath))) {
         await FileSystemUtils.writeFile(resourcesPath, createDefaultResourcesMarkdown());
     }
+    if (!(await FileSystemUtils.fileExists(layerPolicyPath))) {
+        await writeYamlFile(projectRoot, PATHS.layerPolicy, createDefaultLayerPolicy());
+    }
     await Promise.all([
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.contextDir)),
-        FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.dataDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.studiesDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactDataDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactCodeDir)),

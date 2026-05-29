@@ -6,14 +6,19 @@ Recommended layout:
 
 ```text
 domain-skills/
+├── genomics/
+│   ├── scanpy-core-workflow/
+│   │   └── SKILL.md
+│   └── scanpy-marker-annotation/
+│       └── SKILL.md
 ├── plot/
-│   └── marker-heatmap/
+│   ├── scanpy-embedding-panels/
+│   │   └── SKILL.md
+│   ├── scanpy-expression-panels/
+│   │   └── SKILL.md
+│   └── plotting-ggplot/
 │       ├── SKILL.md
 │       └── scripts/
-├── genomics/
-│   └── celltype-annotation/
-│       ├── SKILL.md
-│       └── references/
 └── env/
     └── fix-cache-layout/
         └── SKILL.md
@@ -29,8 +34,10 @@ Rules:
 
 Task files should reference the projected skill IDs, for example:
 
-- `plot/marker-heatmap`
-- `genomics/celltype-annotation`
+- `genomics/scanpy-core-workflow`
+- `genomics/scanpy-marker-annotation`
+- `plot/scanpy-embedding-panels`
+- `plot/scanpy-expression-panels`
 - `env/fix-cache-layout`
 
 Do not use `qdd/*` workflow skills in task `skills:`.

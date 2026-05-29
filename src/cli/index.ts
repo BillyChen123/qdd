@@ -205,8 +205,9 @@ program
 program
   .command('instructions <id>')
   .description('Read onboarding or execution instructions for PROJECT, STUDY-XXX, or TASK-XXX')
+  .option('--command <name>', 'Resolve role-aware instructions for qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close')
   .option('--json', 'Output as JSON')
-  .action(async (id: string, options?: { json?: boolean }) => {
+  .action(async (id: string, options?: { json?: boolean; command?: 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close' }) => {
     try {
       await instructionsCommand(id, options);
     } catch (error) {

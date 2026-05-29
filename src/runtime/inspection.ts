@@ -18,8 +18,11 @@ import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import { getStudyArtifactCandidatesPath } from './evidence.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
+import { readLayerPolicy } from './layer-policy.js';
 import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
 import { readMarkdownDocument, readYamlFile } from './store.js';
+
+const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 
 function isContextFileName(fileName: string): boolean {
   return fileName.endsWith('.yaml') || fileName.endsWith('.md');
@@ -373,6 +376,34 @@ function validateArtifactCandidateManifest(
         message: 'Artifact candidate entry must set reusable to a boolean.',
       });
     }
+
+    const taskId = hasOwnProperty(entry, 'task_id') ? String(candidateRecord.task_id ?? '').trim() : '';
+    if (taskId.length > 0 && !TASK_ID_PATTERN.test(taskId)) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_artifact_candidate_task_id',
+        path: entryPath,
+        message: `Artifact candidate entry has invalid task_id '${taskId}'. Expected TASK-XXX.`,
+      });
+    }
+
+    if (String(candidateRecord.scope ?? '') === 'task' && taskId.length === 0) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'missing_artifact_candidate_task_id',
+        path: entryPath,
+        message: 'Task-scoped artifact candidates must declare task_id.',
+      });
+    }
+
+    if ((candidateRecord.reusable === undefined || candidateRecord.reusable === true) && String(candidateRecord.scope ?? 'study') !== 'project' && taskId.length === 0) {
+      pushIssue(issues, {
+        level: 'warning',
+        code: 'artifact_candidate_missing_task_provenance',
+        path: entryPath,
+        message: 'Reusable artifact candidates should include task_id whenever one task clearly produced the output.',
+      });
+    }
   }
 }
 
@@ -438,14 +469,14 @@ async function listContextPaths(projectRoot: string): Promise<string[]> {
     .sort();
 }
 
-async function listDataPaths(projectRoot: string): Promise<string[]> {
-  const dataDir = path.join(projectRoot, PATHS.dataDir);
+async function listSharedDataPaths(projectRoot: string): Promise<string[]> {
+  const dataDir = path.join(projectRoot, PATHS.artifactDataDir);
   if (!(await FileSystemUtils.directoryExists(dataDir))) {
     return [];
   }
 
   const entries = await fs.readdir(dataDir, { withFileTypes: true });
-  return entries.map((entry) => `${PATHS.dataDir}/${entry.name}`).sort();
+  return entries.map((entry) => `${PATHS.artifactDataDir}/${entry.name}`).sort();
 }
 
 export async function validateProject(projectRoot: string): Promise<ValidationResult> {
@@ -455,6 +486,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
     contract: false,
     evolution: false,
     artifactIndex: false,
+    layerPolicy: false,
     contextFiles: [],
     studies: [],
     tasks: [],
@@ -499,6 +531,41 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
     });
   }
 
+  try {
+    const layerPolicy = await readLayerPolicy(projectRoot);
+    checked.layerPolicy = true;
+
+    for (const [layerName, config] of Object.entries(layerPolicy.layers)) {
+      const requiredSkills = await resolveLocalSkills(projectRoot, config.required_skills);
+      const optionalSkills = await resolveLocalSkills(projectRoot, config.optional_skills);
+
+      for (const workflowSkillId of [...requiredSkills.disallowedWorkflow, ...optionalSkills.disallowedWorkflow]) {
+        pushIssue(issues, {
+          level: 'error',
+          code: 'workflow_skill_not_allowed_in_layer_policy',
+          path: PATHS.layerPolicy,
+          message: `Layer policy for '${layerName}' references workflow skill '${workflowSkillId}'. Layer defaults must use concrete domain skills instead.`,
+        });
+      }
+
+      for (const missingSkillId of [...requiredSkills.missing, ...optionalSkills.missing]) {
+        pushIssue(issues, {
+          level: 'error',
+          code: 'missing_layer_policy_skill',
+          path: PATHS.layerPolicy,
+          message: `Layer policy references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+        });
+      }
+    }
+  } catch (error) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'invalid_layer_policy_yaml',
+      path: PATHS.layerPolicy,
+      message: (error as Error).message,
+    });
+  }
+
   const contextPaths = await listContextPaths(projectRoot);
   checked.contextFiles = contextPaths;
 
@@ -530,7 +597,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
             'Current biological focus: unspecified',
             'Biological system: unspecified',
             'Python: unspecified',
-            'Linked datasets under `data/`: none yet',
+            'Linked datasets under `artifacts/data/`: none yet',
           ];
 
           if (placeholderMarkers.some((marker) => data.includes(marker))) {
@@ -573,7 +640,9 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
     });
   }
 
-  const dataPaths = await listDataPaths(projectRoot);
+  const artifactIndex = checked.artifactIndex ? await readYamlFile<ArtifactIndex>(projectRoot, PATHS.artifactIndex) : { artifacts: [] };
+  const registeredArtifactPaths = new Set(artifactIndex.artifacts.map((entry) => entry.path));
+  const dataPaths = await listSharedDataPaths(projectRoot);
   for (const relativePath of dataPaths) {
     const absolutePath = path.join(projectRoot, relativePath);
     try {
@@ -592,12 +661,14 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
         continue;
       }
 
-      pushIssue(issues, {
-        level: 'warning',
-        code: 'non_symlink_data_entry',
-        path: relativePath,
-        message: 'Data entrypoint is not a symlink. Prefer linking source data into data/ instead of copying it.',
-      });
+      if (!registeredArtifactPaths.has(relativePath)) {
+        pushIssue(issues, {
+          level: 'warning',
+          code: 'non_symlink_data_entry',
+          path: relativePath,
+          message: 'Shared data entry is not a symlink and is not registered as an artifact. Prefer symlinks for raw resources under artifacts/data/.',
+        });
+      }
     } catch (error) {
       pushIssue(issues, {
         level: 'error',

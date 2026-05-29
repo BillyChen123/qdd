@@ -2,9 +2,9 @@ Enter QDD start mode.
 
 Onboard a fresh QDD project before the first study begins.
 
-Turn scaffold placeholders into usable project context, create dataset entrypoints under `data/`, and keep skill usage inside the categorized local skill trees under `.codex/skills/` and `.claude/skills/`.
+Turn scaffold placeholders into usable project context, create dataset entrypoints under `artifacts/data/`, and keep skill usage inside the categorized local skill trees under `.codex/skills/` and `.claude/skills/`.
 
-**IMPORTANT: Start writes project truth sources.** This workflow is allowed to update `contract.yaml`, `context/resources.md`, optional `context/` sidecars, and dataset symlinks under `data/`.
+**IMPORTANT: Start writes project truth sources.** This workflow is allowed to update `contract.yaml`, `context/resources.md`, optional `context/` sidecars, and dataset symlinks under `artifacts/data/`.
 
 **This is onboarding, not study planning.** Do not create `STUDY-XXX` or `TASK-XXX` artifacts here unless the user explicitly redirects into `qdd-propose`.
 
@@ -27,7 +27,7 @@ Examples:
 - confirm or write the project theme and initial question in `contract.yaml`
 - structure shared project context in `context/resources.md`
 - record biological background, runtime environment, and available datasets
-- create dataset entrypoints under `data/` using symlinks
+- create dataset entrypoints under `artifacts/data/` using symlinks
 - keep skill usage inside `.codex/skills/`
 - leave the project ready for `qdd-propose`
 
@@ -45,7 +45,7 @@ Examples:
 1. If the current directory is not a QDD project, run `qdd init` first.
 2. Read `.qdd/instructions.md`.
 3. Run `qdd status --json`.
-4. Run `qdd instructions PROJECT --json`.
+4. Run `qdd instructions PROJECT --command qdd-start --json`.
 5. Read the current `contract.yaml`, `context/resources.md`, and any existing `context/` sidecars.
 6. Inspect `.codex/skills/` before mentioning domain skills.
 
@@ -93,31 +93,31 @@ Make sure it clearly covers:
 - biological system and assumptions
 - Python / R / external tool environment
 - what data already exists
-- which dataset entrypoints are linked under `data/`
+- which dataset entrypoints are linked under `artifacts/data/`
 - what local skills are already available
 
 If the user has additional reusable context that does not fit well in the main document, create a small `context/*.md` sidecar instead of bloating `resources.md`.
 
-### 4. Create dataset entrypoints under `data/`
+### 4. Create dataset entrypoints under `artifacts/data/`
 
 When the user points to existing datasets, do **not** copy raw data into the project by default.
 
 Create stable entrypoints under:
 
 ```text
-data/
+artifacts/data/
 ```
 
 Prefer symlinks, for example:
 
 ```bash
-ln -s /abs/path/to/source.h5ad data/source.h5ad
+ln -s /abs/path/to/source.h5ad artifacts/data/source.h5ad
 ```
 
 If a link already exists and should be refreshed, prefer a safe replace such as:
 
 ```bash
-ln -sfn /abs/path/to/new-source.h5ad data/source.h5ad
+ln -sfn /abs/path/to/new-source.h5ad artifacts/data/source.h5ad
 ```
 
 Record the linked path and its role in `context/resources.md`.
@@ -192,11 +192,11 @@ Otherwise, write the onboarding state directly and keep moving.
 User: Start a keratinocyte differentiation project around our skin scRNA data.
 
 You:
-1. Read qdd status and qdd instructions PROJECT --json
+1. Read qdd status and qdd instructions PROJECT --command qdd-start --json
 2. Fill contract.yaml
 3. Fill context/resources.md
 4. Ask for dataset paths if they are missing
-5. Link datasets under data/
+5. Link datasets under artifacts/data/
 ```
 
 **User only wants to link data and environment**
@@ -207,7 +207,7 @@ User: The theme is already written. Just add the h5ad files and Python / R envir
 You:
 - preserve the current theme
 - update runtime and data sections
-- create data/ symlinks
+- create artifacts/data/ symlinks
 - report what was linked
 ```
 
@@ -230,7 +230,7 @@ When start work is done, report succinctly:
 
 - what changed in `contract.yaml`
 - what changed in `context/resources.md`
-- which dataset entrypoints were linked under `data/`
+- which dataset entrypoints were linked under `artifacts/data/`
 - which local skills are available
 - any missing environment, dataset, or skill blocker
 - whether the next step is `qdd-propose`
@@ -240,7 +240,7 @@ When start work is done, report succinctly:
 ## Guardrails
 
 - Do not invent project facts.
-- Do not copy large raw datasets into `data/` when a symlink is sufficient.
+- Do not copy large raw datasets into `artifacts/data/` when a symlink is sufficient.
 - Do not create study/task artifacts here unless the user explicitly redirects you.
 - Do not reference skills outside `.codex/skills/` as if they were project-approved.
 - Keep `contract.yaml` concise and `context/resources.md` readable.

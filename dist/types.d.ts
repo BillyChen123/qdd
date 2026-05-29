@@ -4,6 +4,9 @@ export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
+export type QddLayer = 'project' | 'study' | 'task';
+export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
+export type QddCommand = BootstrapWorkflow;
 export interface ResearchContract {
     theme: string;
     initial_question: string;
@@ -105,10 +108,13 @@ export interface StatusJson {
     };
 }
 export interface InstructionsJson {
+    command: QddCommand | null;
     target: {
         kind: 'project' | 'study' | 'task';
         id: string;
     };
+    decision_layer: QddLayer;
+    role: QddRole;
     read: string[];
     write: string[];
     required_skills: string[];
@@ -128,6 +134,7 @@ export interface ValidationResult {
         contract: boolean;
         evolution: boolean;
         artifactIndex: boolean;
+        layerPolicy: boolean;
         contextFiles: string[];
         studies: string[];
         tasks: string[];
@@ -161,5 +168,28 @@ export interface BootstrapConfig {
     installed_at: string;
     instructions_path: string;
     tools: BootstrapToolRecord[];
+}
+export interface LayerPolicyLayerConfig {
+    role: QddRole;
+    required_skills: string[];
+    optional_skills: string[];
+}
+export interface LayerPolicyCommandConfig {
+    target: 'project' | 'study' | 'task';
+    decision_layer: QddLayer;
+}
+export interface LayerPolicy {
+    layers: {
+        project: LayerPolicyLayerConfig;
+        study: LayerPolicyLayerConfig;
+        task: LayerPolicyLayerConfig;
+    };
+    commands: {
+        'qdd-start': LayerPolicyCommandConfig;
+        'qdd-propose': LayerPolicyCommandConfig;
+        'qdd-explore': LayerPolicyCommandConfig;
+        'qdd-apply': LayerPolicyCommandConfig;
+        'qdd-close': LayerPolicyCommandConfig;
+    };
 }
 //# sourceMappingURL=types.d.ts.map

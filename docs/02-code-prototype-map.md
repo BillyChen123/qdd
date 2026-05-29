@@ -21,7 +21,7 @@ Implemented commands:
 
 - `qdd init`
 - `qdd status --json`
-- `qdd instructions <id> --json`
+- `qdd instructions <id> [--command qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close] --json`
 - `qdd add-study`
 - `qdd add-task STUDY-XXX`
 - `qdd register-artifact <path>`
@@ -304,7 +304,6 @@ project-root/
 │   ├── evolution.yaml
 │   ├── context/
 │   │   └── resources.md
-│   ├── data/
 │   ├── studies/
 │   ├── artifacts/
 │   │   ├── index.yaml
@@ -323,7 +322,8 @@ project-root/
 │   │       └── <category>/<skill>/
 │   └── .qdd/
 │       ├── instructions.md
-│       └── bootstrap.yaml
+│       ├── bootstrap.yaml
+│       └── layer-policy.yaml
 ```
 
 Depending on selected tools, `qdd init` also writes bootstrap assets to locations such as:
@@ -396,7 +396,7 @@ studies/
 - task progression still happens by direct Markdown updates; there is no dedicated `qdd close-task`
 - the bootstrap layer currently targets Claude by default and Codex optionally; richer multi-tool support is still narrow
 - `artifacts:list` and `context` currently expose whole-file inspection surfaces; there is no richer filtering yet
-- promoted artifacts still keep their study-local paths in this slice; there is no mirroring into `artifacts/code` or `artifacts/figures` yet
+- canonical promoted artifacts now move into `artifacts/{data,code,figures,reports}/`, but higher-level artifact browsing is still intentionally simple
 
 ### Not Implemented
 
@@ -425,10 +425,10 @@ In short: the core loop exists, but the usability and hardening layer is still t
 You can already run one bounded study manually:
 
 1. `qdd init`
-2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `data/`, and the local skill trees under `.codex/skills/`
+2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `artifacts/data/`, `.qdd/layer-policy.yaml`, and the local skill trees under `.codex/skills/`
 3. `qdd add-study --question ... --hypothesis ...`
 4. `qdd add-task STUDY-001 --goal ...`
-5. let the agent read `qdd instructions PROJECT --json` and `qdd instructions STUDY-001 --json`
+5. let the agent read `qdd instructions PROJECT --command qdd-start --json` and `qdd instructions STUDY-001 --command qdd-apply --json`
 6. update `TASK-XXX.md` and write outputs into `studies/STUDY-001/output/{code,figures,tables,reports}/` as appropriate
 7. keep promotion-worthy outputs in `studies/STUDY-001/output/artifact-candidates.yaml`
 8. optionally `qdd register-artifact ...` immediately for outputs that should be registered now

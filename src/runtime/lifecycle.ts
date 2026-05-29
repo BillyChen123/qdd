@@ -14,9 +14,11 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import {
+  buildCanonicalArtifactPath,
   ensureStudyOutputLayout,
   getStudyArtifactCandidatesPath,
   getStudyOutputDir,
+  relocateArtifactToCanonicalPath,
   readNormalizedArtifactCandidatesForPromotion,
   resolveProjectRelativeFilePath,
 } from './evidence.js';
@@ -84,6 +86,8 @@ function formatSequentialId(prefix: string, index: number): string {
   return `${prefix}-${String(index).padStart(3, '0')}`;
 }
 
+// 从一组已有 ID 里找出最大的编号。
+// 例如已有 STUDY-001 / STUDY-003，就返回 3，供下一次创建时顺延。
 function getHighestMatchingIndex(values: string[], pattern: RegExp): number {
   return values.reduce((highest, value) => {
     const match = value.match(pattern);
@@ -99,6 +103,9 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// 用于就地替换 Markdown 的某个二级标题段落。
+// QDD 的做法是 frontmatter 管结构化真相，正文保留给人读，
+// 所以这里会在不重建整份文档的前提下同步某个 section。
 function replaceMarkdownSection(body: string, heading: string, content: string): string {
   const normalizedContent = content.trim();
   const sectionPattern = new RegExp(`(## ${escapeRegExp(heading)}\\n\\n)([\\s\\S]*?)(?=\\n## |$)`);
@@ -113,7 +120,7 @@ function replaceMarkdownSection(body: string, heading: string, content: string):
 
 function buildStudyBody(record: StudyRecord): string {
   const blockers = record.blockers && record.blockers.length > 0 ? record.blockers.map((value) => `- ${value}`).join('\n') : '- None yet.';
-  const tasks = record.task_ids && record.task_ids.length > 0 ? record.task_ids.map((taskId) => `- [ ] ${taskId}`).join('\n') : '- No starter tasks yet.';
+  const tasks = record.task_ids && record.task_ids.length > 0 ? record.task_ids.map((taskId) => `- [ ] ${taskId}`).join('\n') : '- No planned tasks yet.';
   const expectedArtifacts =
     record.expected_artifacts && record.expected_artifacts.length > 0
       ? record.expected_artifacts.map((value) => `- ${value}`).join('\n')
@@ -179,7 +186,7 @@ function buildTaskBody(record: TaskRecord, studyId: string, inputs: string[]): s
     `- [ ] Write study-local evidence into \`${getStudyOutputDir(studyId)}/\` and summarize what changed`,
     `- [ ] Preserve readable analysis scripts in \`${getStudyOutputDir(studyId)}/code/\` when this task runs substantive analysis`,
     `- [ ] Save at least one key figure in \`${getStudyOutputDir(studyId)}/figures/\` when the task conclusion depends on visual evidence, or record why no figure was needed`,
-    `- [ ] Add only promotion-worthy outputs to \`${getStudyArtifactCandidatesPath(studyId)}\``,
+    `- [ ] Add only promotion-worthy outputs to \`${getStudyArtifactCandidatesPath(studyId)}\` and include \`task_id\` when this task clearly produced them`,
     '- [ ] Register reusable artifacts only if this task produced them and immediate registration is warranted',
   ].join('\n');
   const normalizedSkills = normalizeTaskSkillIds(record.skills ?? []);
@@ -239,6 +246,9 @@ export async function readStudyDocument(projectRoot: string, studyId: string): P
   };
 }
 
+// 通过“已知路径 + 预期 ID”读取 task 文档。
+// 这里会把缺失的关键 frontmatter 字段用路径信息补齐，
+// 保证后续 runtime 在面对半成品文档时仍有稳定视图。
 export async function readTaskDocumentByPath(
   projectRoot: string,
   relativePath: string,
@@ -261,6 +271,9 @@ export async function readTaskDocumentByPath(
   };
 }
 
+// 反查一个 task 属于哪个 study。
+// 这在 register-artifact / instructions / closeStudy 里都很关键，
+// 因为 task 本身的 CLI 输入通常只带 TASK-XXX，不带父 studyId。
 export async function findTaskDocument(projectRoot: string, taskId: string): Promise<{ studyId: string; relativePath: string; record: TaskRecord; body: string }> {
   const studiesDir = path.join(projectRoot, PATHS.studiesDir);
   const studyEntries = await FileSystemUtils.directoryExists(studiesDir)
@@ -288,6 +301,8 @@ export async function findTaskDocument(projectRoot: string, taskId: string): Pro
   throw new Error(`Task '${taskId}' not found.`);
 }
 
+// 创建 study 只负责落一个最小但完整的 study scaffold。
+// 真正的 task 图由后续 qdd-propose / qdd add-task 补上。
 export async function createStudy(projectRoot: string, options: AddStudyOptions = {}): Promise<CreatedStudyResult> {
   const studyId = await nextStudyId(projectRoot);
   const studyDir = `${PATHS.studiesDir}/${studyId}`;
@@ -312,6 +327,8 @@ export async function createStudy(projectRoot: string, options: AddStudyOptions 
   };
 }
 
+// 创建 task 时会立即校验 skills 是否真实存在于 .codex/skills/ 下。
+// 这样 task 记录本身就是“可执行约束”，而不是任意文本。
 export async function createTask(projectRoot: string, studyId: string, options: AddTaskOptions = {}): Promise<CreatedTaskResult> {
   const study = await readStudyDocument(projectRoot, studyId);
   const taskId = await nextTaskId(projectRoot);
@@ -373,6 +390,63 @@ function inferArtifactFormat(relativePath: string): string {
   return extension || 'unknown';
 }
 
+async function resolveRegisteredArtifactBySourcePath(
+  projectRoot: string,
+  artifactIndex: ArtifactIndex,
+  sourceRelativePath: string
+): Promise<ArtifactIndexEntry | null> {
+  const absoluteSource = path.join(projectRoot, sourceRelativePath);
+  let realSourcePath: string | null = null;
+
+  try {
+    realSourcePath = await nodeFs.realpath(absoluteSource);
+  } catch {
+    realSourcePath = null;
+  }
+
+  for (const entry of artifactIndex.artifacts) {
+    if (entry.path === sourceRelativePath) {
+      return entry;
+    }
+
+    if (!realSourcePath) {
+      continue;
+    }
+
+    const absoluteRegisteredPath = path.join(projectRoot, entry.path);
+    try {
+      const realRegisteredPath = await nodeFs.realpath(absoluteRegisteredPath);
+      if (realRegisteredPath === realSourcePath) {
+        return entry;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function ensureTaskArtifactReference(
+  projectRoot: string,
+  taskId: string,
+  artifactId: string
+): Promise<void> {
+  const taskDocument = await findTaskDocument(projectRoot, taskId);
+  if ((taskDocument.record.artifact_ids ?? []).includes(artifactId)) {
+    return;
+  }
+
+  const updatedTaskRecord: TaskRecord = {
+    ...taskDocument.record,
+    artifact_ids: [...(taskDocument.record.artifact_ids ?? []), artifactId],
+    updated_at: new Date().toISOString(),
+  };
+  await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+}
+
+// 把某个文件登记进 artifacts/index.yaml。
+// 注意 produced_by 是 provenance，scope 是复用边界，两者分开记录。
 export async function registerArtifact(
   projectRoot: string,
   targetPath: string,
@@ -396,8 +470,22 @@ export async function registerArtifact(
   }
 
   const artifactIndex = await readYamlFile<ArtifactIndex>(projectRoot, PATHS.artifactIndex);
+  const sourceRelativePath = await resolveProjectRelativeFilePath(projectRoot, targetPath);
+  const existingEntry = await resolveRegisteredArtifactBySourcePath(projectRoot, artifactIndex, sourceRelativePath);
+  if (existingEntry) {
+    if (options.taskId) {
+      await ensureTaskArtifactReference(projectRoot, options.taskId, existingEntry.id);
+    }
+
+    return {
+      artifactId: existingEntry.id,
+      entry: existingEntry,
+    };
+  }
+
   const artifactId = await nextArtifactId(projectRoot);
-  const relativePath = await resolveProjectRelativeFilePath(projectRoot, targetPath);
+  const canonicalRelativePath = buildCanonicalArtifactPath(artifactId, options.artifactType, sourceRelativePath);
+  const relativePath = await relocateArtifactToCanonicalPath(projectRoot, sourceRelativePath, canonicalRelativePath);
   const producedBy = options.taskId ? `${studyId}/${options.taskId}` : `${studyId}`;
   const entry: ArtifactIndexEntry = {
     id: artifactId,
@@ -416,13 +504,7 @@ export async function registerArtifact(
   });
 
   if (options.taskId) {
-    const taskDocument = await findTaskDocument(projectRoot, options.taskId);
-    const updatedTaskRecord: TaskRecord = {
-      ...taskDocument.record,
-      artifact_ids: [...(taskDocument.record.artifact_ids ?? []), artifactId],
-      updated_at: new Date().toISOString(),
-    };
-    await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+    await ensureTaskArtifactReference(projectRoot, options.taskId, artifactId);
   }
 
   return {
@@ -435,6 +517,8 @@ function findCurrentQuestion(study: StudyRecord, evolution: EvolutionTrail): str
   return study.question || evolution.evolution_trail[evolution.evolution_trail.length - 1]?.question_delta.question_after || study.question;
 }
 
+// 根据 task 状态推断一个 study 目前的生命周期位置。
+// 这里是 runtime 的统一判定口，status / instructions / close 都复用它。
 function inferStudyState(study: StudyRecord, tasks: TaskRecord[]): StudyRecord['status'] {
   if (study.status === 'closed') {
     return 'closed';
@@ -459,6 +543,13 @@ function inferStudyState(study: StudyRecord, tasks: TaskRecord[]): StudyRecord['
   return study.status ?? 'created';
 }
 
+// closeStudy 做三件事：
+// 1. 检查 study 是否真的已经走到可关闭状态；
+// 2. 先把 artifact-candidates 里可提升的输出正式登记；
+// 3. 最后再写入 question_delta，并把 study 标记为 closed。
+//
+// 顺序不能反，否则一旦 promotion 失败，evolution.yaml 就会留下“已经关闭”
+// 但 artifact registry 还没同步的坏状态。
 export async function closeStudy(projectRoot: string, studyId: string, options: CloseStudyOptions): Promise<void> {
   const studyDocument = await readStudyDocument(projectRoot, studyId);
   const evolution = await readYamlFile<EvolutionTrail>(projectRoot, PATHS.evolution);
@@ -467,6 +558,11 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
 
   if (studyTasks.some((task) => (task.status ?? 'pending') === 'pending' || task.status === 'running')) {
     throw new Error(`Study '${studyId}' still has pending or running tasks. Resolve task records before closing the study.`);
+  }
+
+  const inferredStatus = inferStudyState(studyDocument.record, studyTasks);
+  if (inferredStatus !== 'completed' && inferredStatus !== 'blocked' && studyTasks.length > 0) {
+    throw new Error(`Study '${studyId}' could not be cleanly classified before closure. Review task statuses.`);
   }
 
   const artifactIndex = await readYamlFile<ArtifactIndex>(projectRoot, PATHS.artifactIndex);
@@ -529,11 +625,6 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
   );
 
   await writeMarkdownDocument(projectRoot, studyDocument.relativePath, updatedStudyRecord, finalStudyBody);
-
-  const inferredStatus = inferStudyState(studyDocument.record, studyTasks);
-  if (inferredStatus !== 'completed' && inferredStatus !== 'blocked' && studyTasks.length > 0) {
-    throw new Error(`Study '${studyId}' could not be cleanly classified before closure. Review task statuses.`);
-  }
 }
 
 export function deriveStudyLifecycleState(study: StudyRecord, tasks: TaskRecord[]): Exclude<StudyRecord['status'], 'confirmed' | undefined> {

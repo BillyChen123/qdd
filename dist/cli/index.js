@@ -173,6 +173,7 @@ program
 program
     .command('instructions <id>')
     .description('Read onboarding or execution instructions for PROJECT, STUDY-XXX, or TASK-XXX')
+    .option('--command <name>', 'Resolve role-aware instructions for qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close')
     .option('--json', 'Output as JSON')
     .action(async (id, options) => {
     try {

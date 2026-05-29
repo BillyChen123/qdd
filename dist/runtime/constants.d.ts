@@ -3,7 +3,6 @@ export declare const PATHS: {
     readonly evolution: "evolution.yaml";
     readonly contextDir: "context";
     readonly contextResources: "context/resources.md";
-    readonly dataDir: "data";
     readonly studiesDir: "studies";
     readonly artifactsDir: "artifacts";
     readonly artifactIndex: "artifacts/index.yaml";
@@ -21,5 +20,6 @@ export declare const PATHS: {
     readonly qddDir: ".qdd";
     readonly instructions: ".qdd/instructions.md";
     readonly bootstrapConfig: ".qdd/bootstrap.yaml";
+    readonly layerPolicy: ".qdd/layer-policy.yaml";
 };
 //# sourceMappingURL=constants.d.ts.map

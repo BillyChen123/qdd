@@ -24,7 +24,7 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 
 - `contract.yaml`
 - `context/resources.md`
-- `data/`
+- `artifacts/data/`
 - `domain-skills/`：本仓库维护的中央领域 skill 源目录
 - `.codex/skills/`
 - `.claude/skills/`
@@ -63,8 +63,8 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 
 主要会围绕这些位置工作：
 
-- `qdd instructions STUDY-XXX --json`
-- `qdd instructions TASK-XXX --json`
+- `qdd instructions STUDY-XXX --command qdd-apply --json`
+- `qdd instructions TASK-XXX --command qdd-apply --json`
 - `studies/STUDY-XXX/output/`
 
 当前约定下，实质分析要尽量留下：
@@ -92,7 +92,7 @@ QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
 
 - `contract.yaml`：项目边界和模式
 - `context/resources.md`：项目级背景、数据、环境
-- `data/`：项目级数据入口，默认用软连接挂真实数据
+- `artifacts/data/`：项目级共享数据入口，默认用软连接挂真实数据；被正式晋升的数据 artifact 也会落到这里
 - `domain-skills/`：中央维护的领域 skill 源目录，`qdd init` 会把它们投影到项目内
 - `.codex/skills/`：项目级 local skill inventory，task `skills:` 以它为校验真相源
 - `.claude/skills/`：Claude 侧的镜像 skill surface
@@ -142,7 +142,7 @@ qdd init .
 
 - `contract.yaml`
 - `context/resources.md`
-- `data/`
+- `artifacts/data/`
 - `domain-skills/`（如果你要维护可复用领域 skill）
 
 ### 2. 进入 proposal / explore / apply / close 循环
@@ -165,9 +165,9 @@ qdd init .
 
 ```bash
 qdd status --json
-qdd instructions PROJECT --json
-qdd instructions STUDY-001 --json
-qdd instructions TASK-001 --json
+qdd instructions PROJECT --command qdd-start --json
+qdd instructions STUDY-001 --command qdd-apply --json
+qdd instructions TASK-001 --command qdd-apply --json
 qdd validate --json
 ```
 

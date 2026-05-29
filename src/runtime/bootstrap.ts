@@ -61,6 +61,9 @@ function uniqueValues<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
+// QDD 的 codex prompt 会落到 CODEX_HOME/prompts，
+// 而本地 skill 镜像仍然落在项目目录里。
+// 这里统一解析“当前机器应该把 codex prompt 安装到哪里”。
 function getCodexHome(): string {
   const envHome = process.env.CODEX_HOME?.trim();
   return path.resolve(envHome ? envHome : path.join(os.homedir(), '.codex'));
@@ -93,6 +96,11 @@ function formatSkillContent(content: WorkflowContent): string {
   return `---\nname: ${content.id}\ndescription: ${content.description}\nlicense: MIT\ncompatibility: Requires qdd CLI.\nmetadata:\n  author: qdd\n  version: "1.0"\n  generatedBy: "${BOOTSTRAP_VERSION}"\n---\n\n${content.body}\n`;
 }
 
+// workflow prompt 的真相源在 src/runtime/bootstrap-prompts/。
+// 安装 bootstrap 时，会把这些源内容投影成：
+// - Claude command
+// - Codex prompt
+// - 项目内的 workflow skills
 async function getWorkflowContents(): Promise<WorkflowContent[]> {
   const workflows = Object.entries(WORKFLOW_METADATA) as Array<[BootstrapWorkflow, { description: string; tags: string[] }]>;
   return Promise.all(
@@ -140,6 +148,8 @@ function resolveToolSkillDir(projectRoot: string, tool: BootstrapTool, skillId: 
   }
 }
 
+// 发现 domain-skills/ 下面的“分类/技能”目录结构。
+// 例如 plot/marker-heatmap/SKILL.md -> 技能 ID 是 plot/marker-heatmap。
 async function discoverDomainSkills(sourceRoot: string): Promise<DomainSkillSource[]> {
   if (!(await FileSystemUtils.directoryExists(sourceRoot))) {
     return [];
@@ -176,6 +186,9 @@ async function discoverDomainSkills(sourceRoot: string): Promise<DomainSkillSour
   return results.sort((left, right) => left.id.localeCompare(right.id));
 }
 
+// 把一个领域 skill 投影进项目目录。
+// 默认不覆盖项目里已经存在的同名 skill，避免用户本地改动被静默冲掉；
+// 只有 refresh 模式才会重装。
 async function projectDomainSkill(sourceDir: string, targetDir: string, refresh: boolean): Promise<void> {
   const targetSkillFile = path.join(targetDir, 'SKILL.md');
   if (!refresh && (await FileSystemUtils.fileExists(targetSkillFile))) {
@@ -199,6 +212,8 @@ function formatToolAsset(tool: BootstrapTool, content: WorkflowContent): string 
   }
 }
 
+// 解析 init 时用户请求安装哪些 tool surface。
+// 未指定时默认同时安装 claude + codex。
 export function resolveBootstrapTools(requestedTools?: string[]): BootstrapTool[] {
   if (!requestedTools || requestedTools.length === 0) {
     return [...DEFAULT_BOOTSTRAP_TOOLS];
@@ -227,6 +242,8 @@ export async function readBootstrapConfig(projectRoot: string): Promise<Bootstra
   return readYamlFile<BootstrapConfig>(projectRoot, PATHS.bootstrapConfig);
 }
 
+// init 时如果用户没显式传 --tool，就优先复用项目已有 bootstrap 配置，
+// 保证 refresh 不会无意间改变安装矩阵。
 export async function resolveBootstrapToolsForInit(projectRoot: string, requestedTools?: string[]): Promise<BootstrapTool[]> {
   if (requestedTools && requestedTools.length > 0) {
     return resolveBootstrapTools(requestedTools);
@@ -240,6 +257,10 @@ export async function resolveBootstrapToolsForInit(projectRoot: string, requeste
   return [...DEFAULT_BOOTSTRAP_TOOLS];
 }
 
+// 安装 QDD bootstrap：
+// 1. 写 workflow prompts/commands/skills
+// 2. 投影 domain skills 到 .codex/.claude
+// 3. 记录 bootstrap.yaml，方便后续 refresh 和审计
 export async function installBootstrap(projectRoot: string, options: InstallBootstrapOptions): Promise<BootstrapConfig> {
   const toolRecords: BootstrapToolRecord[] = [];
   const workflowContents = await getWorkflowContents();

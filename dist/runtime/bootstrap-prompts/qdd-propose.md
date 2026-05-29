@@ -1,8 +1,8 @@
 Enter QDD propose mode.
 
-Turn a human-supplied research direction into one complete first-pass `study.md` plus one corresponding initial `TASK-XXX.md`.
+Turn a human-supplied research direction into one complete first-pass `study.md` plus a small first-pass set of `TASK-XXX.md` records.
 
-**IMPORTANT: Propose writes.** This is the workflow step that creates the first usable study/task pair. Do not leave the project with only a vague intention if there is already enough information to write a conservative first pass.
+**IMPORTANT: Propose writes.** This is the workflow step that creates the first usable study/task set. Do not leave the project with only a vague intention if there is already enough information to write a conservative first pass.
 
 **This is artifact creation, not long-form debate.** If the user wants to question assumptions, compare options, or revise an existing study after seeing the first pass, that belongs in `qdd-explore`.
 
@@ -23,7 +23,7 @@ Examples:
 ## What Propose Owns
 
 - create or refresh one bounded `study.md`
-- create one initial evidence-producing task for that study
+- create a small complete first-pass task graph for that study
 - make conservative decisions when the direction is broad but still actionable
 - use the existing QDD templates rather than inventing new artifact shapes
 - leave the project ready for `qdd-explore` or `qdd-apply`
@@ -44,7 +44,7 @@ Examples:
 3. Run `qdd status --json`.
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
-6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --json` and the existing `study/task` files before writing.
+6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
 
 ---
 
@@ -58,7 +58,7 @@ Good propose questions are:
 
 - narrow enough to judge in one study
 - connected to available data or realistic blockers
-- concrete enough to imply one first task
+- concrete enough to imply a small first-pass task set
 
 Bad propose questions are:
 
@@ -81,25 +81,30 @@ At minimum, fill in:
 - evidence plan
 - blockers
 
-### 3. Create the initial task immediately
+### 3. Create the initial tasks immediately
 
-Use `qdd add-task STUDY-XXX` to create one initial task.
+Use `qdd add-task STUDY-XXX` repeatedly to create the initial task set.
 
-Then edit `studies/STUDY-XXX/tasks/TASK-XXX.md` directly so it matches the real first move.
+Then edit each `studies/STUDY-XXX/tasks/TASK-XXX.md` directly so it matches a real first-pass move.
 
-By default, create **one** initial task.
+By default, create **2-4** initial tasks.
 
-Only create more than one initial task if the study would be misleading or unusable with a single first task.
+Prefer tasks that are as independent as possible.
 
-### 4. Keep the study and task aligned
+Only add a dependency edge when one task truly cannot start before another task produces something essential.
 
-The task should be the first evidence-producing move implied by the study.
+Only fall back to a single initial task when the study is genuinely atomic and splitting it would be artificial.
+
+### 4. Keep the study and task set aligned
+
+The initial tasks should together cover the small complete first pass needed to judge, refine, or block the study honestly.
 
 Examples:
 
-- if the study question is about feasibility, the first task may be a data or environment reality check
-- if the study question is already feasible, the first task may be the first real analysis step
-- if the main uncertainty is annotation validity, the first task may be a focused validation task rather than a full pipeline run
+- if the study question is about feasibility, one task may be a data or environment reality check while another task verifies annotation or cohort fit
+- if the study question is already feasible, split the first-pass work into separate evidence units such as data preparation, primary comparison, and figure-ready summarization
+- if the main uncertainty is annotation validity, create a focused validation task beside, not inside, a broader downstream analysis task when they can be inspected independently
+- if the study needs preparation work to make the main hypothesis testable, keep that preparatory task inside the same study instead of pretending it is a separate study
 
 ### 5. Stop once the first pass is usable
 
@@ -108,8 +113,9 @@ Do not stay in propose mode trying to optimize everything.
 Stop when the project has:
 
 - one clear study
-- one concrete initial task
+- a small initial task set with clear boundaries
 - enough written context for later discussion in `qdd-explore`
+- no obvious first-pass evidence gap that apply would have to invent later
 
 ---
 
@@ -125,13 +131,13 @@ Write them concretely:
 - `## Resource Fit`: what data, runtime, biology, or prior artifacts matter
 - `## Evidence Plan`: what outputs would make the study judgeable
 - `## Blockers`: real blockers, not generic uncertainty
-- `## Tasks`: list the initial task you just created
+- `## Tasks`: list the initial tasks you just created
 
 Do not leave these as generic filler if you already know the answer.
 
 ---
 
-## How To Write The Initial Task
+## How To Write The Initial Tasks
 
 Use the existing `task.md` template sections.
 
@@ -144,12 +150,20 @@ Write them concretely:
 - `## Skills`: only list concrete domain skills that genuinely matter and already exist under `.codex/skills/`
 - never write `qdd/*` workflow skills into a task record
 
-The initial task should be:
+Each initial task should be:
 
 - evidence-producing
 - minimal
 - auditable
 - obviously connected to the study question
+- as independent as practical from sibling tasks
+
+Across the initial task set:
+
+- prefer parallel or loosely coupled work over serial chains
+- do not collapse the whole study into one omnibus task
+- do not stop at one task if the study obviously needs several distinct evidence-producing moves
+- do not pre-plan a deep task tree just because more work is imaginable
 
 ---
 
@@ -197,7 +211,7 @@ User: I want to use our AD dataset to understand ALOX12B-low keratinocytes.
 You:
 1. Read qdd status/context
 2. Create STUDY-XXX with one bounded question
-3. Create one initial task such as a data-and-metadata reality check
+3. Create 2-4 initial tasks such as a data-and-metadata reality check, a cohort-definition task, and a first comparison task
 4. Report what you created and what should be explored next
 ```
 
@@ -209,18 +223,18 @@ User: I think ALOX12B-low might mark a barrier-impaired KC state.
 You:
 - write that as the working hypothesis
 - keep the study question bounded to what the current dataset can test
-- create one first task that can produce evidence for or against that claim
+- create a small set of first-pass tasks that can each produce inspectable evidence for or against that claim
 ```
 
-**User already has a study but wants a first task**
+**User already has a study but wants a usable first-pass task set**
 
 ```text
-User: The study exists but it has no good initial task.
+User: The study exists but it has no good initial task breakdown.
 
 You:
 - read the current study
-- create exactly one first-pass task
-- update the study's Tasks section so the pair is aligned
+- create a small first-pass task set
+- update the study's Tasks section so the study and task set are aligned
 ```
 
 ---
@@ -230,9 +244,9 @@ You:
 When propose work is done, report succinctly:
 
 - study id
-- task id
+- task ids
 - bounded question
-- task goal
+- task goals
 - main blocker or key uncertainty, if any
 - whether the next best step is `qdd-explore` or `qdd-apply`
 
@@ -242,8 +256,9 @@ When propose work is done, report succinctly:
 
 - Do not build a large task tree in propose mode.
 - Do not leave the created study or task in obvious placeholder form if you had enough context to be concrete.
+- Do not leave obvious within-study follow-up work unplanned if it is already foreseeable from the question and resources.
 - Do not turn propose into implementation.
 - Do not turn propose into a free-form discussion session.
-- Keep the first task minimal and evidence-producing.
+- Prefer a small set of loosely coupled initial tasks over one vague omnibus task.
 - Rewrite the default task checklist so it matches the actual task.
 - Stay within QDD's research-native object model.

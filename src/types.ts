@@ -1,97 +1,225 @@
+// QDD 的运行模式。
+// - human: 以人工决策为主，Agent 只做辅助
+// - assist: 人和 Agent 协同推进
+// - auto: Agent 按既定流程自动执行
 export type QddMode = 'human' | 'assist' | 'auto';
 
+// 一轮 study 结束后，核心问题相对于上一轮是如何变化的。
 export type QuestionChangeType = 'refinement' | 'confirmation' | 'pivot' | 'dissolution';
 
+// 可登记为 artifact 的材料类型。
 export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
 
+// artifact 的复用边界。
+// 这里描述“它适合在哪一层复用”，而不是“它由哪一层产出”。
 export type ArtifactScope = 'project' | 'study' | 'task';
 
+// 当前支持注入 bootstrap 资产的 Agent / 工具类型。
 export type BootstrapTool = 'claude' | 'codex';
 
+// QDD 当前定义的核心工作流名称。
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
 
+// QDD 的三层决策/执行层级。
+export type QddLayer = 'project' | 'study' | 'task';
+
+// 每一层默认绑定的角色名称。
+export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
+
+// 命令上下文名称。
+// 当前和 bootstrap workflow 共享同一组命名。
+export type QddCommand = BootstrapWorkflow;
+
+// 项目级研究合同。
+// 用来描述这个 QDD 项目的总主题、初始问题、运行模式，以及边界约束。
 export interface ResearchContract {
+  // 研究主题，例如某个生物学问题或疾病方向。
   theme: string;
+
+  // 项目启动时的初始研究问题。
   initial_question: string;
+
+  // 当前项目采用的人机协作模式。
   mode: QddMode;
+
+  // 项目边界：哪些事情明确要做，哪些事情明确不做。
   scope: {
     in_scope: string[];
     out_of_scope: string[];
   };
+
+  // 当前先固定为 best_effort，表示尽力推进而不是保证完全证明。
   termination_type: 'best_effort';
 }
 
+// 一次问题更新记录。
+// 通常由 close 阶段写入，用来说明本轮 study 之后问题如何演化。
 export interface QuestionDelta {
+  // 本轮 study 之前的问题表述。
   question_before: string;
+
+  // 本轮 study 之后更新得到的问题表述。
   question_after: string;
+
+  // 问题变化的类型。
   change_type: QuestionChangeType;
+
+  // 导致问题变化的主要证据或结论。
   change_driver: string;
+
+  // 本轮之后仍未解决、需要继续开放探索的边界。
   open_boundaries: string[];
 }
 
+// 项目级问题演化历史。
+// evolution.yaml 会用这个结构记录每一轮 study 对问题空间造成的变化。
 export interface EvolutionTrail {
   evolution_trail: Array<{
+    // 对应的 study 编号。
     study_id: string;
+
+    // 本轮对问题的更新内容。
     question_delta: QuestionDelta;
+
+    // 写入时间，通常为 ISO 时间字符串。
     timestamp: string;
   }>;
 }
 
+// 已正式登记的 artifact 条目。
+// 这些条目通常写入 artifacts/index.yaml，表示已经被提升为可管理、可复用证据。
 export interface ArtifactIndexEntry {
+  // artifact 的稳定 ID，供任务、study、后续复用引用。
   id: string;
+
+  // artifact 的材料类型，例如 code / figure。
   type: ArtifactType;
+
+  // 文件格式或数据格式，例如 png / csv / py / md。
   format: string;
+
+  // artifact 的相对路径。
   path: string;
+
+  // 产出者，一般记录为 study 或 task 的标识。
   produced_by: string;
+
+  // 是否推荐在后续工作中复用。
   reusable: boolean;
+
+  // 复用边界。比如 task-scope 表示只适合当前任务内部参考，
+  // project-scope 表示适合进入项目级公共上下文。
   scope: ArtifactScope;
+
+  // 给人和 Agent 看的简短说明。
   description: string;
+
+  // 该 artifact 预期遵循的结构约束；目前通常是文本标识。
   schema: string;
 }
 
+// 已登记 artifact 的索引文件结构。
 export interface ArtifactIndex {
   artifacts: ArtifactIndexEntry[];
 }
 
+// artifact 候选条目。
+// apply 阶段先写“候选”，close 阶段再从候选中筛选并提升为正式 artifact。
 export interface ArtifactCandidateEntry {
+  // 候选材料的相对路径。
   path: string;
+
+  // 候选材料的类型。
   type: ArtifactType;
+
+  // 直接产出它的 task；这是任务级 provenance，不等于 scope。
   task_id?: string;
+
+  // 是否值得在后续复用。
   reusable: boolean;
+
+  // 复用边界，而不是生产来源。
   scope: ArtifactScope;
+
+  // 对候选材料的用途说明。
   description: string;
+
+  // 预期结构或约束说明。
   schema: string;
 }
 
+// artifact 候选清单文件结构。
 export interface ArtifactCandidateManifest {
   artifact_candidates: ArtifactCandidateEntry[];
 }
 
+// study 的结构化状态记录。
+// 它是对 study.md 的补充索引，方便 CLI 汇总、校验和机器读取。
 export interface StudyRecord {
+  // study 编号，例如 STUDY-001。
   study_id: string;
+
+  // 当前 study 试图回答的具体问题。
   question: string;
+
+  // 当前 study 的核心假设。
   hypothesis: string;
+
+  // study 当前状态。
   status?: 'created' | 'confirmed' | 'running' | 'blocked' | 'completed' | 'closed';
+
+  // 造成阻塞的原因列表。
   blockers?: string[];
+
+  // 该 study 关联的 task 编号列表。
   task_ids?: string[];
+
+  // 预期会产生的关键输出。
   expected_artifacts?: string[];
+
+  // study 关闭时间。
   closed_at?: string;
 }
 
+// task 的结构化状态记录。
+// 和 StudyRecord 一样，它主要服务于 CLI 状态汇总、执行跟踪和校验。
 export interface TaskRecord {
+  // task 编号，例如 TASK-001。
   task_id: string;
+
+  // 所属的 study 编号。
   study_id: string;
+
+  // 任务目标，要求直接、可执行。
   goal: string;
+
+  // task 当前状态。
   status?: 'pending' | 'running' | 'blocked' | 'completed';
+
+  // 预期输出，例如脚本、表格、图片、报告。
   expected_outputs?: string[];
+
+  // 依赖的前置 task。
   depends_on?: string[];
+
+  // 执行该 task 时推荐使用的 skills。
   skills?: string[];
+
+  // 本任务最终关联到的 artifact ID 列表。
   artifact_ids?: string[];
+
+  // 如果阻塞，记录阻塞原因。
   blocker_reason?: string;
+
+  // 本任务结果的摘要。
   result_summary?: string;
+
+  // 最后更新时间。
   updated_at?: string;
 }
 
+// `qdd status --json` 的输出结构。
+// 用于给 Agent 或外部工具快速获取项目当前状态。
 export interface StatusJson {
   project: {
     theme: string;
@@ -120,11 +248,16 @@ export interface StatusJson {
   };
 }
 
+// `qdd instructions <id> --json` 的输出结构。
+// 它告诉 Agent：面对某个 project / study / task 时应该读什么、写什么、遵守什么规则。
 export interface InstructionsJson {
+  command: QddCommand | null;
   target: {
     kind: 'project' | 'study' | 'task';
     id: string;
   };
+  decision_layer: QddLayer;
+  role: QddRole;
   read: string[];
   write: string[];
   required_skills: string[];
@@ -132,6 +265,8 @@ export interface InstructionsJson {
   rules: string[];
 }
 
+// 单条校验问题。
+// validate 命令会把发现的问题组织成这个结构。
 export interface ValidationIssue {
   level: 'error' | 'warning';
   code: string;
@@ -139,6 +274,7 @@ export interface ValidationIssue {
   message: string;
 }
 
+// `qdd validate` 的完整输出。
 export interface ValidationResult {
   valid: boolean;
   issues: ValidationIssue[];
@@ -146,44 +282,96 @@ export interface ValidationResult {
     contract: boolean;
     evolution: boolean;
     artifactIndex: boolean;
+    layerPolicy: boolean;
     contextFiles: string[];
     studies: string[];
     tasks: string[];
   };
 }
 
+// 一条上下文资源。
+// 这里是通用抽象，不把 context 限死为 markers / datasets 之类固定类型。
 export interface ContextEntry {
+  // 资源文件路径。
   path: string;
+
+  // 资源显示名称，通常由路径或文件名派生。
   name: string;
+
+  // 文件解析后的内容；可能是 markdown 文本、YAML 对象等。
   data: unknown;
 }
 
+// `qdd artifacts list --json` 的输出结构。
 export interface ArtifactListJson {
   artifacts: ArtifactIndexEntry[];
 }
 
+// `qdd context --json` 的输出结构。
 export interface ContextJson {
   context: ContextEntry[];
 }
 
+// 本地 skill 条目。
+// 主要用于 runtime 扫描、校验 task skills、以及 bootstrap 投影。
 export interface LocalSkillEntry {
+  // skill 的稳定标识，例如 qdd/qdd-apply 或 plot/xxx。
   id: string;
+
+  // skill 在仓库中的源路径。
   path: string;
 }
 
+// 一条 bootstrap 资产记录。
+// 例如把某个 workflow prompt 安装到 codex / claude 时，会记录它落到了哪里。
 export interface BootstrapAssetRecord {
   workflow: BootstrapWorkflow;
   path: string;
 }
 
+// 某个工具的 bootstrap 安装结果。
 export interface BootstrapToolRecord {
   tool: BootstrapTool;
   assets: BootstrapAssetRecord[];
 }
 
+// `.qdd/bootstrap.json` 的结构。
+// 用来记录当前项目已经安装了哪些 prompt / instructions 资产。
 export interface BootstrapConfig {
   version: number;
   installed_at: string;
   instructions_path: string;
   tools: BootstrapToolRecord[];
+}
+
+// layer-policy.yaml 中一层的默认配置。
+export interface LayerPolicyLayerConfig {
+  role: QddRole;
+  required_skills: string[];
+  optional_skills: string[];
+}
+
+// 某个命令的默认命令语义。
+// - target: 这个命令通常面向哪一类对象
+// - decision_layer: 默认由哪一层做最终判断
+export interface LayerPolicyCommandConfig {
+  target: 'project' | 'study' | 'task';
+  decision_layer: QddLayer;
+}
+
+// `.qdd/layer-policy.yaml` 的结构。
+// 它不是 task 的显式技能清单，而是“层级角色 + 默认技能面 + 命令映射”。
+export interface LayerPolicy {
+  layers: {
+    project: LayerPolicyLayerConfig;
+    study: LayerPolicyLayerConfig;
+    task: LayerPolicyLayerConfig;
+  };
+  commands: {
+    'qdd-start': LayerPolicyCommandConfig;
+    'qdd-propose': LayerPolicyCommandConfig;
+    'qdd-explore': LayerPolicyCommandConfig;
+    'qdd-apply': LayerPolicyCommandConfig;
+    'qdd-close': LayerPolicyCommandConfig;
+  };
 }

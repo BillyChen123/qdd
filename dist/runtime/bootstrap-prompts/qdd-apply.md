@@ -1,6 +1,6 @@
 Implement the current approved QDD study/task set.
 
-Work through the active study until it reaches a decision point, a meaningful blocker, or a boundary change that should return to `qdd-explore`.
+Work through the active study until it reaches a decision point, a meaningful blocker, or a true study-level replanning need.
 
 **IMPORTANT: Apply is execution mode.** Read the current study/task state, execute the work, update records, and keep going until the study can be judged or is explicitly blocked.
 
@@ -28,6 +28,7 @@ If omitted:
 - maintain `artifact-candidates.yaml` for promotion-worthy reusable outputs
 - register reusable artifacts
 - report progress, blockers, and judgment status
+- continue across the planned task graph instead of stopping after the first completed task
 
 ## What Apply Does Not Own
 
@@ -41,9 +42,10 @@ If omitted:
 
 1. Read `.qdd/instructions.md`.
 2. Run `qdd status --json`.
-3. Run `qdd instructions STUDY-XXX --json`.
-4. Read the listed study and task files.
-5. Use `qdd context --json` and `qdd artifacts:list --json` when inputs or reuse matter.
+3. Run `qdd instructions STUDY-XXX --command qdd-apply --json`.
+4. Run `qdd instructions TASK-XXX --command qdd-apply --json` for the active task when execution begins.
+5. Read the listed study and task files.
+6. Use `qdd context --json` and `qdd artifacts:list --json` when inputs or reuse matter.
 
 Treat the returned `read` and `write` paths as authoritative bounds.
 Treat missing local skills reported by `qdd instructions` as real blockers.
@@ -59,7 +61,7 @@ Before executing, answer these questions:
 - are there blockers already recorded that must be resolved first?
 - do the declared domain skills actually exist under `.codex/skills/`?
 
-If the study has multiple tasks, make the execution order explicit.
+If the study has multiple tasks, make the execution order explicit and keep moving while the next planned step is still clear.
 
 If the study has only one task, start there.
 
@@ -137,6 +139,8 @@ When an output is genuinely reusable, either:
 - call `qdd register-artifact` immediately, or
 - add it to `studies/STUDY-XXX/output/artifact-candidates.yaml` so `qdd-close` can promote it later
 
+When one task clearly produced the output, include that `task_id` in the candidate entry so provenance survives promotion.
+
 Do not treat every output file as an artifact.
 
 ### 6. Reassess the study
@@ -145,9 +149,12 @@ After each meaningful step, ask:
 
 - is the study now judgeable?
 - is it clearly blocked?
-- did the study boundary change?
+- is the next planned task still the right within-study move?
+- did the study boundary change so much that the study itself needs replanning?
 
-If yes, stop execution and move to the right next workflow.
+If the study is not yet judgeable and the next planned task is still clear, keep going inside `qdd-apply`.
+
+If the study became judgeable, blocked, or truly needs study-level replanning, stop execution and move to the right next workflow.
 
 ---
 
@@ -166,8 +173,7 @@ If yes, stop execution and move to the right next workflow.
 ### auto
 
 - Continue within the study boundary when the next move is obvious.
-- If a strictly necessary new task must be appended to keep execution coherent, keep it minimal, update the records, and stay within the existing study question.
-- Do not grow the task graph casually.
+- Do not invent extra tasks casually; if the declared task graph is no longer enough, treat that as a study-level issue and make it explicit.
 
 ---
 
@@ -178,6 +184,7 @@ Pause and report if:
 - the current task is too ambiguous to execute responsibly
 - an environment or data blocker prevents progress
 - execution reveals that the study question or task structure needs reconsideration
+- execution reveals that the declared task graph is missing a genuinely necessary study-level step
 - the work produced evidence that already makes the study judgeable
 - the user interrupts
 
@@ -226,6 +233,7 @@ Next action: update TASK-003 and continue with the first analysis task
 ## Bad Apply Behaviors
 
 - treating one completed task as automatic proof that the whole study is done
+- treating one completed task as automatic proof that apply should stop
 - silently redesigning the plan in `human` or `assist` mode
 - leaving task files stale while work progresses
 - keeping a generic checklist when the real task has become specific

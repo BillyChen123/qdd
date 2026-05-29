@@ -40,9 +40,10 @@ If omitted:
 1. Read `.qdd/instructions.md`.
 2. Run `qdd status --json`.
 3. Run `qdd validate --json` before closure or handoff.
-4. Read the current study, its task files, and relevant outputs.
-5. Inspect `artifacts/index.yaml` and `qdd artifacts:list --json` when reusable outputs matter.
-6. Read `studies/STUDY-XXX/output/artifact-candidates.yaml` before deciding what to promote.
+4. Run `qdd instructions STUDY-XXX --command qdd-close --json`.
+5. Read the current study, its task files, and relevant outputs.
+6. Inspect `artifacts/index.yaml` and `qdd artifacts:list --json` when reusable outputs matter.
+7. Read `studies/STUDY-XXX/output/artifact-candidates.yaml` before deciding what to promote.
 
 If validation or open task state shows the study is not ready to close, say so clearly.
 
@@ -56,7 +57,9 @@ Before writing `question_delta`, ask:
 - are remaining tasks truly done, blocked, or unnecessary?
 - is the study question now clarified, confirmed, pivoted, or dissolved?
 
-If the answer is no, do not force closure.
+Closure is allowed when the answer is "the question materially advanced" even if the original hypothesis was only partially confirmed.
+
+If the study still cannot support a real judgment about what changed, do not force closure.
 
 Recommend the right next move instead.
 
@@ -106,6 +109,8 @@ Use `artifact-candidates.yaml` as the explicit promotion source.
 
 Do not promote by scanning the whole output directory and guessing from file names or extensions.
 
+When one task clearly produced a reusable output, record that `task_id` in the candidate entry so promotion preserves task-level provenance.
+
 Examples:
 
 - reusable reports or figures -> register as artifacts if missing
@@ -132,6 +137,7 @@ If something is useful only for this study, do not promote it as cross-study con
 ### auto
 
 - Close directly when the evidence and study state justify it.
+- Refinement-style closure is valid in auto mode when the study meaningfully narrowed the next question.
 - Preserve explicit open boundaries instead of pretending the study is cleaner than it is.
 
 ---
@@ -141,7 +147,7 @@ If something is useful only for this study, do not promote it as cross-study con
 Do not close if:
 
 - the study still has unresolved pending execution work
-- the evidence is too weak to support a judgment
+- the evidence is too weak to support any real judgment, including refinement or pivot
 - the current tasks are stale and need another apply pass
 - the main issue is plan quality rather than closure quality
 
@@ -199,6 +205,7 @@ There is no rigid output template, but the reasoning must be explicit.
 ## Good Close Behaviors
 
 - be explicit about what changed in the question
+- allow refinement, pivot, or dissolution when that is the honest study outcome
 - promote only stable, evidence-backed knowledge
 - preserve open boundaries instead of smoothing them over
 - recommend the next question without auto-creating it
@@ -217,6 +224,7 @@ There is no rigid output template, but the reasoning must be explicit.
 - Run `qdd validate --json` before closure or handoff.
 - Make `question_delta` explicit.
 - Register missing reusable outputs from `artifact-candidates.yaml` before closure.
+- Preserve task-level provenance for promoted outputs whenever one task was the clear producer.
 - Keep closure human-approved in `human` and `assist` mode.
 - Update shared context only with evidence-backed reusable information.
 - Suggest next studies, but do not create them automatically.

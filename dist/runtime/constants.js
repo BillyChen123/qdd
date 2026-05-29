@@ -7,10 +7,11 @@ export const PATHS = {
     evolution: 'evolution.yaml',
     contextDir: 'context',
     contextResources: 'context/resources.md',
-    dataDir: 'data',
     studiesDir: 'studies',
     artifactsDir: 'artifacts',
     artifactIndex: 'artifacts/index.yaml',
+    // 共享数据入口和已提升的数据 artifact 都统一放在这里。
+    // 为了兼容已有代码，后面仍然通过一个“shared data dir”的概念来读写它。
     artifactDataDir: 'artifacts/data',
     artifactCodeDir: 'artifacts/code',
     artifactFiguresDir: 'artifacts/figures',
@@ -25,5 +26,6 @@ export const PATHS = {
     qddDir: '.qdd',
     instructions: '.qdd/instructions.md',
     bootstrapConfig: '.qdd/bootstrap.yaml',
+    layerPolicy: '.qdd/layer-policy.yaml',
 };
 //# sourceMappingURL=constants.js.map

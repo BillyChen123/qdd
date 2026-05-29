@@ -201,7 +201,7 @@ qdd init . --refresh-bootstrap
 .qdd/
 .claude/
 .codex/skills/
-data/
+artifacts/data/
 contract.yaml
 evolution.yaml
 context/
@@ -288,9 +288,9 @@ qdd init .
 
 ```bash
 qdd status --json
-qdd instructions PROJECT --json
-qdd instructions STUDY-001 --json
-qdd instructions TASK-001 --json
+qdd instructions PROJECT --command qdd-start --json
+qdd instructions STUDY-001 --command qdd-apply --json
+qdd instructions TASK-001 --command qdd-apply --json
 qdd validate --json
 ```
 
