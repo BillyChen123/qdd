@@ -3,6 +3,7 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from '../runtime/constants.js';
 import { createDefaultArtifactIndex, createDefaultEvolutionTrail, createDefaultInstructionsMarkdown, createDefaultLayerPolicy, createDefaultResourcesMarkdown, createDefaultResearchContract, } from '../runtime/defaults.js';
 import { installBootstrap, resolveBootstrapToolsForInit } from '../runtime/bootstrap.js';
+import { refreshSkillsCatalog } from '../runtime/local-skills.js';
 import { writeYamlFile } from '../runtime/store.js';
 export async function initCommand(targetPath = '.', options = {}) {
     const projectRoot = path.resolve(targetPath);
@@ -48,5 +49,6 @@ export async function initCommand(targetPath = '.', options = {}) {
         refresh: options.refreshBootstrap ?? false,
         domainSkillsSourceDir: options.domainSkillsSourceDir,
     });
+    await refreshSkillsCatalog(projectRoot);
 }
 //# sourceMappingURL=init.js.map

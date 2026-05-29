@@ -10,6 +10,7 @@ import {
   createDefaultResearchContract,
 } from '../runtime/defaults.js';
 import { installBootstrap, resolveBootstrapToolsForInit } from '../runtime/bootstrap.js';
+import { refreshSkillsCatalog } from '../runtime/local-skills.js';
 import { writeYamlFile } from '../runtime/store.js';
 
 export interface InitCommandOptions {
@@ -73,4 +74,6 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
     refresh: options.refreshBootstrap ?? false,
     domainSkillsSourceDir: options.domainSkillsSourceDir,
   });
+
+  await refreshSkillsCatalog(projectRoot);
 }

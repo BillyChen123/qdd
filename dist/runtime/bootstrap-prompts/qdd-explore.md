@@ -63,6 +63,12 @@ qdd artifacts:list --json
 
 If the current task set mentions domain skills, inspect `.codex/skills/` and treat missing local skills as blockers instead of hidden assumptions.
 
+When the right executor skill bundle is unclear:
+
+- inspect relevant `brain/*` skills first
+- then call `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`
+- keep ambiguity explicit until the user confirms the task-level skill choice
+
 Read the actual `study.md` and current task files listed by the instructions output.
 
 ### When no study exists yet
@@ -164,6 +170,7 @@ Ask:
 - are there environment blockers?
 - are we ignoring reusable prior outputs?
 - do any current task skills point outside the installed `.codex/skills/` inventory?
+- do current task skills point to the wrong problem class because propose skipped a planning check?
 
 ### 4. Pressure-test the evidence plan
 
@@ -181,6 +188,7 @@ Offer changes such as:
 - replace the first task with a reality check
 - add a blocker note
 - tighten expected outputs
+- replace a weak executor skill choice with a better problem-level skill bundle
 
 ### 6. Confirm before writing in `human` and `assist`
 

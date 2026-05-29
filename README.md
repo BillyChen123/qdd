@@ -28,6 +28,7 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 - `domain-skills/`：本仓库维护的中央领域 skill 源目录
 - `.codex/skills/`
 - `.claude/skills/`
+- `.qdd/skills-catalog.json`
 
 ### 1. `qdd-proposal`
 
@@ -173,12 +174,22 @@ qdd validate --json
 
 task 里的 `skills:` 现在有两个硬约束：
 
-- 只写真实的领域 skill，例如 `plot/marker-heatmap`
-- 不能写 `qdd/*` 这种 workflow skill
+- 只写真实的 problem-level executor skill，例如 `singlecell/scrna/sc-batch-integration`
+- 不能写 `qdd/*` workflow skill，也不能写 `brain/*` planning skill
+
+study 规划阶段如果不确定该给 task 挂什么 skill，走这一条轻量面：
+
+```bash
+qdd skills suggest --domain singlecell --stage integration --tag multi-sample --json
+```
+
+这一步只在 `qdd-propose` / `qdd-explore` 使用。`qdd-apply` 不会重新打开全库搜 skill，而是只消费 task 已经写好的那组 executor skills。
 
 领域 skill 的维护方式现在是：
 
-1. 把 skill 写在仓库根目录的 `domain-skills/<category>/<skill>/`
+1. 把 study-brain skill 写在 `domain-skills/brain/...`
+2. 把 executor problem-level skill 写在 `domain-skills/<domain tree>/...`
+3. 对 executor skill 补上受控 frontmatter：`domain / stage / tags`
 2. 运行 `qdd init .` 或 `qdd init . --refresh-bootstrap`
 3. QDD 会把它们复制到目标项目的 `.codex/skills/` 和 `.claude/skills/`
 

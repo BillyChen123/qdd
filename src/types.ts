@@ -322,6 +322,81 @@ export interface LocalSkillEntry {
   path: string;
 }
 
+// problem-level skill 所属的领域。
+// 第一版只收敛到少量可控领域，避免 catalog 变成自由文本。
+export type SkillDomain = 'singlecell' | 'spatial' | 'bulk' | 'general';
+
+// problem-level skill 的 stage。
+// 第一版保持受控但很小，避免元数据膨胀。
+export type SkillStage =
+  | 'preprocess'
+  | 'integration'
+  | 'clustering'
+  | 'annotation'
+  | 'de'
+  | 'visualization'
+  | 'other';
+
+// problem-level skill 的受控标签。
+// 这些标签是轻量判别信号，不是自由关键词池。
+export type SkillTag =
+  | 'scanpy'
+  | 'anndata'
+  | 'h5ad'
+  | 'raw-counts'
+  | 'qc'
+  | 'normalization'
+  | 'multi-sample'
+  | 'batch-correction'
+  | 'batch-diagnosis'
+  | 'neighbors'
+  | 'leiden'
+  | 'umap'
+  | 'markers'
+  | 'marker-based'
+  | 'cell-type'
+  | 'cell-state'
+  | 'differential-expression'
+  | 'condition-comparison';
+
+// problem-level skill 的 metadata。
+// 这里是给轻量 resolver / suggest CLI 用的机器面。
+export interface ProblemSkillMetadata {
+  id: string;
+  domain: SkillDomain;
+  stage: SkillStage;
+  tags: SkillTag[];
+}
+
+// 从本地 skill 里解析出的 problem-level skill 条目。
+export interface ProblemSkillEntry extends LocalSkillEntry {
+  metadata: ProblemSkillMetadata;
+}
+
+// `.qdd/skills-catalog.json` 的结构。
+export interface SkillsCatalog {
+  generated_at: string;
+  skills: ProblemSkillMetadata[];
+}
+
+// `qdd skills suggest --json` 的输出结构。
+export interface SkillSuggestJson {
+  query: {
+    domain: SkillDomain;
+    stage: SkillStage;
+    tags: SkillTag[];
+  };
+  candidates: Array<{
+    id: string;
+    domain: SkillDomain;
+    stage: SkillStage;
+    matched_tags: SkillTag[];
+    score: number;
+    reasons: string[];
+  }>;
+  low_confidence: boolean;
+}
+
 // 一条 bootstrap 资产记录。
 // 例如把某个 workflow prompt 安装到 codex / claude 时，会记录它落到了哪里。
 export interface BootstrapAssetRecord {

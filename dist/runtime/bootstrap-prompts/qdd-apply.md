@@ -67,6 +67,10 @@ If the study has only one task, start there.
 
 If a task declares missing local skills, stop immediately. In this case `qdd-apply` is hard-blocked until the missing skill is installed under `.codex/skills/` or the task is rewritten through `qdd-explore`.
 
+Do not reopen broad skill selection here.
+
+`qdd-apply` consumes the task's declared executor problem-level skills only.
+
 ---
 
 ## Normalize The Active Task Before Running
@@ -83,7 +87,7 @@ If the task file is too vague to execute responsibly, say so.
 
 In `human` or `assist` mode, bring that problem back to `qdd-explore` if it requires real plan reshaping.
 
-Do not add new task skills here. `qdd-apply` consumes the declared task skill list; it does not invent one.
+Do not add new task skills here. `qdd-apply` consumes the declared task-local problem-level skill list; it does not invent one or reopen catalog search.
 
 ---
 

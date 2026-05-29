@@ -109,34 +109,35 @@ function resolveToolSkillDir(projectRoot, tool, skillId) {
             return path.join(projectRoot, PATHS.codexSkillsDir, skillId);
     }
 }
-// 发现 domain-skills/ 下面的“分类/技能”目录结构。
-// 例如 plot/marker-heatmap/SKILL.md -> 技能 ID 是 plot/marker-heatmap。
+async function collectDomainSkillSources(sourceRoot, relativeDir, results) {
+    const absoluteDir = relativeDir.length > 0 ? path.join(sourceRoot, relativeDir) : sourceRoot;
+    const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+    const hasSkillFile = entries.some((entry) => entry.isFile() && entry.name === 'SKILL.md');
+    if (hasSkillFile && relativeDir.length > 0 && relativeDir.includes('/')) {
+        results.push({
+            id: relativeDir,
+            sourceDir: absoluteDir,
+        });
+        return;
+    }
+    for (const entry of entries) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+        const childRelativeDir = relativeDir.length > 0 ? path.posix.join(relativeDir, entry.name) : entry.name;
+        await collectDomainSkillSources(sourceRoot, childRelativeDir, results);
+    }
+}
+// 递归发现 domain-skills/ 下的 skill 目录。
+// 例如：
+// - genomics/scanpy-core-workflow/SKILL.md -> genomics/scanpy-core-workflow
+// - singlecell/scrna/sc-batch-integration/SKILL.md -> singlecell/scrna/sc-batch-integration
 async function discoverDomainSkills(sourceRoot) {
     if (!(await FileSystemUtils.directoryExists(sourceRoot))) {
         return [];
     }
-    const categories = await fs.readdir(sourceRoot, { withFileTypes: true });
     const results = [];
-    for (const categoryEntry of categories) {
-        if (!categoryEntry.isDirectory()) {
-            continue;
-        }
-        const categoryDir = path.join(sourceRoot, categoryEntry.name);
-        const skills = await fs.readdir(categoryDir, { withFileTypes: true });
-        for (const skillEntry of skills) {
-            if (!skillEntry.isDirectory()) {
-                continue;
-            }
-            const skillDir = path.join(categoryDir, skillEntry.name);
-            if (!(await FileSystemUtils.fileExists(path.join(skillDir, 'SKILL.md')))) {
-                continue;
-            }
-            results.push({
-                id: `${categoryEntry.name}/${skillEntry.name}`,
-                sourceDir: skillDir,
-            });
-        }
-    }
+    await collectDomainSkillSources(sourceRoot, '', results);
     return results.sort((left, right) => left.id.localeCompare(right.id));
 }
 // 把一个领域 skill 投影进项目目录。

@@ -27,5 +27,6 @@ export const PATHS = {
     instructions: '.qdd/instructions.md',
     bootstrapConfig: '.qdd/bootstrap.yaml',
     layerPolicy: '.qdd/layer-policy.yaml',
+    skillsCatalog: '.qdd/skills-catalog.json',
 };
 //# sourceMappingURL=constants.js.map

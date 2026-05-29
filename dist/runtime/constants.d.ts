@@ -21,5 +21,6 @@ export declare const PATHS: {
     readonly instructions: ".qdd/instructions.md";
     readonly bootstrapConfig: ".qdd/bootstrap.yaml";
     readonly layerPolicy: ".qdd/layer-policy.yaml";
+    readonly skillsCatalog: ".qdd/skills-catalog.json";
 };
 //# sourceMappingURL=constants.d.ts.map

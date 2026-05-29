@@ -6,38 +6,40 @@ Recommended layout:
 
 ```text
 domain-skills/
-├── genomics/
-│   ├── scanpy-core-workflow/
-│   │   └── SKILL.md
-│   └── scanpy-marker-annotation/
+├── brain/
+│   └── study-planning-core/
 │       └── SKILL.md
-├── plot/
-│   ├── scanpy-embedding-panels/
-│   │   └── SKILL.md
-│   ├── scanpy-expression-panels/
-│   │   └── SKILL.md
-│   └── plotting-ggplot/
-│       ├── SKILL.md
-│       └── scripts/
-└── env/
-    └── fix-cache-layout/
-        └── SKILL.md
+└── singlecell/
+    └── scrna/
+        ├── sc-preprocess-qc/
+        │   └── SKILL.md
+        ├── sc-batch-integration/
+        │   └── SKILL.md
+        ├── sc-clustering/
+        │   └── SKILL.md
+        └── sc-marker-annotation/
+            └── SKILL.md
 ```
 
 Rules:
 
-- Each skill lives at `domain-skills/<category>/<skill-name>/`
+- Planning skills live under `brain/*`
+- Executor problem-level skills live under domain trees such as `singlecell/scrna/*`
+- Each skill lives at `domain-skills/<category...>/<skill-name>/`
 - Each skill root must contain `SKILL.md`
 - Extra files such as `scripts/`, `references/`, or templates may live inside the same skill directory
 - `qdd init` copies every skill here into the target project's `.codex/skills/` and `.claude/skills/`
 - `qdd init --refresh-bootstrap` re-syncs those projected copies from this source tree
+- Executor-facing problem-level skills must declare controlled frontmatter fields:
+  - `domain`
+  - `stage`
+  - `tags`
 
 Task files should reference the projected skill IDs, for example:
 
-- `genomics/scanpy-core-workflow`
-- `genomics/scanpy-marker-annotation`
-- `plot/scanpy-embedding-panels`
-- `plot/scanpy-expression-panels`
-- `env/fix-cache-layout`
+- `singlecell/scrna/sc-preprocess-qc`
+- `singlecell/scrna/sc-batch-integration`
+- `singlecell/scrna/sc-clustering`
+- `singlecell/scrna/sc-marker-annotation`
 
-Do not use `qdd/*` workflow skills in task `skills:`.
+Do not use `qdd/*` workflow skills or `brain/*` planning skills in task `skills:`.

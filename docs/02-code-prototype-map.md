@@ -22,6 +22,7 @@ Implemented commands:
 - `qdd init`
 - `qdd status --json`
 - `qdd instructions <id> [--command qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close] --json`
+- `qdd skills suggest --domain <domain> --stage <stage> [--tag <tag>...] --json`
 - `qdd add-study`
 - `qdd add-task STUDY-XXX`
 - `qdd register-artifact <path>`
@@ -34,6 +35,7 @@ Installed by `qdd init` today:
 
 - `.qdd/instructions.md`
 - `.qdd/bootstrap.yaml`
+- `.qdd/skills-catalog.json`
 - categorized local skill inventory under `.codex/skills/`
 - mirrored Claude skill surface under `.claude/skills/`
 - all central domain skills from `domain-skills/` projected into project-local skill trees
@@ -62,6 +64,7 @@ src/
 │   ├── init.ts
 │   ├── instructions.ts
 │   ├── register-artifact.ts
+│   ├── skills-suggest.ts
 │   └── status.ts
 ├── runtime/
 │   ├── bootstrap.ts
@@ -98,6 +101,7 @@ CLI
     -> commands/init.ts
     -> commands/status.ts
     -> commands/instructions.ts
+    -> commands/skills-suggest.ts
     -> commands/validate.ts
 
 Commands
@@ -129,6 +133,7 @@ Commands
     -> runtime/bootstrap.ts
     -> runtime/constants.ts
     -> runtime/defaults.ts
+    -> runtime/local-skills.ts
     -> runtime/store.ts
     -> utils/file-system.ts
 
@@ -140,6 +145,10 @@ Commands
     -> runtime/paths.ts
     -> runtime/instructions.ts
 
+  skills-suggest.ts
+    -> runtime/local-skills.ts
+    -> runtime/paths.ts
+
   validate.ts
     -> runtime/inspection.ts
     -> runtime/paths.ts
@@ -147,7 +156,12 @@ Commands
 Runtime
   bootstrap.ts
     -> runtime/constants.ts
-    -> runtime/local-skills.ts
+    -> runtime/store.ts
+    -> utils/file-system.ts
+    -> types.ts
+
+  local-skills.ts
+    -> runtime/constants.ts
     -> runtime/store.ts
     -> utils/file-system.ts
     -> types.ts
@@ -258,6 +272,9 @@ Responsibility:
 
 - define the filesystem protocol
 - install and refresh tool-facing bootstrap assets
+- distinguish `brain/*` planning skills from executor problem-level skills
+- derive `.qdd/skills-catalog.json`
+- provide bounded problem-skill suggestion for planning
 - maintain the categorized local skill contract under `.codex/skills/` and mirrored `.claude/skills/`
 - project all central domain skills from `domain-skills/` into new projects
 - read and write core YAML state plus open `context/` resources

@@ -10,6 +10,7 @@ import { closeStudyCommand } from '../commands/close-study.js';
 import { validateCommand } from '../commands/validate.js';
 import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
+import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
 const program = new Command();
@@ -80,6 +81,25 @@ program
     .action(async (options) => {
     try {
         await contextCommand(options);
+    }
+    catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+});
+program
+    .command('skills')
+    .description('Inspect or resolve local executor skills')
+    .command('suggest')
+    .description('Suggest problem-level skills from controlled domain/stage/tag filters')
+    .requiredOption('--domain <domain>', 'Controlled skill domain')
+    .requiredOption('--stage <stage>', 'Controlled skill stage')
+    .option('--tag <tag...>', 'Controlled tag filters')
+    .option('--refresh', 'Refresh .qdd/skills-catalog.json before suggesting')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+    try {
+        await skillsSuggestCommand(options);
     }
     catch (error) {
         console.error(`Error: ${error.message}`);

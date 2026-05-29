@@ -6,7 +6,7 @@ import { discoverStudies, discoverTasks } from './discovery.js';
 import { getStudyArtifactCandidatesPath } from './evidence.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
 import { readLayerPolicy } from './layer-policy.js';
-import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
+import { listControlledSkillDomains, listControlledSkillStages, listControlledSkillTags, listLocalSkills, listProblemSkills, normalizeTaskSkillIds, resolveLocalSkills, } from './local-skills.js';
 import { readMarkdownDocument, readYamlFile } from './store.js';
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 function isContextFileName(fileName) {
@@ -462,8 +462,8 @@ export async function validateProject(projectRoot) {
         const layerPolicy = await readLayerPolicy(projectRoot);
         checked.layerPolicy = true;
         for (const [layerName, config] of Object.entries(layerPolicy.layers)) {
-            const requiredSkills = await resolveLocalSkills(projectRoot, config.required_skills);
-            const optionalSkills = await resolveLocalSkills(projectRoot, config.optional_skills);
+            const requiredSkills = await resolveLocalSkills(projectRoot, config.required_skills, { allowPlanningOnly: layerName !== 'task' });
+            const optionalSkills = await resolveLocalSkills(projectRoot, config.optional_skills, { allowPlanningOnly: layerName !== 'task' });
             for (const workflowSkillId of [...requiredSkills.disallowedWorkflow, ...optionalSkills.disallowedWorkflow]) {
                 pushIssue(issues, {
                     level: 'error',
@@ -471,6 +471,16 @@ export async function validateProject(projectRoot) {
                     path: PATHS.layerPolicy,
                     message: `Layer policy for '${layerName}' references workflow skill '${workflowSkillId}'. Layer defaults must use concrete domain skills instead.`,
                 });
+            }
+            if (layerName === 'task') {
+                for (const planningSkillId of [...requiredSkills.planningOnly, ...optionalSkills.planningOnly]) {
+                    pushIssue(issues, {
+                        level: 'error',
+                        code: 'planning_skill_not_allowed_in_task_layer_policy',
+                        path: PATHS.layerPolicy,
+                        message: `Task layer policy references planning-only brain skill '${planningSkillId}'. Task defaults must stay executor-facing.`,
+                    });
+                }
             }
             for (const missingSkillId of [...requiredSkills.missing, ...optionalSkills.missing]) {
                 pushIssue(issues, {
@@ -560,6 +570,29 @@ export async function validateProject(projectRoot) {
             message: 'Project-local skill inventory .codex/skills/ is missing.',
         });
     }
+    const problemSkills = await listProblemSkills(projectRoot);
+    const problemSkillIds = new Set(problemSkills.map((entry) => entry.id));
+    const controlledDomains = new Set(listControlledSkillDomains());
+    const controlledStages = new Set(listControlledSkillStages());
+    const controlledTags = new Set(listControlledSkillTags());
+    const localSkills = await listLocalSkills(projectRoot);
+    for (const skill of localSkills) {
+        if (skill.id.startsWith('qdd/') || skill.id.startsWith('brain/')) {
+            continue;
+        }
+        const skillDocument = await readMarkdownDocument(projectRoot, skill.path);
+        const domain = typeof skillDocument.frontmatter.domain === 'string' ? skillDocument.frontmatter.domain.trim().toLowerCase() : '';
+        const stage = typeof skillDocument.frontmatter.stage === 'string' ? skillDocument.frontmatter.stage.trim().toLowerCase() : '';
+        const tags = Array.isArray(skillDocument.frontmatter.tags) ? skillDocument.frontmatter.tags.map((entry) => String(entry).trim().toLowerCase()) : [];
+        if (!controlledDomains.has(domain) || !controlledStages.has(stage) || tags.length === 0 || tags.some((entry) => !controlledTags.has(entry))) {
+            pushIssue(issues, {
+                level: 'error',
+                code: 'invalid_problem_skill_metadata',
+                path: skill.path,
+                message: `Executor-facing skill '${skill.id}' must declare controlled frontmatter fields domain/stage/tags.`,
+            });
+        }
+    }
     const artifactIndex = checked.artifactIndex ? await readYamlFile(projectRoot, PATHS.artifactIndex) : { artifacts: [] };
     const registeredArtifactPaths = new Set(artifactIndex.artifacts.map((entry) => entry.path));
     const dataPaths = await listSharedDataPaths(projectRoot);
@@ -631,6 +664,14 @@ export async function validateProject(projectRoot) {
                 message: `Task references workflow skill '${workflowSkillId}'. Task skills must be concrete domain dependencies, not qdd/* workflow surfaces.`,
             });
         }
+        for (const planningSkillId of resolvedSkills.planningOnly) {
+            pushIssue(issues, {
+                level: 'error',
+                code: 'planning_skill_not_allowed_in_task',
+                path: taskRelativePath,
+                message: `Task references planning-only brain skill '${planningSkillId}'. Move it to study planning and keep task skills executor-facing.`,
+            });
+        }
         for (const missingSkillId of resolvedSkills.missing) {
             pushIssue(issues, {
                 level: 'error',
@@ -638,6 +679,19 @@ export async function validateProject(projectRoot) {
                 path: taskRelativePath,
                 message: `Task references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
             });
+        }
+        for (const skillId of normalizeTaskSkillIds(task.skills ?? [])) {
+            if (skillId.startsWith('qdd/') || skillId.startsWith('brain/')) {
+                continue;
+            }
+            if (!problemSkillIds.has(skillId)) {
+                pushIssue(issues, {
+                    level: 'error',
+                    code: 'task_skill_not_cataloged',
+                    path: taskRelativePath,
+                    message: `Task skill '${skillId}' exists locally but is not a valid cataloged executor problem-level skill.`,
+                });
+            }
         }
     }
     for (const study of studies) {

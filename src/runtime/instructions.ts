@@ -103,13 +103,14 @@ async function collectTaskSkillIds(projectRoot: string, taskPaths: string[]): Pr
   return [...skillIds].sort();
 }
 
-async function resolveSkillSet(projectRoot: string, skillIds: string[]): Promise<{
+async function resolveSkillSet(projectRoot: string, skillIds: string[], allowPlanningOnly = false): Promise<{
   matchedPaths: string[];
   missing: string[];
   disallowedWorkflow: string[];
   matchedIds: string[];
+  planningOnly: string[];
 }> {
-  const localSkills = await resolveLocalSkills(projectRoot, skillIds);
+  const localSkills = await resolveLocalSkills(projectRoot, skillIds, { allowPlanningOnly });
   const matchedPaths = [...localSkills.matched.map((entry) => entry.path)];
 
   for (const entry of localSkills.matched) {
@@ -124,6 +125,7 @@ async function resolveSkillSet(projectRoot: string, skillIds: string[]): Promise
     missing: uniqueSortedValues(localSkills.missing),
     disallowedWorkflow: uniqueSortedValues(localSkills.disallowedWorkflow),
     matchedIds: uniqueSortedValues(localSkills.matched.map((entry) => entry.id)),
+    planningOnly: uniqueSortedValues(localSkills.planningOnly),
   };
 }
 
@@ -162,15 +164,20 @@ function validateCommandForTarget(targetKind: 'project' | 'study' | 'task', comm
 function appendSkillIssues(
   rules: string[],
   subject: string,
-  requiredSkills: { missing: string[]; disallowedWorkflow: string[] },
-  optionalSkills: { missing: string[]; disallowedWorkflow: string[] }
+  requiredSkills: { missing: string[]; disallowedWorkflow: string[]; planningOnly: string[] },
+  optionalSkills: { missing: string[]; disallowedWorkflow: string[]; planningOnly: string[] }
 ): void {
   const missingRequired = requiredSkills.missing;
   const missingOptional = optionalSkills.missing;
   const disallowed = uniqueSortedValues([...requiredSkills.disallowedWorkflow, ...optionalSkills.disallowedWorkflow]);
+  const planningOnly = uniqueSortedValues([...requiredSkills.planningOnly, ...optionalSkills.planningOnly]);
 
   if (disallowed.length > 0) {
     rules.push(`${subject} layer policy must not include workflow skills: ${disallowed.join(', ')}.`);
+  }
+
+  if (planningOnly.length > 0 && subject === 'Task') {
+    rules.push(`${subject} layer policy must not include planning-only brain skills: ${planningOnly.join(', ')}.`);
   }
 
   if (missingRequired.length > 0) {
@@ -241,6 +248,7 @@ export async function buildInstructions(
         PATHS.instructions,
         PATHS.bootstrapConfig,
         PATHS.layerPolicy,
+        PATHS.skillsCatalog,
         `${PATHS.artifactDataDir}/`,
         `${PATHS.codexSkillsDir}/`,
         `${PATHS.claudeSkillsDir}/`,
@@ -277,8 +285,8 @@ export async function buildInstructions(
     const studyTaskSkills = await resolveSkillSet(projectRoot, studyTaskSkillIds);
     const decisionLayer = resolveCommandDecisionLayer(policy, command, 'study');
     const role = getRoleForLayer(policy, decisionLayer);
-    const requiredSkillDefaults = await resolveSkillSet(projectRoot, policy.layers[decisionLayer].required_skills);
-    const optionalSkillDefaults = await resolveSkillSet(projectRoot, policy.layers[decisionLayer].optional_skills);
+    const requiredSkillDefaults = await resolveSkillSet(projectRoot, policy.layers[decisionLayer].required_skills, true);
+    const optionalSkillDefaults = await resolveSkillSet(projectRoot, policy.layers[decisionLayer].optional_skills, true);
     const requiredSkillIds = uniqueSortedValues([...requiredSkillDefaults.matchedIds, ...studyTaskSkills.matchedIds]);
     const readPaths = [
       PATHS.contract,
@@ -312,6 +320,7 @@ export async function buildInstructions(
       'Use the current mode contract from .qdd/instructions.md before reshaping the study or task set.',
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under .codex/skills/.',
+      'Treat brain/* as planning-only skills. They may guide study planning, but must not be written into task skills.',
       'qdd-propose owns the first-pass study and task-graph creation.',
       'In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.',
       'Record blockers explicitly.',
@@ -325,6 +334,12 @@ export async function buildInstructions(
       'Include task_id in artifact candidates whenever one task clearly produced the reusable output.',
     ];
 
+    if (command === 'qdd-propose' || command === 'qdd-explore') {
+      readPaths.push(PATHS.skillsCatalog);
+      rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
+      rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
+    }
+
     if (command === 'qdd-close') {
       rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the project decision layer.');
       rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
@@ -335,6 +350,12 @@ export async function buildInstructions(
     if (studyTaskSkills.disallowedWorkflow.length > 0) {
       rules.push(
         `Task skill lists must not include workflow skills: ${studyTaskSkills.disallowedWorkflow.join(', ')}. Replace them with concrete domain skills or remove them.`
+      );
+    }
+
+    if (studyTaskSkills.planningOnly.length > 0) {
+      rules.push(
+        `Task skill lists must not include planning-only brain skills: ${studyTaskSkills.planningOnly.join(', ')}. Replace them with executor problem-level skills.`
       );
     }
 
@@ -377,7 +398,8 @@ export async function buildInstructions(
       'Produce explicit outputs or blockers.',
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under .codex/skills/.',
-      'Do not add qdd/* workflow skills to task skill lists.',
+      'Do not add qdd/* workflow skills or brain/* planning skills to task skill lists.',
+      'qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.',
       'Rewrite the weak checklist scaffold into task-specific executable steps before or during execution.',
       'Keep task checklist progress in the task Markdown body.',
       'Escalate to study-level updates when the task changes the study boundary or evidence plan.',
@@ -394,6 +416,12 @@ export async function buildInstructions(
     if (taskSkillSet.disallowedWorkflow.length > 0) {
       rules.push(
         `Task skill lists must not include workflow skills: ${taskSkillSet.disallowedWorkflow.join(', ')}. Replace them with concrete domain skills or remove them.`
+      );
+    }
+
+    if (taskSkillSet.planningOnly.length > 0) {
+      rules.push(
+        `Task skill lists must not include planning-only brain skills: ${taskSkillSet.planningOnly.join(', ')}. Replace them with executor problem-level skills or move them to study planning.`
       );
     }
 

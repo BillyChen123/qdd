@@ -45,6 +45,7 @@ Examples:
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
 6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
+7. If task-level executor skill choice matters, inspect study-brain guidance under `.codex/skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
 
 ---
 
@@ -106,6 +107,23 @@ Examples:
 - if the main uncertainty is annotation validity, create a focused validation task beside, not inside, a broader downstream analysis task when they can be inspected independently
 - if the study needs preparation work to make the main hypothesis testable, keep that preparatory task inside the same study instead of pretending it is a separate study
 
+### 4.5 Choose executor skills at the problem level
+
+When a task needs concrete executor skills:
+
+- first reason from study-brain heuristics
+- then use `qdd skills suggest` with controlled `domain + stage + tag` filters
+- write one small bundle of problem-level skills into the task only after the choice is clear
+
+Do not write primitive method names as if they were skills.
+
+Prefer problem-level skills such as:
+
+- `singlecell/scrna/sc-preprocess-qc`
+- `singlecell/scrna/sc-batch-integration`
+- `singlecell/scrna/sc-clustering`
+- `singlecell/scrna/sc-marker-annotation`
+
 ### 5. Stop once the first pass is usable
 
 Do not stay in propose mode trying to optimize everything.
@@ -147,8 +165,8 @@ Write them concretely:
 - `## Input`: actual study/context/artifact inputs
 - `## Expected Output`: the specific evidence this task should produce
 - `## Checklist`: rewrite the scaffold into task-specific executable steps
-- `## Skills`: only list concrete domain skills that genuinely matter and already exist under `.codex/skills/`
-- never write `qdd/*` workflow skills into a task record
+- `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under `.codex/skills/`, and are valid in `.qdd/skills-catalog.json`
+- never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
 
 Each initial task should be:
 
