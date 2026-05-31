@@ -4,8 +4,9 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { createDefaultArtifactCandidateManifest } from './defaults.js';
 import { readYamlFile, writeYamlFile } from './store.js';
-const STUDY_OUTPUT_SUBDIRS = ['code', 'figures', 'tables', 'reports'];
+const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'];
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
+const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([...STUDY_OUTPUT_SUBDIRS, PATHS.artifactCandidatesFileName]);
 function isArtifactType(value) {
     return ['data', 'code', 'figure', 'report'].includes(value);
 }
@@ -38,6 +39,17 @@ export function getStudyArtifactCandidatesPath(studyId) {
 }
 export function getStudyOutputSubdirPaths(studyId) {
     return STUDY_OUTPUT_SUBDIRS.map((subdir) => `${getStudyOutputDir(studyId)}/${subdir}`);
+}
+export async function listNonCanonicalStudyOutputEntries(projectRoot, studyId) {
+    const studyOutputDir = path.join(projectRoot, getStudyOutputDir(studyId));
+    if (!(await FileSystemUtils.directoryExists(studyOutputDir))) {
+        return [];
+    }
+    const entries = await fs.readdir(studyOutputDir, { withFileTypes: true });
+    return entries
+        .filter((entry) => !CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES.has(entry.name))
+        .map((entry) => `${getStudyOutputDir(studyId)}/${entry.name}`)
+        .sort();
 }
 // 为每个 study 建好标准输出目录。
 // 这里顺手保证 artifact-candidates.yaml 一定存在，

@@ -20,6 +20,7 @@ export interface RegisterArtifactOptions {
     taskId?: string;
     scope?: ArtifactScope;
     schema?: string;
+    updateTaskPromotionStatus?: boolean;
 }
 export interface CloseStudyOptions {
     questionAfter: string;

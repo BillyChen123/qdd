@@ -1,0 +1,37 @@
+entry_script: scripts/scrna_clustering.py
+python_env: CellFM_torch
+summary: Build a neighbor graph, Leiden clusters, and UMAP from an AnnData object using a chosen embedding.
+methods:
+  scanpy:
+    description: Standard Scanpy neighbors -> leiden -> umap workflow.
+defaults:
+  use_rep: auto
+  n_pcs: 50
+  n_neighbors: 15
+  resolution: 0.5
+  umap_min_dist: 0.3
+  random_state: 0
+  cluster_key: leiden
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --use-rep <auto|X_pca|X_pca_harmony|X_scanorama|...>
+    - --n-pcs <int>
+    - --n-neighbors <int>
+    - --resolution <float>
+    - --cluster-key <obs-column>
+    - --umap-min-dist <float>
+    - --random-state <int>
+    - --color-key <obs-column>
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/cluster_assignments.csv
+    - tables/cluster_counts.csv
+  figures:
+    - figures/umap_by_cluster.png
+    - figures/umap_by_color.png

@@ -107,6 +107,8 @@ Promote only evidence-backed, reusable material.
 
 Use `artifact-candidates.yaml` as the explicit promotion source.
 
+Trust an empty candidate list only when all completed tasks have already finished promotion review.
+
 Do not promote by scanning the whole output directory and guessing from file names or extensions.
 
 When one task clearly produced a reusable output, record that `task_id` in the candidate entry so promotion preserves task-level provenance.
@@ -223,6 +225,8 @@ There is no rigid output template, but the reasoning must be explicit.
 
 - Run `qdd validate --json` before closure or handoff.
 - Make `question_delta` explicit.
+- Refuse closure when completed tasks still have `promotion_status: pending`.
+- Refuse closure when non-canonical top-level study output material still remains unpackaged.
 - Register missing reusable outputs from `artifact-candidates.yaml` before closure.
 - Preserve task-level provenance for promoted outputs whenever one task was the clear producer.
 - Keep closure human-approved in `human` and `assist` mode.

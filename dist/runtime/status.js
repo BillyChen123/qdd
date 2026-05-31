@@ -1,6 +1,7 @@
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
+import { listNonCanonicalStudyOutputEntries } from './evidence.js';
 import { readYamlFile } from './store.js';
 // 组装 `qdd status --json` 需要的统一状态视图。
 //
@@ -14,6 +15,12 @@ export async function buildStatus(projectRoot) {
     const artifactIndex = await readYamlFile(projectRoot, PATHS.artifactIndex);
     const studies = await discoverStudies(projectRoot);
     const tasks = await discoverTasks(projectRoot);
+    const studiesWithUnpackagedOutput = (await Promise.all(studies.map(async (study) => ({
+        studyId: study.study_id,
+        unpackaged: await listNonCanonicalStudyOutputEntries(projectRoot, study.study_id),
+    }))))
+        .filter((entry) => entry.unpackaged.length > 0)
+        .map((entry) => entry.studyId);
     // evolution_trail 的最后一条，代表最近一次问题演化。
     // 如果还没有演化记录，就回退到 contract 里的 initial_question。
     const lastEvolutionEntry = evolution.evolution_trail[evolution.evolution_trail.length - 1] ?? null;
@@ -56,6 +63,14 @@ export async function buildStatus(projectRoot) {
             running: tasks.filter((task) => task.status === 'running').map((task) => task.task_id),
             blocked: tasks.filter((task) => task.status === 'blocked').map((task) => task.task_id),
             completed: tasks.filter((task) => task.status === 'completed').map((task) => task.task_id),
+            promotion_pending: tasks
+                .filter((task) => task.status === 'completed' && (task.promotion_status ?? 'pending') === 'pending')
+                .map((task) => task.task_id),
+            candidate_recorded: tasks.filter((task) => task.promotion_status === 'candidate-recorded').map((task) => task.task_id),
+            registered: tasks.filter((task) => task.promotion_status === 'registered').map((task) => task.task_id),
+        },
+        output_review: {
+            studies_with_unpackaged_output: studiesWithUnpackagedOutput,
         },
         artifacts: {
             // latest 只取最近 5 个产物 id，避免 status 输出越来越长。

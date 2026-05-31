@@ -8,6 +8,7 @@ import type {
   EvolutionTrail,
   QuestionChangeType,
   StudyRecord,
+  TaskPromotionStatus,
   TaskRecord,
 } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
@@ -18,6 +19,7 @@ import {
   ensureStudyOutputLayout,
   getStudyArtifactCandidatesPath,
   getStudyOutputDir,
+  listNonCanonicalStudyOutputEntries,
   relocateArtifactToCanonicalPath,
   readNormalizedArtifactCandidatesForPromotion,
   resolveProjectRelativeFilePath,
@@ -57,6 +59,7 @@ export interface RegisterArtifactOptions {
   taskId?: string;
   scope?: ArtifactScope;
   schema?: string;
+  updateTaskPromotionStatus?: boolean;
 }
 
 export interface CloseStudyOptions {
@@ -184,9 +187,11 @@ function buildTaskBody(record: TaskRecord, studyId: string, inputs: string[]): s
     '- [ ] Prepare the real inputs, dependencies, and execution method',
     '- [ ] Produce the expected evidence or record the blocker explicitly',
     `- [ ] Write study-local evidence into \`${getStudyOutputDir(studyId)}/\` and summarize what changed`,
+    `- [ ] Package final reusable outputs into \`${getStudyOutputDir(studyId)}/{data,code,figures,tables,reports}/\` before marking the task complete`,
     `- [ ] Preserve readable analysis scripts in \`${getStudyOutputDir(studyId)}/code/\` when this task runs substantive analysis`,
     `- [ ] Save at least one key figure in \`${getStudyOutputDir(studyId)}/figures/\` when the task conclusion depends on visual evidence, or record why no figure was needed`,
     `- [ ] Add only promotion-worthy outputs to \`${getStudyArtifactCandidatesPath(studyId)}\` and include \`task_id\` when this task clearly produced them`,
+    '- [ ] Set promotion review explicitly to none, candidate-recorded, or registered before leaving the task as completed',
     '- [ ] Register reusable artifacts only if this task produced them and immediate registration is warranted',
   ].join('\n');
   const normalizedSkills = normalizeTaskSkillIds(record.skills ?? []);
@@ -362,6 +367,7 @@ export async function createTask(projectRoot: string, studyId: string, options: 
     expected_outputs: options.expectedOutputs ?? [],
     depends_on: options.dependsOn ?? [],
     skills: normalizedSkills,
+    promotion_status: 'pending',
     artifact_ids: [],
     updated_at: new Date().toISOString(),
   };
@@ -394,6 +400,10 @@ export async function createTask(projectRoot: string, studyId: string, options: 
 function inferArtifactFormat(relativePath: string): string {
   const extension = path.extname(relativePath);
   return extension || 'unknown';
+}
+
+function normalizeTaskPromotionStatus(status: TaskPromotionStatus | undefined): TaskPromotionStatus {
+  return status ?? 'pending';
 }
 
 async function resolveRegisteredArtifactBySourcePath(
@@ -436,16 +446,21 @@ async function resolveRegisteredArtifactBySourcePath(
 async function ensureTaskArtifactReference(
   projectRoot: string,
   taskId: string,
-  artifactId: string
+  artifactId: string,
+  promotionStatus: TaskPromotionStatus | null = null
 ): Promise<void> {
   const taskDocument = await findTaskDocument(projectRoot, taskId);
-  if ((taskDocument.record.artifact_ids ?? []).includes(artifactId)) {
+  const existingArtifactIds = taskDocument.record.artifact_ids ?? [];
+  const nextPromotionStatus = promotionStatus ?? taskDocument.record.promotion_status;
+
+  if (existingArtifactIds.includes(artifactId) && nextPromotionStatus === taskDocument.record.promotion_status) {
     return;
   }
 
   const updatedTaskRecord: TaskRecord = {
     ...taskDocument.record,
-    artifact_ids: [...(taskDocument.record.artifact_ids ?? []), artifactId],
+    artifact_ids: existingArtifactIds.includes(artifactId) ? existingArtifactIds : [...existingArtifactIds, artifactId],
+    promotion_status: nextPromotionStatus,
     updated_at: new Date().toISOString(),
   };
   await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
@@ -477,10 +492,16 @@ export async function registerArtifact(
 
   const artifactIndex = await readYamlFile<ArtifactIndex>(projectRoot, PATHS.artifactIndex);
   const sourceRelativePath = await resolveProjectRelativeFilePath(projectRoot, targetPath);
+  const shouldUpdateTaskPromotionStatus = options.updateTaskPromotionStatus ?? true;
   const existingEntry = await resolveRegisteredArtifactBySourcePath(projectRoot, artifactIndex, sourceRelativePath);
   if (existingEntry) {
     if (options.taskId) {
-      await ensureTaskArtifactReference(projectRoot, options.taskId, existingEntry.id);
+      await ensureTaskArtifactReference(
+        projectRoot,
+        options.taskId,
+        existingEntry.id,
+        shouldUpdateTaskPromotionStatus ? 'registered' : null
+      );
     }
 
     return {
@@ -510,7 +531,12 @@ export async function registerArtifact(
   });
 
   if (options.taskId) {
-    await ensureTaskArtifactReference(projectRoot, options.taskId, artifactId);
+    await ensureTaskArtifactReference(
+      projectRoot,
+      options.taskId,
+      artifactId,
+      shouldUpdateTaskPromotionStatus ? 'registered' : null
+    );
   }
 
   return {
@@ -566,6 +592,22 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
     throw new Error(`Study '${studyId}' still has pending or running tasks. Resolve task records before closing the study.`);
   }
 
+  const completedPromotionPendingTasks = studyTasks.filter(
+    (task) => task.status === 'completed' && normalizeTaskPromotionStatus(task.promotion_status) === 'pending'
+  );
+  if (completedPromotionPendingTasks.length > 0) {
+    throw new Error(
+      `Study '${studyId}' still has completed tasks with pending promotion review: ${completedPromotionPendingTasks.map((task) => task.task_id).join(', ')}.`
+    );
+  }
+
+  const unpackagedEntries = await listNonCanonicalStudyOutputEntries(projectRoot, studyId);
+  if (unpackagedEntries.length > 0) {
+    throw new Error(
+      `Study '${studyId}' still has unpackaged non-canonical study outputs: ${unpackagedEntries.join(', ')}. Package them into output/{data,code,figures,tables,reports} or output/tmp before closing.`
+    );
+  }
+
   const inferredStatus = inferStudyState(studyDocument.record, studyTasks);
   if (inferredStatus !== 'completed' && inferredStatus !== 'blocked' && studyTasks.length > 0) {
     throw new Error(`Study '${studyId}' could not be cleanly classified before closure. Review task statuses.`);
@@ -595,6 +637,7 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
       taskId: targetTask?.task_id,
       scope: candidate.scope,
       schema: candidate.schema,
+      updateTaskPromotionStatus: false,
     });
     registeredPaths.add(result.entry.path);
   }

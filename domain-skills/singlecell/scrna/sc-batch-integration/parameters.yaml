@@ -1,174 +1,58 @@
-domain: singlecell
-allowed_extra_flags:
-- --batch-key
-- --method
-- --n-epochs
-- --no-gpu
-- --n-latent
-- --labels-key
-- --harmony-theta
-- --bbknn-neighbors-within-batch
-- --scanorama-knn
-- --integration-features
-- --integration-pcs
-- --simba-n-top-genes
-- --simba-n-components
-- --simba-k
-- --simba-num-workers
-- --r-enhanced
-param_hints:
+entry_script: scripts/scrna_integration.py
+python_env: CellFM_torch
+summary: Run standalone scRNA batch diagnosis or integration with Scanpy-based methods and optional scIB metrics.
+methods:
+  none:
+    description: Do not correct batches; compute PCA/neighbors/UMAP only for diagnosis.
   harmony:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - harmony_theta
-    - integration_pcs
-    defaults:
-      batch_key: batch
-      harmony_theta: 2.0
-      integration_pcs: 50
-    requires:
-    - existing_PCA_or_computeable_PCA
-    - harmonypy
-    tips:
-    - '--method harmony: Default integration path in the current wrapper.'
-  scvi:
-    priority: batch_key -> n_epochs -> no_gpu
-    params:
-    - batch_key
-    - n_epochs
-    advanced_params:
-    - n_latent
-    - no_gpu
-    defaults:
-      batch_key: batch
-      n_epochs: 400
-      n_latent: 30
-      no_gpu: false
-    requires:
-    - scvi
-    - torch
-    tips:
-    - '--n-epochs: Main runtime/optimization knob for scVI.'
-  scanvi:
-    priority: batch_key -> n_epochs -> no_gpu
-    params:
-    - batch_key
-    - labels_key
-    - n_epochs
-    advanced_params:
-    - n_latent
-    - no_gpu
-    defaults:
-      batch_key: batch
-      labels_key: null
-      n_epochs: 200
-      n_latent: 30
-      no_gpu: false
-    requires:
-    - scvi
-    - torch
-    - labels_in_obs
-    tips:
-    - If no labels are available, the current wrapper falls back to `scvi`.
-  bbknn:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - bbknn_neighbors_within_batch
-    defaults:
-      batch_key: batch
-      bbknn_neighbors_within_batch: 3
-    requires:
-    - bbknn
-    - existing_PCA_or_computeable_PCA
-    tips:
-    - '--method bbknn: Lightweight graph correction path.'
+    description: Use scanpy.external.pp.harmony_integrate on X_pca.
   scanorama:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - scanorama_knn
-    defaults:
-      batch_key: batch
-      scanorama_knn: 20
-    requires:
-    - scanorama
-    tips:
-    - '--method scanorama: Panorama-stitching integration path.'
-  fastmnn:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - integration_features
-    - integration_pcs
-    defaults:
-      batch_key: batch
-      integration_features: 2000
-      integration_pcs: 30
-    requires:
-    - R_batchelor_stack
-    tips:
-    - '--method fastmnn: R-backed batchelor fastMNN path via the shared H5AD bridge.'
-  seurat_cca:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - integration_features
-    - integration_pcs
-    defaults:
-      batch_key: batch
-      integration_features: 2000
-      integration_pcs: 30
-    requires:
-    - R_Seurat_stack
-    tips:
-    - '--method seurat_cca: R-backed Seurat CCA integration path via the shared H5AD
-      bridge.'
-  seurat_rpca:
-    priority: batch_key
-    params:
-    - batch_key
-    advanced_params:
-    - integration_features
-    - integration_pcs
-    defaults:
-      batch_key: batch
-      integration_features: 2000
-      integration_pcs: 30
-    requires:
-    - R_Seurat_stack
-    tips:
-    - '--method seurat_rpca: R-backed Seurat RPCA integration path via the shared
-      H5AD bridge.'
-legacy_aliases:
-- sc-integrate
-saves_h5ad: true
-requires_preprocessed: true
-requires:
-  bins:
-  - python3
-  env: []
-  config: []
-emoji: S
-homepage: https://github.com/OmicsClaw/OmicsClaw
-os:
-- macos
-- linux
-install:
-- kind: pip
-  package: scanpy
-  bins: []
-trigger_keywords:
-- batch integration
-- batch effect
-- harmony
-- scvi
-- bbknn
-- merge samples
-script: sc_integrate.py
+    description: Use scanpy.external.pp.scanorama_integrate on X_pca.
+  bbknn:
+    description: Build a batch-balanced neighbor graph with bbknn if the package is installed.
+defaults:
+  method: harmony
+  batch_key: batch
+  n_hvg: 2000
+  n_pcs: 50
+  n_neighbors: 15
+  leiden_resolution: 0.5
+  harmony_theta: 2.0
+  scanorama_knn: 20
+  bbknn_neighbors_within_batch: 3
+  umap_min_dist: 0.3
+  random_state: 0
+cli:
+  required:
+    - --input
+    - --output
+    - --batch-key
+  optional:
+    - --method {none,harmony,scanorama,bbknn}
+    - --label-key <obs-column>
+    - --use-hvg
+    - --n-hvg <int>
+    - --n-pcs <int>
+    - --n-neighbors <int>
+    - --leiden-resolution <float>
+    - --cluster-key <obs-column>
+    - --harmony-theta <float>
+    - --scanorama-knn <int>
+    - --bbknn-neighbors-within-batch <int>
+    - --umap-min-dist <float>
+    - --random-state <int>
+    - --skip-metrics
+    - --skip-umap
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/batch_sizes.csv
+    - tables/integration_metrics.csv
+    - tables/cell_embeddings.csv
+    - tables/batch_cluster_counts.csv
+  figures:
+    - figures/umap_by_batch.png
+    - figures/umap_by_cluster.png
+    - figures/umap_by_label.png

@@ -1,20 +1,14 @@
-import type { LayerPolicy, LayerPolicyCommandConfig, LayerPolicyLayerConfig, QddCommand, QddLayer, QddRole } from '../types.js';
+import type { LayerPolicy, QddCommand, QddRole } from '../types.js';
 import { PATHS } from './constants.js';
 import { createDefaultLayerPolicy } from './defaults.js';
 import { readYamlFile } from './store.js';
 import { normalizeTaskSkillIds } from './local-skills.js';
 
-const VALID_LAYERS: readonly QddLayer[] = ['project', 'study', 'task'];
 const VALID_ROLES: readonly QddRole[] = ['thesis-manager', 'study-brain', 'executor'];
 const VALID_COMMANDS: readonly QddCommand[] = ['qdd-start', 'qdd-propose', 'qdd-explore', 'qdd-apply', 'qdd-close'];
-const VALID_TARGET_KINDS = ['project', 'study', 'task'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isLayer(value: string): value is QddLayer {
-  return (VALID_LAYERS as readonly string[]).includes(value);
 }
 
 function isRole(value: string): value is QddRole {
@@ -25,51 +19,27 @@ function isCommand(value: string): value is QddCommand {
   return (VALID_COMMANDS as readonly string[]).includes(value);
 }
 
-function isTargetKind(value: string): value is 'project' | 'study' | 'task' {
-  return (VALID_TARGET_KINDS as readonly string[]).includes(value);
-}
-
-function normalizeLayerEntry(layerName: QddLayer, value: unknown, fallback: LayerPolicyLayerConfig): LayerPolicyLayerConfig {
+function normalizeRoleConfig(roleName: QddRole, value: unknown, fallbackSkillIds: string[]): { default_skills: string[] } {
   if (!isRecord(value)) {
-    throw new Error(`${PATHS.layerPolicy}#layers.${layerName} must be an object.`);
+    throw new Error(`${PATHS.layerPolicy}#roles.${roleName} must be an object.`);
   }
 
-  const role = String(value.role ?? '').trim();
+  return {
+    default_skills: normalizeTaskSkillIds(
+      Array.isArray(value.default_skills) ? value.default_skills.map((entry) => String(entry)) : fallbackSkillIds
+    ),
+  };
+}
+
+function normalizeCommandEntry(commandName: QddCommand, value: unknown, fallbackRole: QddRole): QddRole {
+  const role = String(value ?? '').trim() || fallbackRole;
   if (!isRole(role)) {
-    throw new Error(`${PATHS.layerPolicy}#layers.${layerName}.role must be one of: ${VALID_ROLES.join(', ')}.`);
+    throw new Error(`${PATHS.layerPolicy}#commands.${commandName} must be one of: ${VALID_ROLES.join(', ')}.`);
   }
 
-  return {
-    role,
-    required_skills: normalizeTaskSkillIds(Array.isArray(value.required_skills) ? value.required_skills.map((entry) => String(entry)) : fallback.required_skills),
-    optional_skills: normalizeTaskSkillIds(Array.isArray(value.optional_skills) ? value.optional_skills.map((entry) => String(entry)) : fallback.optional_skills),
-  };
+  return role;
 }
 
-function normalizeCommandEntry(commandName: QddCommand, value: unknown, fallback: LayerPolicyCommandConfig): LayerPolicyCommandConfig {
-  if (!isRecord(value)) {
-    throw new Error(`${PATHS.layerPolicy}#commands.${commandName} must be an object.`);
-  }
-
-  const target = String(value.target ?? '').trim();
-  if (!isTargetKind(target)) {
-    throw new Error(`${PATHS.layerPolicy}#commands.${commandName}.target must be one of: ${VALID_TARGET_KINDS.join(', ')}.`);
-  }
-
-  const decisionLayer = String(value.decision_layer ?? '').trim();
-  if (!isLayer(decisionLayer)) {
-    throw new Error(`${PATHS.layerPolicy}#commands.${commandName}.decision_layer must be one of: ${VALID_LAYERS.join(', ')}.`);
-  }
-
-  return {
-    target,
-    decision_layer: decisionLayer,
-  };
-}
-
-// 读取并规范化 layer policy。
-// 如果项目还没有显式 policy，就退回默认 scaffold，
-// 这样 instructions / validate 都能围绕同一份默认协议工作。
 export async function readLayerPolicy(projectRoot: string): Promise<LayerPolicy> {
   const fallback = createDefaultLayerPolicy();
 
@@ -79,33 +49,33 @@ export async function readLayerPolicy(projectRoot: string): Promise<LayerPolicy>
       throw new Error(`${PATHS.layerPolicy} must be an object.`);
     }
 
-    const layersValue = loaded.layers;
-    if (!isRecord(layersValue)) {
-      throw new Error(`${PATHS.layerPolicy} must define a layers object.`);
-    }
-
     const commandsValue = loaded.commands;
     if (!isRecord(commandsValue)) {
       throw new Error(`${PATHS.layerPolicy} must define a commands object.`);
     }
 
-    const normalizedLayers = {
-      project: normalizeLayerEntry('project', layersValue.project, fallback.layers.project),
-      study: normalizeLayerEntry('study', layersValue.study, fallback.layers.study),
-      task: normalizeLayerEntry('task', layersValue.task, fallback.layers.task),
-    };
-
-    const normalizedCommands = {
-      'qdd-start': normalizeCommandEntry('qdd-start', commandsValue['qdd-start'], fallback.commands['qdd-start']),
-      'qdd-propose': normalizeCommandEntry('qdd-propose', commandsValue['qdd-propose'], fallback.commands['qdd-propose']),
-      'qdd-explore': normalizeCommandEntry('qdd-explore', commandsValue['qdd-explore'], fallback.commands['qdd-explore']),
-      'qdd-apply': normalizeCommandEntry('qdd-apply', commandsValue['qdd-apply'], fallback.commands['qdd-apply']),
-      'qdd-close': normalizeCommandEntry('qdd-close', commandsValue['qdd-close'], fallback.commands['qdd-close']),
-    };
+    const rolesValue = loaded.roles;
+    if (!isRecord(rolesValue)) {
+      throw new Error(`${PATHS.layerPolicy} must define a roles object.`);
+    }
 
     return {
-      layers: normalizedLayers,
-      commands: normalizedCommands,
+      commands: {
+        'qdd-start': normalizeCommandEntry('qdd-start', commandsValue['qdd-start'], fallback.commands['qdd-start']),
+        'qdd-propose': normalizeCommandEntry('qdd-propose', commandsValue['qdd-propose'], fallback.commands['qdd-propose']),
+        'qdd-explore': normalizeCommandEntry('qdd-explore', commandsValue['qdd-explore'], fallback.commands['qdd-explore']),
+        'qdd-apply': normalizeCommandEntry('qdd-apply', commandsValue['qdd-apply'], fallback.commands['qdd-apply']),
+        'qdd-close': normalizeCommandEntry('qdd-close', commandsValue['qdd-close'], fallback.commands['qdd-close']),
+      },
+      roles: {
+        'thesis-manager': normalizeRoleConfig(
+          'thesis-manager',
+          rolesValue['thesis-manager'],
+          fallback.roles['thesis-manager'].default_skills
+        ),
+        'study-brain': normalizeRoleConfig('study-brain', rolesValue['study-brain'], fallback.roles['study-brain'].default_skills),
+        executor: normalizeRoleConfig('executor', rolesValue.executor, fallback.roles.executor.default_skills),
+      },
     };
   } catch (error) {
     const message = (error as Error).message;
@@ -121,24 +91,16 @@ export async function readLayerPolicy(projectRoot: string): Promise<LayerPolicy>
   }
 }
 
-export function getRoleForLayer(policy: LayerPolicy, layer: QddLayer): QddRole {
-  return policy.layers[layer].role;
-}
-
-export function getLayerForTargetKind(kind: 'project' | 'study' | 'task'): QddLayer {
-  return kind;
-}
-
-export function resolveCommandDecisionLayer(
-  policy: LayerPolicy,
-  command: QddCommand | null,
-  fallbackTargetKind: 'project' | 'study' | 'task'
-): QddLayer {
+export function resolveCommandRole(policy: LayerPolicy, command: QddCommand | null, fallbackRole: QddRole): QddRole {
   if (!command) {
-    return getLayerForTargetKind(fallbackTargetKind);
+    return fallbackRole;
   }
 
-  return policy.commands[command].decision_layer;
+  return policy.commands[command];
+}
+
+export function getDefaultSkillsForRole(policy: LayerPolicy, role: QddRole): string[] {
+  return policy.roles[role].default_skills;
 }
 
 export function isQddCommand(value: string): value is QddCommand {

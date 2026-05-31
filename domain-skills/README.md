@@ -12,13 +12,25 @@ domain-skills/
 └── singlecell/
     └── scrna/
         ├── sc-preprocess-qc/
-        │   └── SKILL.md
+        │   ├── SKILL.md
+        │   ├── parameters.yaml
+        │   └── scripts/
+        │       └── scrna_preprocess_qc.py
         ├── sc-batch-integration/
-        │   └── SKILL.md
+        │   ├── SKILL.md
+        │   ├── parameters.yaml
+        │   └── scripts/
+        │       └── scrna_integration.py
         ├── sc-clustering/
-        │   └── SKILL.md
+        │   ├── SKILL.md
+        │   ├── parameters.yaml
+        │   └── scripts/
+        │       └── scrna_clustering.py
         └── sc-marker-annotation/
-            └── SKILL.md
+            ├── SKILL.md
+            ├── parameters.yaml
+            └── scripts/
+                └── scrna_marker_annotation.py
 ```
 
 Rules:
@@ -27,7 +39,12 @@ Rules:
 - Executor problem-level skills live under domain trees such as `singlecell/scrna/*`
 - Each skill lives at `domain-skills/<category...>/<skill-name>/`
 - Each skill root must contain `SKILL.md`
-- Extra files such as `scripts/`, `references/`, or templates may live inside the same skill directory
+- Executor skills should normally contain:
+  - `SKILL.md`: when to use the skill, output contract, execution notes
+  - `parameters.yaml`: CLI surface, defaults, and output contract
+  - `scripts/*.py`: directly runnable entry scripts
+- Keep one clear entry script per skill, named by function such as `scrna_integration.py`, not generic names like `run.py`
+- `references/` and `tests/` are optional; add them only when they materially improve reliability
 - `qdd init` copies every skill here into the target project's `.codex/skills/` and `.claude/skills/`
 - `qdd init --refresh-bootstrap` re-syncs those projected copies from this source tree
 - Executor-facing problem-level skills must declare controlled frontmatter fields:

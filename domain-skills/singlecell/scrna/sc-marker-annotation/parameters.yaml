@@ -1,0 +1,36 @@
+entry_script: scripts/scrna_marker_annotation.py
+python_env: CellFM_torch
+summary: Compute cluster markers and perform lightweight marker-based annotation using a user-supplied marker table.
+methods:
+  rank_genes_groups:
+    description: Run Scanpy rank_genes_groups and score cluster labels against a marker table.
+defaults:
+  cluster_key: leiden
+  method: wilcoxon
+  n_genes: 25
+  min_score: 0.35
+  unknown_label: unknown
+cli:
+  required:
+    - --input
+    - --output
+    - --cluster-key
+    - --marker-file
+  optional:
+    - --method <wilcoxon|t-test|logreg>
+    - --n-genes <int>
+    - --annotation-key <obs-column>
+    - --unknown-label <label>
+    - --min-score <float>
+    - --embedding-key <obsm-key>
+output_contract:
+  main_h5ad: annotated.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/marker_rankings.csv
+    - tables/annotation_scores.csv
+    - tables/cluster_annotation_summary.csv
+  figures:
+    - figures/umap_by_annotation.png
+    - figures/annotation_score_heatmap.png

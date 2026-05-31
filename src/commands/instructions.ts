@@ -21,7 +21,6 @@ export async function instructionsCommand(id: string | undefined, options: { jso
 
   console.log(`Command: ${instructions.command ?? 'none'}`);
   console.log(`Target: ${instructions.target.kind} ${instructions.target.id}`);
-  console.log(`Decision layer: ${instructions.decision_layer}`);
   console.log(`Role: ${instructions.role}`);
   console.log('Read:');
   for (const file of instructions.read) console.log(`  - ${file}`);

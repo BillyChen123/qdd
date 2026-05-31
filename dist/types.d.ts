@@ -4,7 +4,7 @@ export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
-export type QddLayer = 'project' | 'study' | 'task';
+export type TaskPromotionStatus = 'pending' | 'none' | 'candidate-recorded' | 'registered';
 export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
 export type QddCommand = BootstrapWorkflow;
 export interface ResearchContract {
@@ -75,6 +75,7 @@ export interface TaskRecord {
     expected_outputs?: string[];
     depends_on?: string[];
     skills?: string[];
+    promotion_status?: TaskPromotionStatus;
     artifact_ids?: string[];
     blocker_reason?: string;
     result_summary?: string;
@@ -97,6 +98,12 @@ export interface StatusJson {
         running: string[];
         blocked: string[];
         completed: string[];
+        promotion_pending: string[];
+        candidate_recorded: string[];
+        registered: string[];
+    };
+    output_review: {
+        studies_with_unpackaged_output: string[];
     };
     artifacts: {
         count: number;
@@ -113,7 +120,6 @@ export interface InstructionsJson {
         kind: 'project' | 'study' | 'task';
         id: string;
     };
-    decision_layer: QddLayer;
     role: QddRole;
     read: string[];
     write: string[];
@@ -201,27 +207,21 @@ export interface BootstrapConfig {
     instructions_path: string;
     tools: BootstrapToolRecord[];
 }
-export interface LayerPolicyLayerConfig {
-    role: QddRole;
-    required_skills: string[];
-    optional_skills: string[];
-}
-export interface LayerPolicyCommandConfig {
-    target: 'project' | 'study' | 'task';
-    decision_layer: QddLayer;
+export interface LayerPolicyRoleConfig {
+    default_skills: string[];
 }
 export interface LayerPolicy {
-    layers: {
-        project: LayerPolicyLayerConfig;
-        study: LayerPolicyLayerConfig;
-        task: LayerPolicyLayerConfig;
-    };
     commands: {
-        'qdd-start': LayerPolicyCommandConfig;
-        'qdd-propose': LayerPolicyCommandConfig;
-        'qdd-explore': LayerPolicyCommandConfig;
-        'qdd-apply': LayerPolicyCommandConfig;
-        'qdd-close': LayerPolicyCommandConfig;
+        'qdd-start': QddRole;
+        'qdd-propose': QddRole;
+        'qdd-explore': QddRole;
+        'qdd-apply': QddRole;
+        'qdd-close': QddRole;
+    };
+    roles: {
+        'thesis-manager': LayerPolicyRoleConfig;
+        'study-brain': LayerPolicyRoleConfig;
+        executor: LayerPolicyRoleConfig;
     };
 }
 //# sourceMappingURL=types.d.ts.map

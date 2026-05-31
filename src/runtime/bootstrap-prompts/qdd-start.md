@@ -91,12 +91,19 @@ Make sure it clearly covers:
 
 - research theme notes
 - biological system and assumptions
-- Python / R / external tool environment
 - what data already exists
+- Python / R / external tool environment
 - which dataset entrypoints are linked under `artifacts/data/`
+- durable analyst preferences that should bias future studies
 - what local skills are already available
 
 If the user has additional reusable context that does not fit well in the main document, create a small `context/*.md` sidecar instead of bloating `resources.md`.
+
+Keep `resources.md` readable and stable:
+
+- put project facts and durable analyst preferences in separate sections
+- do not turn it into a task-by-task execution log
+- do not store transient blockers or troubleshooting scraps there unless they have become stable reusable context
 
 ### 4. Create dataset entrypoints under `artifacts/data/`
 
@@ -230,6 +237,7 @@ When start work is done, report succinctly:
 
 - what changed in `contract.yaml`
 - what changed in `context/resources.md`
+- which durable analyst preferences were added or updated
 - which dataset entrypoints were linked under `artifacts/data/`
 - which local skills are available
 - any missing environment, dataset, or skill blocker
@@ -243,5 +251,6 @@ When start work is done, report succinctly:
 - Do not copy large raw datasets into `artifacts/data/` when a symlink is sufficient.
 - Do not create study/task artifacts here unless the user explicitly redirects you.
 - Do not reference skills outside `.codex/skills/` as if they were project-approved.
+- Do not create a parallel memory subsystem when `context/resources.md` is enough.
 - Keep `contract.yaml` concise and `context/resources.md` readable.
 - Leave the project ready for the first bounded study proposal.

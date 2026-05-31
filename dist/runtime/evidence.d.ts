@@ -2,6 +2,7 @@ import type { ArtifactCandidateEntry, ArtifactCandidateManifest, ArtifactType } 
 export declare function getStudyOutputDir(studyId: string): string;
 export declare function getStudyArtifactCandidatesPath(studyId: string): string;
 export declare function getStudyOutputSubdirPaths(studyId: string): string[];
+export declare function listNonCanonicalStudyOutputEntries(projectRoot: string, studyId: string): Promise<string[]>;
 export declare function ensureStudyOutputLayout(projectRoot: string, studyId: string): Promise<void>;
 export declare function resolveProjectRelativeFilePath(projectRoot: string, targetPath: string): Promise<string>;
 export declare function buildCanonicalArtifactPath(artifactId: string, artifactType: ArtifactType, sourceRelativePath: string): string;

@@ -46,6 +46,7 @@ Examples:
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
 6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
 7. If task-level executor skill choice matters, inspect study-brain guidance under `.codex/skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
+8. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
 
 ---
 
@@ -114,6 +115,17 @@ When a task needs concrete executor skills:
 - first reason from study-brain heuristics
 - then use `qdd skills suggest` with controlled `domain + stage + tag` filters
 - write one small bundle of problem-level skills into the task only after the choice is clear
+- record the chosen skills directly in task frontmatter and in the task body `## Skills` section
+
+This is part of propose, not something to leave for apply to invent later.
+
+For each task, make the selection path legible:
+
+- which study-brain heuristic triggered the search
+- which `domain`, `stage`, and `tag` filters were used
+- which returned skill(s) were chosen for this task
+
+If no installed executor skill fits, leave the task skill list empty only deliberately, and state in the task body that execution will rely on general code generation rather than a local reusable skill.
 
 Do not write primitive method names as if they were skills.
 
@@ -167,6 +179,7 @@ Write them concretely:
 - `## Checklist`: rewrite the scaffold into task-specific executable steps
 - `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under `.codex/skills/`, and are valid in `.qdd/skills-catalog.json`
 - never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
+- if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
 
 Each initial task should be:
 

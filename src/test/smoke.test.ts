@@ -56,6 +56,8 @@ test('qdd init creates minimal project structure', async () => {
   assert.equal(status.artifacts.count, 0);
   assert.deepEqual(status.studies.completed, []);
   assert.deepEqual(status.tasks.completed, []);
+  assert.deepEqual(status.tasks.promotion_pending, []);
+  assert.deepEqual(status.output_review.studies_with_unpackaged_output, []);
 
   const instructions = await fs.readFile(path.join(projectRoot, '.qdd', 'instructions.md'), 'utf-8');
   assert.match(instructions, /## Quick Reference/);
@@ -75,9 +77,10 @@ test('qdd init creates minimal project structure', async () => {
 
   const resources = await fs.readFile(path.join(projectRoot, 'context', 'resources.md'), 'utf-8');
   assert.match(resources, /## Research Theme/);
-  assert.match(resources, /## Runtime Environments/);
   assert.match(resources, /## Biological Background/);
   assert.match(resources, /## Data Resources/);
+  assert.match(resources, /## Runtime Environments/);
+  assert.match(resources, /## Analyst Preferences/);
   assert.match(resources, /## Local Skills/);
 
   const bootstrapConfig = await fs.readFile(path.join(projectRoot, '.qdd', 'bootstrap.yaml'), 'utf-8');
@@ -91,6 +94,7 @@ test('qdd init creates minimal project structure', async () => {
   assert.match(startCommand, /ln -s/);
   assert.match(startCommand, /artifacts\/data\/source\.h5ad/);
   assert.match(startCommand, /\.codex\/skills\//);
+  assert.match(startCommand, /durable analyst preferences/);
 
   const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
   assert.match(proposeCommand, /qdd add-study/);
@@ -102,6 +106,8 @@ test('qdd init creates minimal project structure', async () => {
   assert.match(proposeCommand, /rewrite the scaffold into task-specific executable steps/);
   assert.match(proposeCommand, /never write `qdd\/\*` workflow skills or `brain\/\*` planning skills into a task record/);
   assert.match(proposeCommand, /qdd skills suggest/);
+  assert.match(proposeCommand, /This is part of propose, not something to leave for apply to invent later/);
+  assert.match(proposeCommand, /record the chosen skills directly in task frontmatter and in the task body `## Skills` section/);
   assert.match(proposeCommand, /qdd instructions STUDY-XXX --command qdd-propose --json/);
 
   const exploreCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-explore.md'), 'utf-8');
@@ -116,9 +122,15 @@ test('qdd init creates minimal project structure', async () => {
   assert.match(applySkill, /Treat the study, not the single task, as the execution unit/);
   assert.match(applySkill, /continue across the planned task graph instead of stopping after the first completed task/);
   assert.match(applySkill, /Rewrite the weak checklist scaffold into task-specific steps/);
+  assert.match(applySkill, /If task-local executor skills are listed in the task instructions, read those skill files before deciding how to run the task/);
+  assert.match(applySkill, /If a task already declares executor skills, do not skip them and jump straight to unconstrained ad hoc coding/);
+  assert.match(applySkill, /Treat local skills as execution guidance, not optional decoration/);
   assert.match(applySkill, /output\/code/);
   assert.match(applySkill, /artifact-candidates\.yaml/);
   assert.match(applySkill, /hard-blocked/);
+  assert.match(applySkill, /promotion_status/);
+  assert.match(applySkill, /output\/tmp/);
+  assert.match(applySkill, /Slow clustering, UMAP, integration, large h5ad/);
 
   const closeSkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-close', 'SKILL.md'), 'utf-8');
   assert.match(closeSkill, /qdd instructions STUDY-XXX --command qdd-close --json/);
@@ -151,6 +163,8 @@ test('qdd init can install codex prompts and refresh bootstrap assets', async ()
     assert.match(codexPrompt, /description: Execute the current approved study\/task set until the study reaches a decision point/);
     assert.match(codexPrompt, /continue across the planned task graph instead of stopping after the first completed task/);
     assert.match(codexPrompt, /qdd register-artifact/);
+    assert.match(codexPrompt, /promotion_status/);
+    assert.match(codexPrompt, /output\/tmp/);
 
     const codexSkill = await fs.readFile(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-explore', 'SKILL.md'), 'utf-8');
     assert.match(codexSkill, /name: qdd-explore/);
@@ -421,7 +435,6 @@ test('qdd instructions returns project, study, and task guidance for existing pr
   const projectInstructions = await buildInstructions(projectRoot, 'PROJECT', { command: 'qdd-start' });
   assert.equal(projectInstructions.target.kind, 'project');
   assert.equal(projectInstructions.command, 'qdd-start');
-  assert.equal(projectInstructions.decision_layer, 'project');
   assert.equal(projectInstructions.role, 'thesis-manager');
   assert.ok(projectInstructions.read.includes('contract.yaml'));
   assert.ok(projectInstructions.read.includes('context/resources.md'));
@@ -438,7 +451,6 @@ test('qdd instructions returns project, study, and task guidance for existing pr
   const studyApplyInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-apply' });
   assert.equal(studyApplyInstructions.target.kind, 'study');
   assert.equal(studyApplyInstructions.command, 'qdd-apply');
-  assert.equal(studyApplyInstructions.decision_layer, 'task');
   assert.equal(studyApplyInstructions.role, 'executor');
   assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/study.md'));
   assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/tasks/'));
@@ -454,20 +466,21 @@ test('qdd instructions returns project, study, and task guidance for existing pr
   assert.ok(studyApplyInstructions.rules.includes('Do not return to qdd-explore just because one task finished; keep moving while the next planned study-local task is clear.'));
   assert.ok(studyApplyInstructions.rules.includes('Use studies/STUDY-XXX/output/artifact-candidates.yaml as the explicit promotion boundary for reusable study outputs.'));
   assert.ok(studyApplyInstructions.rules.includes('Include task_id in artifact candidates whenever one task clearly produced the reusable output.'));
+  assert.ok(studyApplyInstructions.rules.includes('Use studies/STUDY-XXX/output/tmp only as scratch space; package final outputs back into the canonical study output directories before treating work as complete.'));
+  assert.ok(studyApplyInstructions.rules.includes('Treat studies/STUDY-XXX/output/data, code, figures, tables, and reports as the canonical final study output surface.'));
 
   const studyCloseInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-close' });
   assert.equal(studyCloseInstructions.target.kind, 'study');
   assert.equal(studyCloseInstructions.command, 'qdd-close');
-  assert.equal(studyCloseInstructions.decision_layer, 'project');
   assert.equal(studyCloseInstructions.role, 'thesis-manager');
   assert.ok(studyCloseInstructions.write.includes('evolution.yaml'));
   assert.ok(studyCloseInstructions.write.includes('context/resources.md'));
-  assert.ok(studyCloseInstructions.rules.includes('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the project decision layer.'));
+  assert.ok(studyCloseInstructions.rules.includes('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.'));
+  assert.ok(studyCloseInstructions.rules.includes('Refuse closure when any completed task still has promotion_status pending.'));
 
   const taskInstructions = await buildInstructions(projectRoot, 'TASK-001', { command: 'qdd-apply' });
   assert.equal(taskInstructions.target.kind, 'task');
   assert.equal(taskInstructions.command, 'qdd-apply');
-  assert.equal(taskInstructions.decision_layer, 'task');
   assert.equal(taskInstructions.role, 'executor');
   assert.ok(taskInstructions.write.includes('studies/STUDY-001/tasks/TASK-001.md'));
   assert.ok(taskInstructions.write.includes('studies/STUDY-001/output/artifact-candidates.yaml'));
@@ -484,8 +497,12 @@ test('qdd instructions returns project, study, and task guidance for existing pr
   assert.ok(taskInstructions.rules.includes('Keep the task minimal and evidence-producing.'));
   assert.ok(taskInstructions.rules.includes('Only rely on domain task skills that exist under .codex/skills/.'));
   assert.ok(taskInstructions.rules.includes('qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.'));
+  assert.ok(taskInstructions.rules.includes('If task-local executor skills are present, read them first and use them as the primary execution guidance for this task.'));
+  assert.ok(taskInstructions.rules.includes('Do not bypass declared task-local executor skills with unconstrained ad hoc coding unless you make the gap explicit.'));
   assert.ok(taskInstructions.rules.includes('Add only promotion-worthy outputs to studies/STUDY-XXX/output/artifact-candidates.yaml; do not treat all local outputs as artifacts.'));
   assert.ok(taskInstructions.rules.includes('Include task_id in artifact candidates whenever this task clearly produced the reusable output.'));
+  assert.ok(taskInstructions.rules.includes('Before a completed task is left in place, set promotion_status explicitly to none, candidate-recorded, or registered; completed tasks must not remain promotion-pending.'));
+  assert.ok(taskInstructions.rules.includes('Treat slow clustering, UMAP, integration, and large h5ad processing as normal long-running work unless there is explicit evidence of failure.'));
 
   const studyExploreInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-explore' });
   assert.equal(studyExploreInstructions.role, 'study-brain');
@@ -494,6 +511,11 @@ test('qdd instructions returns project, study, and task guidance for existing pr
   assert.ok(
     studyExploreInstructions.rules.includes(
       'Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.'
+    )
+  );
+  assert.ok(
+    studyExploreInstructions.rules.includes(
+      'When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.'
     )
   );
 });
@@ -519,6 +541,8 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'figures')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'tables')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'reports')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'data')));
+  await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'tmp')));
   await assert.doesNotReject(fs.access(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'artifact-candidates.yaml')));
   const createdTask = await createTask(projectRoot, createdStudy.studyId, {
     goal: 'Produce a summary report',
@@ -532,10 +556,13 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   assert.match(originalTaskContent, /## Checklist/);
   assert.match(originalTaskContent, /Replace this scaffold with 3-7 task-specific executable steps/);
   assert.match(originalTaskContent, /output\/code/);
+  assert.match(originalTaskContent, /output\/\{data,code,figures,tables,reports\}/);
   assert.match(originalTaskContent, /artifact-candidates\.yaml/);
+  assert.match(originalTaskContent, /promotion review explicitly to none, candidate-recorded, or registered/);
   assert.match(originalTaskContent, /include `task_id` when this task clearly produced them/);
   assert.match(originalTaskContent, /## Skills/);
   assert.match(originalTaskContent, /- singlecell\/scrna\/sc-clustering/);
+  assert.match(originalTaskContent, /promotion_status: pending/);
 
   const completedTaskContent = originalTaskContent
     .replace('status: pending', 'status: completed')
@@ -543,12 +570,15 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
     .replace('- [ ] Prepare the real inputs, dependencies, and execution method', '- [x] Prepare the real inputs, dependencies, and execution method')
     .replace('- [ ] Produce the expected evidence or record the blocker explicitly', '- [x] Produce the expected evidence or record the blocker explicitly')
     .replace('- [ ] Write study-local evidence into `studies/STUDY-001/output/` and summarize what changed', '- [x] Write study-local evidence into `studies/STUDY-001/output/` and summarize what changed')
+    .replace('- [ ] Package final reusable outputs into `studies/STUDY-001/output/{data,code,figures,tables,reports}/` before marking the task complete', '- [x] Package final reusable outputs into `studies/STUDY-001/output/{data,code,figures,tables,reports}/` before marking the task complete')
     .replace('- [ ] Preserve readable analysis scripts in `studies/STUDY-001/output/code/` when this task runs substantive analysis', '- [x] Preserve readable analysis scripts in `studies/STUDY-001/output/code/` when this task runs substantive analysis')
     .replace('- [ ] Save at least one key figure in `studies/STUDY-001/output/figures/` when the task conclusion depends on visual evidence, or record why no figure was needed', '- [x] Save at least one key figure in `studies/STUDY-001/output/figures/` when the task conclusion depends on visual evidence, or record why no figure was needed')
     .replace(
       '- [ ] Add only promotion-worthy outputs to `studies/STUDY-001/output/artifact-candidates.yaml` and include `task_id` when this task clearly produced them',
       '- [x] Add only promotion-worthy outputs to `studies/STUDY-001/output/artifact-candidates.yaml` and include `task_id` when this task clearly produced them'
-    );
+    )
+    .replace('- [ ] Set promotion review explicitly to none, candidate-recorded, or registered before leaving the task as completed', '- [x] Set promotion review explicitly to none, candidate-recorded, or registered before leaving the task as completed')
+    .replace('promotion_status: pending', 'promotion_status: candidate-recorded');
   await fs.writeFile(taskPath, completedTaskContent, 'utf-8');
 
   const scriptPath = path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'code', 'summary-analysis.py');
@@ -597,6 +627,9 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   const status = await buildStatus(projectRoot);
   assert.deepEqual(status.studies.closed, [createdStudy.studyId]);
   assert.equal(status.tasks.completed[0], createdTask.taskId);
+  assert.deepEqual(status.tasks.promotion_pending, []);
+  assert.deepEqual(status.tasks.registered, []);
+  assert.deepEqual(status.output_review.studies_with_unpackaged_output, []);
   assert.equal(status.artifacts.count, 3);
   assert.equal(status.question_state.last_change_type, 'refinement');
   assert.deepEqual(status.question_state.open_boundaries, ['Need a second dataset']);
@@ -627,6 +660,7 @@ test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a s
   assert.equal(await fs.realpath(artifactFilePath), path.join(projectRoot, 'artifacts', 'reports', 'ART-003-summary.md'));
 
   const updatedTaskContent = await fs.readFile(taskPath, 'utf-8');
+  assert.match(updatedTaskContent, /promotion_status: candidate-recorded/);
   assert.match(updatedTaskContent, /artifact_ids:\n  - ART-001/);
   assert.match(updatedTaskContent, /artifact_ids:\n  - ART-001\n  - ART-002\n  - ART-003/);
 });
@@ -646,7 +680,7 @@ test('qdd closeStudy promotes artifacts before writing question_delta', async ()
 
   const taskPath = path.join(projectRoot, createdTask.relativePath);
   const originalTaskContent = await fs.readFile(taskPath, 'utf-8');
-  await fs.writeFile(taskPath, originalTaskContent.replace('status: pending', 'status: completed'), 'utf-8');
+  await fs.writeFile(taskPath, originalTaskContent.replace('status: pending', 'status: completed').replace('promotion_status: pending', 'promotion_status: candidate-recorded'), 'utf-8');
 
   const reportPath = path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'reports', 'closure-report.md');
   await fs.writeFile(reportPath, '# closure\n', 'utf-8');
@@ -809,6 +843,7 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
       'study_id: STUDY-001',
       'goal: Keep one task pending',
       'status: pending',
+      'promotion_status: pending',
       'skills:',
       '  - singlecell/scrna/missing-skill',
       '---',
@@ -830,38 +865,22 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
   await fs.writeFile(
     path.join(projectRoot, '.qdd', 'layer-policy.yaml'),
     [
-      'layers:',
-      '  project:',
-      '    role: thesis-manager',
-      '    required_skills:',
-      '      - qdd/qdd-apply',
-      '    optional_skills: []',
-      '  study:',
-      '    role: study-brain',
-      '    required_skills:',
-      '      - brain/study-planning-core',
-      '    optional_skills: []',
-      '  task:',
-      '    role: executor',
-      '    required_skills:',
-      '      - brain/study-planning-core',
-      '    optional_skills: []',
       'commands:',
-      '  qdd-start:',
-      '    target: project',
-      '    decision_layer: project',
-      '  qdd-propose:',
-      '    target: study',
-      '    decision_layer: study',
-      '  qdd-explore:',
-      '    target: study',
-      '    decision_layer: study',
-      '  qdd-apply:',
-      '    target: study',
-      '    decision_layer: task',
-      '  qdd-close:',
-      '    target: study',
-      '    decision_layer: project',
+      '  qdd-start: thesis-manager',
+      '  qdd-propose: study-brain',
+      '  qdd-explore: study-brain',
+      '  qdd-apply: executor',
+      '  qdd-close: thesis-manager',
+      'roles:',
+      '  thesis-manager:',
+      '    default_skills:',
+      '      - qdd/qdd-apply',
+      '  study-brain:',
+      '    default_skills:',
+      '      - brain/study-planning-core',
+      '  executor:',
+      '    default_skills:',
+      '      - brain/study-planning-core',
       '',
     ].join('\n'),
     'utf-8'
@@ -900,4 +919,61 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
   assert.ok(validation.issues.some((issue) => issue.code === 'missing_local_skill_reference'));
   assert.ok(validation.issues.some((issue) => issue.code === 'workflow_skill_not_allowed_in_layer_policy'));
   assert.ok(validation.issues.some((issue) => issue.code === 'planning_skill_not_allowed_in_task_layer_policy'));
+});
+
+test('qdd validate and close enforce promotion review and canonical study output packaging', async () => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-promotion-packaging-'));
+  await initCommand(projectRoot);
+
+  const createdStudy = await createStudy(projectRoot, {
+    question: 'Does apply leave reviewable packaging?',
+    hypothesis: 'Close should fail when review or packaging is incomplete.',
+  });
+  const createdTask = await createTask(projectRoot, createdStudy.studyId, {
+    goal: 'Produce one report but leave packaging incomplete',
+    expectedOutputs: ['report.md'],
+  });
+
+  const taskPath = path.join(projectRoot, createdTask.relativePath);
+  const originalTaskContent = await fs.readFile(taskPath, 'utf-8');
+  await fs.writeFile(taskPath, originalTaskContent.replace('status: pending', 'status: completed'), 'utf-8');
+
+  await fs.mkdir(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'task001_misc'), { recursive: true });
+  await fs.writeFile(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'task001_misc', 'note.md'), '# temp\n', 'utf-8');
+
+  const validation = await validateProject(projectRoot);
+  assert.equal(validation.valid, false);
+  assert.ok(validation.issues.some((issue) => issue.code === 'completed_task_pending_promotion_review'));
+  assert.ok(validation.issues.some((issue) => issue.code === 'noncanonical_study_output_entries'));
+
+  await assert.rejects(
+    closeStudy(projectRoot, createdStudy.studyId, {
+      questionAfter: 'Should not close yet',
+      changeType: 'refinement',
+      changeDriver: 'Promotion review not done.',
+      openBoundaries: [],
+    }),
+    /completed tasks with pending promotion review/
+  );
+
+  const fixedTaskContent = (await fs.readFile(taskPath, 'utf-8')).replace('promotion_status: pending', 'promotion_status: none');
+  await fs.writeFile(taskPath, fixedTaskContent, 'utf-8');
+
+  await assert.rejects(
+    closeStudy(projectRoot, createdStudy.studyId, {
+      questionAfter: 'Should still not close yet',
+      changeType: 'refinement',
+      changeDriver: 'Packaging not cleaned.',
+      openBoundaries: [],
+    }),
+    /unpackaged non-canonical study outputs/
+  );
+
+  await fs.rm(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'task001_misc'), { recursive: true, force: true });
+  await closeStudy(projectRoot, createdStudy.studyId, {
+    questionAfter: 'Packaging and review are now complete.',
+    changeType: 'confirmation',
+    changeDriver: 'No reusable outputs and no unpackaged material remain.',
+    openBoundaries: [],
+  });
 });

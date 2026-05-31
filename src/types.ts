@@ -20,8 +20,10 @@ export type BootstrapTool = 'claude' | 'codex';
 // QDD 当前定义的核心工作流名称。
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
 
-// QDD 的三层决策/执行层级。
-export type QddLayer = 'project' | 'study' | 'task';
+// task 在 apply / close 之间的 promotion review 状态。
+// 这里刻意保持很小，只回答一个问题：
+// “这个 task 的可复用输出，apply 到底审没审过？”
+export type TaskPromotionStatus = 'pending' | 'none' | 'candidate-recorded' | 'registered';
 
 // 每一层默认绑定的角色名称。
 export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
@@ -205,6 +207,13 @@ export interface TaskRecord {
   // 执行该 task 时推荐使用的 skills。
   skills?: string[];
 
+  // apply 是否已经检查过本 task 的可复用输出。
+  // pending: 还没审
+  // none: 审过了，但这轮没有值得提升的材料
+  // candidate-recorded: 审过了，并写进了 artifact-candidates.yaml
+  // registered: 审过了，并且已经直接登记为 artifact
+  promotion_status?: TaskPromotionStatus;
+
   // 本任务最终关联到的 artifact ID 列表。
   artifact_ids?: string[];
 
@@ -237,6 +246,12 @@ export interface StatusJson {
     running: string[];
     blocked: string[];
     completed: string[];
+    promotion_pending: string[];
+    candidate_recorded: string[];
+    registered: string[];
+  };
+  output_review: {
+    studies_with_unpackaged_output: string[];
   };
   artifacts: {
     count: number;
@@ -256,7 +271,6 @@ export interface InstructionsJson {
     kind: 'project' | 'study' | 'task';
     id: string;
   };
-  decision_layer: QddLayer;
   role: QddRole;
   read: string[];
   write: string[];
@@ -419,34 +433,26 @@ export interface BootstrapConfig {
   tools: BootstrapToolRecord[];
 }
 
-// layer-policy.yaml 中一层的默认配置。
-export interface LayerPolicyLayerConfig {
-  role: QddRole;
-  required_skills: string[];
-  optional_skills: string[];
-}
-
-// 某个命令的默认命令语义。
-// - target: 这个命令通常面向哪一类对象
-// - decision_layer: 默认由哪一层做最终判断
-export interface LayerPolicyCommandConfig {
-  target: 'project' | 'study' | 'task';
-  decision_layer: QddLayer;
+// layer-policy.yaml 中某个 role 的默认 skill 配置。
+// 这里是“planning / management 默认读取哪些本地 skills”，
+// 不是 task 执行时的真实 skill 清单。
+export interface LayerPolicyRoleConfig {
+  default_skills: string[];
 }
 
 // `.qdd/layer-policy.yaml` 的结构。
-// 它不是 task 的显式技能清单，而是“层级角色 + 默认技能面 + 命令映射”。
+// 它不是 task 的显式技能清单，而是“命令 -> 角色”与“角色 -> 默认 skills”的轻量策略。
 export interface LayerPolicy {
-  layers: {
-    project: LayerPolicyLayerConfig;
-    study: LayerPolicyLayerConfig;
-    task: LayerPolicyLayerConfig;
-  };
   commands: {
-    'qdd-start': LayerPolicyCommandConfig;
-    'qdd-propose': LayerPolicyCommandConfig;
-    'qdd-explore': LayerPolicyCommandConfig;
-    'qdd-apply': LayerPolicyCommandConfig;
-    'qdd-close': LayerPolicyCommandConfig;
+    'qdd-start': QddRole;
+    'qdd-propose': QddRole;
+    'qdd-explore': QddRole;
+    'qdd-apply': QddRole;
+    'qdd-close': QddRole;
+  };
+  roles: {
+    'thesis-manager': LayerPolicyRoleConfig;
+    'study-brain': LayerPolicyRoleConfig;
+    executor: LayerPolicyRoleConfig;
   };
 }

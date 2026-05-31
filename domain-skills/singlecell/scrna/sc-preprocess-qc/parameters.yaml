@@ -1,0 +1,55 @@
+entry_script: scripts/scrna_preprocess_qc.py
+python_env: CellFM_torch
+summary: Inspect AnnData state and run standard Scanpy preprocessing when raw counts are available.
+methods:
+  auto:
+    description: Detect whether the object still contains raw counts and only run count-based preprocessing when justified.
+  force:
+    description: Treat the selected layer or X matrix as counts and rerun preprocessing even if the object already looks processed.
+  inspect:
+    description: Inspect state, compute QC summaries, and stop without mutating the matrix.
+defaults:
+  mode: auto
+  counts_layer: auto
+  min_genes: 200
+  min_cells: 3
+  max_mt_pct: 20
+  target_sum: 10000
+  hvg_flavor: seurat
+  n_top_genes: 2000
+  scale_max_value: 10
+  run_pca: true
+  n_pcs: 50
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --mode {auto,force,inspect}
+    - --counts-layer <layer-name|X|auto>
+    - --min-genes <int>
+    - --min-cells <int>
+    - --max-mt-pct <float>
+    - --target-sum <float>
+    - --hvg-flavor <seurat|seurat_v3|cell_ranger>
+    - --n-top-genes <int>
+    - --batch-key <obs-column>
+    - --scale-max-value <float>
+    - --n-pcs <int>
+    - --skip-filter
+    - --skip-normalize
+    - --skip-log1p
+    - --skip-hvg
+    - --skip-scale
+    - --skip-pca
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/qc_metrics_obs.csv
+    - tables/qc_metrics_var.csv
+    - tables/highly_variable_genes.csv
+  figures:
+    - figures/qc_histograms.png
+    - figures/mt_scatter.png

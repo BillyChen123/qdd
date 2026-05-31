@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { getStudyArtifactCandidatesPath } from './evidence.js';
+import { getStudyArtifactCandidatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
 import { readLayerPolicy } from './layer-policy.js';
 import { listControlledSkillDomains, listControlledSkillStages, listControlledSkillTags, listLocalSkills, listProblemSkills, normalizeTaskSkillIds, resolveLocalSkills, } from './local-skills.js';
@@ -231,6 +231,22 @@ function validateTaskRecord(task, issues) {
             code: 'invalid_task_skills',
             path: taskPath,
             message: 'Task file must store skills as an array when provided.',
+        });
+    }
+    if (task.promotion_status && !['pending', 'none', 'candidate-recorded', 'registered'].includes(task.promotion_status)) {
+        pushIssue(issues, {
+            level: 'error',
+            code: 'invalid_task_promotion_status',
+            path: taskPath,
+            message: `Task file has invalid promotion_status '${String(task.promotion_status)}'.`,
+        });
+    }
+    if (task.status === 'completed' && (task.promotion_status ?? 'pending') === 'pending') {
+        pushIssue(issues, {
+            level: 'error',
+            code: 'completed_task_pending_promotion_review',
+            path: taskPath,
+            message: 'Completed tasks must not remain at promotion_status pending.',
         });
     }
 }
@@ -461,33 +477,32 @@ export async function validateProject(projectRoot) {
     try {
         const layerPolicy = await readLayerPolicy(projectRoot);
         checked.layerPolicy = true;
-        for (const [layerName, config] of Object.entries(layerPolicy.layers)) {
-            const requiredSkills = await resolveLocalSkills(projectRoot, config.required_skills, { allowPlanningOnly: layerName !== 'task' });
-            const optionalSkills = await resolveLocalSkills(projectRoot, config.optional_skills, { allowPlanningOnly: layerName !== 'task' });
-            for (const workflowSkillId of [...requiredSkills.disallowedWorkflow, ...optionalSkills.disallowedWorkflow]) {
+        for (const [roleName, config] of Object.entries(layerPolicy.roles)) {
+            const defaultSkills = await resolveLocalSkills(projectRoot, config.default_skills, { allowPlanningOnly: roleName === 'study-brain' });
+            for (const workflowSkillId of defaultSkills.disallowedWorkflow) {
                 pushIssue(issues, {
                     level: 'error',
                     code: 'workflow_skill_not_allowed_in_layer_policy',
                     path: PATHS.layerPolicy,
-                    message: `Layer policy for '${layerName}' references workflow skill '${workflowSkillId}'. Layer defaults must use concrete domain skills instead.`,
+                    message: `Role policy for '${roleName}' references workflow skill '${workflowSkillId}'. Role defaults must use local planning or domain skills instead.`,
                 });
             }
-            if (layerName === 'task') {
-                for (const planningSkillId of [...requiredSkills.planningOnly, ...optionalSkills.planningOnly]) {
+            if (roleName !== 'study-brain') {
+                for (const planningSkillId of defaultSkills.planningOnly) {
                     pushIssue(issues, {
                         level: 'error',
                         code: 'planning_skill_not_allowed_in_task_layer_policy',
                         path: PATHS.layerPolicy,
-                        message: `Task layer policy references planning-only brain skill '${planningSkillId}'. Task defaults must stay executor-facing.`,
+                        message: `Role policy for '${roleName}' references planning-only brain skill '${planningSkillId}'. Only study-brain defaults may load planning-only brain skills.`,
                     });
                 }
             }
-            for (const missingSkillId of [...requiredSkills.missing, ...optionalSkills.missing]) {
+            for (const missingSkillId of defaultSkills.missing) {
                 pushIssue(issues, {
                     level: 'error',
                     code: 'missing_layer_policy_skill',
                     path: PATHS.layerPolicy,
-                    message: `Layer policy references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+                    message: `Role policy references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
                 });
             }
         }
@@ -527,8 +542,9 @@ export async function validateProject(projectRoot) {
                         'Theme statement: unspecified',
                         'Current biological focus: unspecified',
                         'Biological system: unspecified',
+                        'Primary datasets: unspecified',
                         'Python: unspecified',
-                        'Linked datasets under `artifacts/data/`: none yet',
+                        'Stable methodological preferences: unspecified',
                     ];
                     if (placeholderMarkers.some((marker) => data.includes(marker))) {
                         pushIssue(issues, {
@@ -716,6 +732,7 @@ export async function validateProject(projectRoot) {
     for (const study of studies) {
         const studyTasks = tasks.filter((task) => task.study_id === study.study_id || (study.task_ids ?? []).includes(task.task_id));
         const inferredState = deriveStudyLifecycleState(study, studyTasks);
+        const unpackagedEntries = await listNonCanonicalStudyOutputEntries(projectRoot, study.study_id);
         if (study.status === 'closed' && studyTasks.some((task) => (task.status ?? 'pending') === 'pending' || task.status === 'running')) {
             pushIssue(issues, {
                 level: 'error',
@@ -730,6 +747,14 @@ export async function validateProject(projectRoot) {
                 code: 'study_state_mismatch',
                 path: `${PATHS.studiesDir}/${study.study_id}/study.md`,
                 message: `Study '${study.study_id}' has status '${study.status}' but current task state suggests '${inferredState}'.`,
+            });
+        }
+        if (unpackagedEntries.length > 0) {
+            pushIssue(issues, {
+                level: 'warning',
+                code: 'noncanonical_study_output_entries',
+                path: `${PATHS.studiesDir}/${study.study_id}/output/`,
+                message: `Study output contains unpackaged non-canonical entries: ${unpackagedEntries.join(', ')}.`,
             });
         }
     }

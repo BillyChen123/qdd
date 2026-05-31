@@ -340,7 +340,7 @@ project-root/
 │   └── .qdd/
 │       ├── instructions.md
 │       ├── bootstrap.yaml
-│       └── layer-policy.yaml
+│       └── layer-policy.yaml    # command -> role, role -> default_skills
 ```
 
 Depending on selected tools, `qdd init` also writes bootstrap assets to locations such as:
@@ -443,6 +443,12 @@ You can already run one bounded study manually:
 
 1. `qdd init`
 2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `artifacts/data/`, `.qdd/layer-policy.yaml`, and the local skill trees under `.codex/skills/`
+
+Current `layer-policy.yaml` is intentionally light:
+
+- `commands` maps each workflow command onto one role
+- `roles` provides `default_skills` for that role
+- executor behavior still comes primarily from `task.md` skill declarations, not from policy-owned execution bundles
 3. `qdd add-study --question ... --hypothesis ...`
 4. `qdd add-task STUDY-001 --goal ...`
 5. let the agent read `qdd instructions PROJECT --command qdd-start --json` and `qdd instructions STUDY-001 --command qdd-apply --json`

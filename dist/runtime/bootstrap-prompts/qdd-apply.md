@@ -25,6 +25,7 @@ If omitted:
 - update study/task Markdown as the work progresses
 - produce outputs in the study output directory
 - package code, figures, tables, and reports so the study stays reviewable
+- review promotion-worthiness before a completed task is left behind
 - maintain `artifact-candidates.yaml` for promotion-worthy reusable outputs
 - register reusable artifacts
 - report progress, blockers, and judgment status
@@ -49,6 +50,7 @@ If omitted:
 
 Treat the returned `read` and `write` paths as authoritative bounds.
 Treat missing local skills reported by `qdd instructions` as real blockers.
+If task-local executor skills are listed in the task instructions, read those skill files before deciding how to run the task.
 
 ---
 
@@ -71,6 +73,8 @@ Do not reopen broad skill selection here.
 
 `qdd-apply` consumes the task's declared executor problem-level skills only.
 
+If a task already declares executor skills, do not skip them and jump straight to unconstrained ad hoc coding.
+
 ---
 
 ## Normalize The Active Task Before Running
@@ -82,12 +86,22 @@ Before or during execution:
 - rewrite the task checklist into task-specific executable steps
 - make sure the expected outputs are concrete
 - make sure inputs and dependencies are still accurate
+- make sure you have actually read the task's declared local skills before choosing methods or writing code
 
 If the task file is too vague to execute responsibly, say so.
 
 In `human` or `assist` mode, bring that problem back to `qdd-explore` if it requires real plan reshaping.
 
 Do not add new task skills here. `qdd-apply` consumes the declared task-local problem-level skill list; it does not invent one or reopen catalog search.
+
+If the declared skill bundle is present and adequate, execution should follow that bundle.
+
+Only fall back to general code generation when:
+
+- the task intentionally has no local executor skill
+- or the installed skill is clearly insufficient for the exact task and you explain that gap explicitly
+
+Even in fallback mode, keep the task aligned with the declared problem class and study boundary.
 
 ---
 
@@ -106,6 +120,36 @@ Examples:
 - generate the figure or report
 - record a blocker with enough detail to be actionable
 
+When a task has declared local executor skills:
+
+1. name the skill(s) you are relying on
+2. read the local skill instructions
+3. execute the task in a way that is consistent with those skill instructions
+4. keep the produced script, figure, table, or report aligned with the selected skill's problem framing
+
+Treat local skills as execution guidance, not optional decoration.
+
+### 2.5 Be patient with heavy analysis
+
+Slow clustering, UMAP, integration, large h5ad I/O, and similar steps are normal.
+
+Do not abandon a method just because it has been running for a few minutes.
+
+Keep waiting and inspect progress first when:
+
+- the process is still alive
+- logs or partial outputs still change
+- the workload is naturally heavy for the dataset size
+
+Treat these as stronger failure signals:
+
+- explicit non-zero exit
+- repeated hard runtime errors
+- sustained non-progress after extended inspection
+- clear resource exhaustion or corrupted inputs
+
+Absence of immediate output is not enough to justify a fallback.
+
 ### 3. Update records as you go
 
 Update the task file when progress changes.
@@ -123,18 +167,22 @@ studies/STUDY-XXX/output/
 Use these subdirectories when the corresponding evidence exists:
 
 ```text
+studies/STUDY-XXX/output/data/
 studies/STUDY-XXX/output/code/
 studies/STUDY-XXX/output/figures/
 studies/STUDY-XXX/output/tables/
 studies/STUDY-XXX/output/reports/
+studies/STUDY-XXX/output/tmp/
 ```
 
 Rules:
 
+- `output/tmp/` is scratch space only; do not leave final study truth there
+- package final reusable outputs back into `output/data|code|figures|tables|reports` before marking the task complete
 - if you ran substantive analysis code, preserve a readable script in `output/code/`
 - if the study claim depends on visual inspection, save at least one key figure in `output/figures/`
 - keep tables and reports in the matching subdirectories when practical
-- keep purely local intermediate files in study output; they do not become artifacts by default
+- keep purely local intermediate files under `output/tmp/` when they are not part of the final study surface
 
 ### 5. Register reusable outputs
 
@@ -144,6 +192,14 @@ When an output is genuinely reusable, either:
 - add it to `studies/STUDY-XXX/output/artifact-candidates.yaml` so `qdd-close` can promote it later
 
 When one task clearly produced the output, include that `task_id` in the candidate entry so provenance survives promotion.
+
+Before you leave a task in `completed`, set its `promotion_status` explicitly:
+
+- `none` when you reviewed the outputs and nothing should be promoted
+- `candidate-recorded` when you reviewed the outputs and wrote one or more entries into `artifact-candidates.yaml`
+- `registered` when you directly registered the reusable output during apply
+
+Do not leave a completed task with implicit or unknown promotion review state.
 
 Do not treat every output file as an artifact.
 
@@ -229,19 +285,25 @@ Next action: update TASK-003 and continue with the first analysis task
 - keep execution aligned to the current study question
 - keep task updates synchronized with real progress
 - notice when the study is already judgeable and stop
+- read and use the task's declared local skills before choosing analysis methods
 - leave behind readable scripts for substantive analyses
 - leave behind key figures when visual evidence matters
 - keep promotion candidates explicit instead of assuming everything should be registered
 - keep reusable outputs registered with provenance
+- set promotion review explicitly before a completed task is considered done
+- package final outputs back out of scratch space into the canonical study output surface
 
 ## Bad Apply Behaviors
 
 - treating one completed task as automatic proof that the whole study is done
 - treating one completed task as automatic proof that apply should stop
+- ignoring declared task-local executor skills and improvising a different execution path without explanation
 - silently redesigning the plan in `human` or `assist` mode
 - leaving task files stale while work progresses
 - keeping a generic checklist when the real task has become specific
 - finishing a study without the script that produced the main analysis result
+- marking a task completed while `promotion_status` is still effectively pending
+- leaving task-local top-level folders in `output/` instead of packaging back into canonical directories
 - relying on visual claims without saving the figure that supports them
 - registering every output file just because it exists
 
@@ -272,6 +334,9 @@ At that point, say which next workflow is appropriate:
 - Preserve readable scripts in `output/code/` for substantive analyses.
 - Save key figures in `output/figures/` when visual evidence matters.
 - Use `artifact-candidates.yaml` as the explicit promotion boundary for reusable outputs.
+- Set `promotion_status` explicitly before leaving a task completed.
+- Use `output/tmp/` only as scratch space and package final outputs back into canonical study directories.
 - Register reusable outputs with provenance.
+- Treat slow clustering, UMAP, integration, and large h5ad processing as normal long-running work unless there is real evidence of failure.
 - In `human` and `assist` mode, return to `qdd-explore` when plan restructuring is needed.
 - In `auto` mode, only append a minimal new task when it is strictly required and still inside the study boundary.

@@ -14,46 +14,62 @@ tags:
 
 # singlecell/scrna/sc-preprocess-qc
 
-这个 skill 对应的问题不是“怎么调用某个 API”，而是：
+## 入口
 
-> 这份单细胞对象现在是什么状态，是否需要标准预处理与 QC？
+- script: `scripts/scrna_preprocess_qc.py`
+- params: `parameters.yaml`
+- environment: `CellFM_torch`
 
 ## 什么时候用
 
 - 输入是 `h5ad` / `AnnData`
 - 需要判断 `.X`、`layers`、`raw` 的状态
-- 需要决定是否做过滤、归一化、log1p、HVG
+- 需要决定是否做过滤、归一化、`log1p`、HVG、PCA
 
-## 任务目标
+## 支持模式
 
-- 明确对象当前状态
-- 明确是否应从 raw counts 开始
-- 给出可复查的预处理脚本和参数
+- `auto`: 自动判断当前矩阵是否像 raw counts，只在合理时执行 count-based preprocessing
+- `force`: 把指定层强制当作 counts 重跑
+- `inspect`: 只做状态检查和 QC 汇总，不改矩阵
 
-## 不要做的事
+## 关键参数
 
-- 不看对象状态就默认重复预处理
-- 把已经处理过的数据再当 raw counts 重跑
-- 只写结论不留脚本
+- `--counts-layer auto|X|<layer>`
+- `--min-genes`
+- `--min-cells`
+- `--max-mt-pct`
+- `--target-sum`
+- `--hvg-flavor`
+- `--n-top-genes`
+- `--batch-key`
+- `--scale-max-value`
+- `--n-pcs`
 
-## 默认检查项
+## 示例
 
-1. `.X` 是否接近整数 counts
-2. `adata.layers` 是否已有原始层或标准化层
-3. `adata.raw` 是否存在
-4. `obs` 是否已有 sample / batch / condition 信息
-5. 是否需要细胞与基因过滤
+```bash
+conda run -n CellFM_torch python \
+  domain-skills/singlecell/scrna/sc-preprocess-qc/scripts/scrna_preprocess_qc.py \
+  --input data/input.h5ad \
+  --output outputs/preprocess_qc \
+  --mode auto \
+  --batch-key sample_id
+```
 
-## 常见实现
+## 输出
 
-- `sc.pp.filter_cells`
-- `sc.pp.filter_genes`
-- `sc.pp.normalize_total`
-- `sc.pp.log1p`
-- `sc.pp.highly_variable_genes`
+- `processed.h5ad`
+- `report.md`
+- `result.json`
+- `tables/qc_metrics_obs.csv`
+- `tables/qc_metrics_var.csv`
+- `tables/highly_variable_genes.csv`（如果执行了 HVG）
+- `figures/qc_histograms.png`
+- `figures/mt_scatter.png`
 
-## 最低产出
+## 注意事项
 
-- `output/code/` 中的可运行脚本
-- `output/reports/` 中的数据状态说明
-- 必要时给出 QC 图
+- 不看对象状态就重复预处理是错误的
+- 如果对象已经 log-normalized，`auto` 模式通常不会重跑 counts-based preprocessing
+- 如果执行了 `log1p`，脚本会在 HVG 截断和 scaling 之前保留 `.raw`，方便后续 marker 分析
+- 这个脚本默认不做 neighbors / clustering；它的职责是把对象预处理到可下游分析的状态
