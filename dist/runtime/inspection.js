@@ -502,7 +502,7 @@ export async function validateProject(projectRoot) {
                     level: 'error',
                     code: 'missing_layer_policy_skill',
                     path: PATHS.layerPolicy,
-                    message: `Role policy references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+                    message: `Role policy references domain skill '${missingSkillId}', but it does not exist under the QDD root domain-skills/ library.`,
                 });
             }
         }
@@ -583,7 +583,7 @@ export async function validateProject(projectRoot) {
             level: 'warning',
             code: 'missing_local_skill_registry',
             path: PATHS.codexSkillsDir,
-            message: 'Project-local skill inventory .codex/skills/ is missing.',
+            message: 'Project-local workflow skill surface .codex/skills/ is missing.',
         });
     }
     const problemSkills = await listProblemSkills(projectRoot);
@@ -693,7 +693,7 @@ export async function validateProject(projectRoot) {
                 level: 'error',
                 code: 'missing_local_skill_reference',
                 path: taskRelativePath,
-                message: `Task references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+                message: `Task references domain skill '${missingSkillId}', but it does not exist under the QDD root domain-skills/ library.`,
             });
         }
         for (const skillId of normalizeTaskSkillIds(task.skills ?? [])) {

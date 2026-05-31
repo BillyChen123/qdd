@@ -36,9 +36,9 @@ Installed by `qdd init` today:
 - `.qdd/instructions.md`
 - `.qdd/bootstrap.yaml`
 - `.qdd/skills-catalog.json`
-- categorized local skill inventory under `.codex/skills/`
-- mirrored Claude skill surface under `.claude/skills/`
-- all central domain skills from `domain-skills/` projected into project-local skill trees
+- QDD workflow skills under `.codex/skills/qdd/`
+- mirrored QDD workflow surface under `.claude/skills/qdd/`
+- central domain skill source recorded from repository-root `domain-skills/`
 - Claude command surfaces: `qdd-start`, `qdd-propose`, `qdd-explore`, `qdd-apply`, `qdd-close`
 - Optional Codex global prompts via `qdd init --tool codex`
 
@@ -275,8 +275,8 @@ Responsibility:
 - distinguish `brain/*` planning skills from executor problem-level skills
 - derive `.qdd/skills-catalog.json`
 - provide bounded problem-skill suggestion for planning
-- maintain the categorized local skill contract under `.codex/skills/` and mirrored `.claude/skills/`
-- project all central domain skills from `domain-skills/` into new projects
+- maintain the project-local QDD workflow skill surface under `.codex/skills/qdd/` and `.claude/skills/qdd/`
+- resolve executor / brain skills from the central `domain-skills/` source tree
 - read and write core YAML state plus open `context/` resources
 - expose project-level onboarding instructions through `PROJECT`
 - read study/task Markdown frontmatter
@@ -330,13 +330,11 @@ project-root/
 │   │   └── reports/
 │   ├── .codex/
 │   │   └── skills/
-│   │       ├── qdd/
-│   │       └── <category>/<skill>/
+│   │       └── qdd/
 │   ├── .claude/
 │   │   ├── commands/
 │   │   └── skills/
-│   │       ├── qdd/
-│   │       └── <category>/<skill>/
+│   │       └── qdd/
 │   └── .qdd/
 │       ├── instructions.md
 │       ├── bootstrap.yaml
@@ -384,9 +382,9 @@ studies/
 - YAML store helpers
 - Markdown-first context bootstrap (`context/resources.md`)
 - central `domain-skills/` source tree for reusable domain skills
-- categorized task-skill inventory under `.codex/skills/`
-- mirrored Claude skill surface under `.claude/skills/`
-- projection of all central domain skills into initialized projects
+- project-local QDD workflow skills under `.codex/skills/qdd/`
+- mirrored Claude QDD workflow surface under `.claude/skills/qdd/`
+- central domain-skill resolution without project-local mirroring
 - Markdown document read/write helpers
 - study/task frontmatter discovery
 - study creation command
@@ -442,7 +440,7 @@ In short: the core loop exists, but the usability and hardening layer is still t
 You can already run one bounded study manually:
 
 1. `qdd init`
-2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `artifacts/data/`, `.qdd/layer-policy.yaml`, and the local skill trees under `.codex/skills/`
+2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `artifacts/data/`, and `.qdd/layer-policy.yaml`
 
 Current `layer-policy.yaml` is intentionally light:
 

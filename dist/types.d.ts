@@ -205,6 +205,7 @@ export interface BootstrapConfig {
     version: number;
     installed_at: string;
     instructions_path: string;
+    domain_skills_root: string;
     tools: BootstrapToolRecord[];
 }
 export interface LayerPolicyRoleConfig {

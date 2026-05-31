@@ -1,6 +1,7 @@
 import path from 'node:path';
 import * as nodeFs from 'node:fs/promises';
 import type {
+  ArtifactCandidateManifest,
   ArtifactIndex,
   ArtifactIndexEntry,
   ArtifactScope,
@@ -21,6 +22,7 @@ import {
   getStudyOutputDir,
   listNonCanonicalStudyOutputEntries,
   relocateArtifactToCanonicalPath,
+  readArtifactCandidateManifest,
   readNormalizedArtifactCandidatesForPromotion,
   resolveProjectRelativeFilePath,
 } from './evidence.js';
@@ -83,6 +85,17 @@ export interface CreatedTaskResult {
 export interface RegisteredArtifactResult {
   artifactId: string;
   entry: ArtifactIndexEntry;
+}
+
+export interface RecordArtifactCandidateOptions {
+  artifactType: ArtifactType;
+  description: string;
+  studyId: string;
+  taskId?: string;
+  reusable?: boolean;
+  scope?: ArtifactScope;
+  schema?: string;
+  promotionStatus?: TaskPromotionStatus | null;
 }
 
 function formatSequentialId(prefix: string, index: number): string {
@@ -332,7 +345,7 @@ export async function createStudy(projectRoot: string, options: AddStudyOptions 
   };
 }
 
-// 创建 task 时会立即校验 skills 是否真实存在于 .codex/skills/ 下。
+// 创建 task 时会立即校验 skills 是否真实存在于 central domain-skills/ 下。
 // 这样 task 记录本身就是“可执行约束”，而不是任意文本。
 export async function createTask(projectRoot: string, studyId: string, options: AddTaskOptions = {}): Promise<CreatedTaskResult> {
   const study = await readStudyDocument(projectRoot, studyId);
@@ -355,7 +368,7 @@ export async function createTask(projectRoot: string, studyId: string, options: 
 
   if (resolvedSkills.missing.length > 0) {
     throw new Error(
-      `Task skills must already exist under ${PATHS.codexSkillsDir}/ before they are referenced: ${resolvedSkills.missing.join(', ')}.`
+      `Task skills must already exist under the QDD root domain-skills/ library before they are referenced: ${resolvedSkills.missing.join(', ')}.`
     );
   }
 
@@ -464,6 +477,45 @@ async function ensureTaskArtifactReference(
     updated_at: new Date().toISOString(),
   };
   await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+}
+
+export async function recordArtifactCandidate(
+  projectRoot: string,
+  targetPath: string,
+  options: RecordArtifactCandidateOptions
+): Promise<string> {
+  const sourceRelativePath = await resolveProjectRelativeFilePath(projectRoot, targetPath);
+  const manifestPath = getStudyArtifactCandidatesPath(options.studyId);
+  const manifest = await readArtifactCandidateManifest(projectRoot, options.studyId);
+  const nextEntry = {
+    path: sourceRelativePath,
+    type: options.artifactType,
+    task_id: options.taskId,
+    reusable: options.reusable ?? true,
+    scope: options.scope ?? (options.taskId ? 'task' : 'study'),
+    description: options.description,
+    schema: options.schema ?? 'unspecified',
+  };
+  const nextManifest: ArtifactCandidateManifest = {
+    artifact_candidates: [
+      ...(manifest.artifact_candidates ?? []).filter((entry) => String(entry.path ?? '').trim() !== sourceRelativePath),
+      nextEntry,
+    ],
+  };
+
+  await writeYamlFile(projectRoot, manifestPath, nextManifest);
+
+  if (options.taskId && options.promotionStatus) {
+    const taskDocument = await findTaskDocument(projectRoot, options.taskId);
+    const updatedTaskRecord: TaskRecord = {
+      ...taskDocument.record,
+      promotion_status: options.promotionStatus,
+      updated_at: new Date().toISOString(),
+    };
+    await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+  }
+
+  return sourceRelativePath;
 }
 
 // 把某个文件登记进 artifacts/index.yaml。

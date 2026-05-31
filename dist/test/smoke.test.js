@@ -6,7 +6,7 @@ import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { buildStatus } from '../runtime/status.js';
 import { buildInstructions } from '../runtime/instructions.js';
-import { createStudy, createTask, registerArtifact, closeStudy } from '../runtime/lifecycle.js';
+import { createStudy, createTask, registerArtifact, closeStudy, recordArtifactCandidate } from '../runtime/lifecycle.js';
 import { listArtifacts, listContext, validateProject } from '../runtime/inspection.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 test('qdd init creates minimal project structure', async () => {
@@ -39,14 +39,15 @@ test('qdd init creates minimal project structure', async () => {
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-explore', 'SKILL.md')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-apply', 'SKILL.md')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-close', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'brain', 'study-planning-core', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'brain', 'study-planning-core', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-preprocess-qc', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-batch-integration', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-clustering', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-marker-annotation', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'singlecell', 'scrna', 'sc-preprocess-qc', 'SKILL.md')));
-    await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'singlecell', 'scrna', 'sc-batch-integration', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'brain', 'study-planning-core', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.claude', 'skills', 'brain', 'study-planning-core', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-preprocess-qc', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-batch-integration', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-clustering', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'sc-marker-annotation', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, 'domain-skills', 'brain', 'study-planning-core', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, 'domain-skills', 'singlecell', 'scrna', 'sc-preprocess-qc', 'SKILL.md')));
+    await assert.rejects(fs.access(path.join(projectRoot, 'domain-skills', 'singlecell', 'scrna', 'sc-batch-integration', 'SKILL.md')));
     const status = await buildStatus(projectRoot);
     assert.equal(status.project.mode, 'human');
     assert.equal(status.artifacts.count, 0);
@@ -64,7 +65,7 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(instructions, /qdd-explore/);
     assert.match(instructions, /qdd-apply/);
     assert.match(instructions, /qdd-close/);
-    assert.match(instructions, /\.codex\/skills\//);
+    assert.match(instructions, /domain-skills\//);
     assert.match(instructions, /qdd instructions PROJECT --command qdd-start --json/);
     assert.match(instructions, /qdd instructions <id> --command <qdd-\.\.\.> --json/);
     assert.match(instructions, /\.qdd\/layer-policy\.yaml/);
@@ -81,11 +82,12 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(bootstrapConfig, /tool: codex/);
     assert.match(bootstrapConfig, /workflow: qdd-start/);
     assert.match(bootstrapConfig, /workflow: qdd-propose/);
+    assert.match(bootstrapConfig, /domain_skills_root:/);
     const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
     assert.match(startCommand, /qdd instructions PROJECT --command qdd-start --json/);
     assert.match(startCommand, /ln -s/);
     assert.match(startCommand, /artifacts\/data\/source\.h5ad/);
-    assert.match(startCommand, /\.codex\/skills\//);
+    assert.match(startCommand, /domain-skills\//);
     assert.match(startCommand, /durable analyst preferences/);
     const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
     assert.match(proposeCommand, /qdd add-study/);
@@ -167,7 +169,7 @@ test('qdd init can install codex prompts and refresh bootstrap assets', async ()
         }
     }
 });
-test('qdd init projects central domain skills into project tool directories', async () => {
+test('qdd init records central domain skills source without projecting domain skills into project tool directories', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-domain-skills-project-'));
     const domainSkillsSourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-domain-skills-source-'));
     const codexHome = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-domain-skills-codex-home-'));
@@ -196,55 +198,13 @@ test('qdd init projects central domain skills into project tool directories', as
             tools: ['claude', 'codex'],
             domainSkillsSourceDir,
         });
-        const codexSkillPath = path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'custom-qc', 'SKILL.md');
-        const claudeSkillPath = path.join(projectRoot, '.claude', 'skills', 'singlecell', 'scrna', 'custom-qc', 'SKILL.md');
-        const codexScriptPath = path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'custom-qc', 'scripts', 'run.py');
-        const claudeScriptPath = path.join(projectRoot, '.claude', 'skills', 'singlecell', 'scrna', 'custom-qc', 'scripts', 'run.py');
-        await assert.doesNotReject(fs.access(codexSkillPath));
-        await assert.doesNotReject(fs.access(claudeSkillPath));
-        await assert.doesNotReject(fs.access(codexScriptPath));
-        await assert.doesNotReject(fs.access(claudeScriptPath));
-        await fs.writeFile(codexSkillPath, [
-            '---',
-            'name: singlecell/scrna/custom-qc',
-            'description: Custom qc skill',
-            'domain: singlecell',
-            'stage: preprocess',
-            'tags:',
-            '  - scanpy',
-            '  - qc',
-            '---',
-            '',
-            '# local override',
-            '',
-        ].join('\n'), 'utf-8');
-        await fs.writeFile(path.join(domainSkillsSourceDir, 'singlecell', 'scrna', 'custom-qc', 'SKILL.md'), [
-            '---',
-            'name: singlecell/scrna/custom-qc',
-            'description: Custom qc skill',
-            'domain: singlecell',
-            'stage: preprocess',
-            'tags:',
-            '  - scanpy',
-            '  - qc',
-            '---',
-            '',
-            '# singlecell/scrna/custom-qc',
-            '',
-            'Updated upstream content.',
-            '',
-        ].join('\n'), 'utf-8');
-        await initCommand(projectRoot, {
-            tools: ['claude', 'codex'],
-            domainSkillsSourceDir,
-        });
-        assert.match(await fs.readFile(codexSkillPath, 'utf-8'), /# local override/);
-        await initCommand(projectRoot, {
-            tools: ['claude', 'codex'],
-            refreshBootstrap: true,
-            domainSkillsSourceDir,
-        });
-        assert.match(await fs.readFile(codexSkillPath, 'utf-8'), /Updated upstream content/);
+        await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'singlecell', 'scrna', 'custom-qc', 'SKILL.md')));
+        await assert.rejects(fs.access(path.join(projectRoot, '.claude', 'skills', 'singlecell', 'scrna', 'custom-qc', 'SKILL.md')));
+        const bootstrapConfig = await fs.readFile(path.join(projectRoot, '.qdd', 'bootstrap.yaml'), 'utf-8');
+        assert.match(bootstrapConfig, /domain_skills_root:/);
+        assert.match(bootstrapConfig, /qdd-domain-skills-source-/);
+        const instructions = await buildInstructions(projectRoot, 'PROJECT', { command: 'qdd-start' });
+        assert.ok(instructions.read.some((entry) => entry.endsWith('singlecell/scrna/custom-qc/SKILL.md')));
     }
     finally {
         if (previousCodexHome === undefined) {
@@ -366,9 +326,9 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(projectInstructions.read.includes('contract.yaml'));
     assert.ok(projectInstructions.read.includes('context/resources.md'));
     assert.ok(projectInstructions.read.includes('artifacts/data/'));
-    assert.ok(projectInstructions.read.includes('.codex/skills/'));
-    assert.ok(projectInstructions.read.includes('.codex/skills/qdd/qdd-start/SKILL.md'));
-    assert.ok(projectInstructions.read.includes('.claude/skills/qdd/qdd-start/SKILL.md'));
+    assert.ok(projectInstructions.read.includes('domain-skills/'));
+    assert.ok(projectInstructions.read.includes('.codex/skills/qdd/'));
+    assert.ok(projectInstructions.read.includes('.claude/skills/qdd/'));
     assert.ok(projectInstructions.read.includes('.qdd/layer-policy.yaml'));
     assert.ok(projectInstructions.read.includes('.qdd/skills-catalog.json'));
     assert.ok(projectInstructions.write.includes('artifacts/data/'));
@@ -383,8 +343,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/output/artifact-candidates.yaml'));
     assert.ok(studyApplyInstructions.read.includes('context/resources.md'));
     assert.ok(studyApplyInstructions.read.includes('artifacts/data/study-source.h5ad'));
-    assert.ok(studyApplyInstructions.read.includes('.codex/skills/singlecell/scrna/sc-batch-integration/SKILL.md'));
-    assert.ok(studyApplyInstructions.read.includes('.claude/skills/singlecell/scrna/sc-batch-integration/SKILL.md'));
+    assert.ok(studyApplyInstructions.read.some((entry) => entry.endsWith('domain-skills/singlecell/scrna/sc-batch-integration/SKILL.md')));
     assert.deepEqual(studyApplyInstructions.required_skills, ['singlecell/scrna/sc-batch-integration']);
     assert.deepEqual(studyApplyInstructions.optional_skills, []);
     assert.ok(studyApplyInstructions.rules.includes('qdd-propose owns the first-pass study and task-graph creation.'));
@@ -412,14 +371,13 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(taskInstructions.read.includes('context/resources.md'));
     assert.ok(taskInstructions.read.includes('context/datasets.yaml'));
     assert.ok(taskInstructions.read.includes('artifacts/data/study-source.h5ad'));
-    assert.ok(taskInstructions.read.includes('.codex/skills/singlecell/scrna/sc-batch-integration/SKILL.md'));
-    assert.ok(taskInstructions.read.includes('.claude/skills/singlecell/scrna/sc-batch-integration/SKILL.md'));
+    assert.ok(taskInstructions.read.some((entry) => entry.endsWith('domain-skills/singlecell/scrna/sc-batch-integration/SKILL.md')));
     assert.deepEqual(taskInstructions.required_skills, ['singlecell/scrna/sc-batch-integration']);
     assert.deepEqual(taskInstructions.optional_skills, []);
     assert.ok(taskInstructions.rules.includes('Keep task checklist progress in the task Markdown body.'));
     assert.ok(taskInstructions.rules.includes('Rewrite the weak checklist scaffold into task-specific executable steps before or during execution.'));
     assert.ok(taskInstructions.rules.includes('Keep the task minimal and evidence-producing.'));
-    assert.ok(taskInstructions.rules.includes('Only rely on domain task skills that exist under .codex/skills/.'));
+    assert.ok(taskInstructions.rules.includes('Only rely on domain task skills that exist under the QDD root domain-skills/ library.'));
     assert.ok(taskInstructions.rules.includes('qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.'));
     assert.ok(taskInstructions.rules.includes('If task-local executor skills are present, read them first and use them as the primary execution guidance for this task.'));
     assert.ok(taskInstructions.rules.includes('Do not bypass declared task-local executor skills with unconstrained ad hoc coding unless you make the gap explicit.'));
@@ -429,7 +387,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(taskInstructions.rules.includes('Treat slow clustering, UMAP, integration, and large h5ad processing as normal long-running work unless there is explicit evidence of failure.'));
     const studyExploreInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-explore' });
     assert.equal(studyExploreInstructions.role, 'study-brain');
-    assert.ok(studyExploreInstructions.read.includes('.codex/skills/brain/study-planning-core/SKILL.md'));
+    assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/study-planning-core/SKILL.md')));
     assert.ok(studyExploreInstructions.read.includes('.qdd/skills-catalog.json'));
     assert.ok(studyExploreInstructions.rules.includes('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.'));
     assert.ok(studyExploreInstructions.rules.includes('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.'));
@@ -594,6 +552,47 @@ test('qdd closeStudy promotes artifacts before writing question_delta', async ()
     assert.doesNotMatch(evolution, /Should not be written/);
     const artifactList = await listArtifacts(projectRoot);
     assert.equal(artifactList.artifacts.length, 0);
+});
+test('qdd recordArtifactCandidate can promote a code candidate through closeStudy', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-code-candidate-'));
+    await initCommand(projectRoot);
+    const createdStudy = await createStudy(projectRoot, {
+        question: 'Can a preserved analysis script be promoted as a code artifact?',
+        hypothesis: 'The executed study-local script should promote through the normal candidate path.',
+    });
+    const createdTask = await createTask(projectRoot, createdStudy.studyId, {
+        goal: 'Run one substantive analysis script',
+        expectedOutputs: ['analysis.py'],
+        skills: ['singlecell/scrna/sc-clustering'],
+    });
+    const taskPath = path.join(projectRoot, createdTask.relativePath);
+    const originalTaskContent = await fs.readFile(taskPath, 'utf-8');
+    await fs.writeFile(taskPath, originalTaskContent.replace('status: pending', 'status: completed'), 'utf-8');
+    const scriptPath = path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'code', 'cluster-analysis.py');
+    await fs.writeFile(scriptPath, 'print("cluster analysis")\n', 'utf-8');
+    await recordArtifactCandidate(projectRoot, scriptPath, {
+        artifactType: 'code',
+        description: 'Main executed clustering script',
+        studyId: createdStudy.studyId,
+        taskId: createdTask.taskId,
+        schema: 'python-script',
+        promotionStatus: 'candidate-recorded',
+    });
+    await closeStudy(projectRoot, createdStudy.studyId, {
+        questionAfter: 'Which clustering result deserves follow-up validation?',
+        changeType: 'refinement',
+        changeDriver: 'The executed script produced a stable first-pass clustering surface.',
+        openBoundaries: ['Need annotation validation'],
+    });
+    const artifactList = await listArtifacts(projectRoot);
+    assert.equal(artifactList.artifacts.length, 1);
+    assert.equal(artifactList.artifacts[0].type, 'code');
+    assert.match(artifactList.artifacts[0].path, /^artifacts\/code\/ART-001-cluster-analysis\.py$/);
+    const updatedTaskContent = await fs.readFile(taskPath, 'utf-8');
+    assert.match(updatedTaskContent, /promotion_status: candidate-recorded/);
+    assert.match(updatedTaskContent, /artifact_ids:\n  - ART-001/);
+    assert.equal((await fs.lstat(scriptPath)).isSymbolicLink(), true);
+    assert.equal(await fs.realpath(scriptPath), path.join(projectRoot, 'artifacts', 'code', 'ART-001-cluster-analysis.py'));
 });
 test('qdd inspection commands expose artifacts and context without mutating state', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-inspect-'));

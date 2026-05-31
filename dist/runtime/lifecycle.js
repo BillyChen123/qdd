@@ -3,7 +3,7 @@ import * as nodeFs from 'node:fs/promises';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { buildCanonicalArtifactPath, ensureStudyOutputLayout, getStudyArtifactCandidatesPath, getStudyOutputDir, listNonCanonicalStudyOutputEntries, relocateArtifactToCanonicalPath, readNormalizedArtifactCandidatesForPromotion, resolveProjectRelativeFilePath, } from './evidence.js';
+import { buildCanonicalArtifactPath, ensureStudyOutputLayout, getStudyArtifactCandidatesPath, getStudyOutputDir, listNonCanonicalStudyOutputEntries, relocateArtifactToCanonicalPath, readArtifactCandidateManifest, readNormalizedArtifactCandidatesForPromotion, resolveProjectRelativeFilePath, } from './evidence.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile, } from './store.js';
 import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
 const STUDY_ID_PATTERN = /^STUDY-(\d{3})$/;
@@ -222,7 +222,7 @@ export async function createStudy(projectRoot, options = {}) {
         relativePath: `${studyDir}/study.md`,
     };
 }
-// 创建 task 时会立即校验 skills 是否真实存在于 .codex/skills/ 下。
+// 创建 task 时会立即校验 skills 是否真实存在于 central domain-skills/ 下。
 // 这样 task 记录本身就是“可执行约束”，而不是任意文本。
 export async function createTask(projectRoot, studyId, options = {}) {
     const study = await readStudyDocument(projectRoot, studyId);
@@ -237,7 +237,7 @@ export async function createTask(projectRoot, studyId, options = {}) {
         throw new Error(`Task skills must not include planning-only brain skills: ${resolvedSkills.planningOnly.join(', ')}. Move them to study planning and keep task skills executor-facing.`);
     }
     if (resolvedSkills.missing.length > 0) {
-        throw new Error(`Task skills must already exist under ${PATHS.codexSkillsDir}/ before they are referenced: ${resolvedSkills.missing.join(', ')}.`);
+        throw new Error(`Task skills must already exist under the QDD root domain-skills/ library before they are referenced: ${resolvedSkills.missing.join(', ')}.`);
     }
     const taskRecord = {
         task_id: taskId,
@@ -321,6 +321,37 @@ async function ensureTaskArtifactReference(projectRoot, taskId, artifactId, prom
         updated_at: new Date().toISOString(),
     };
     await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+}
+export async function recordArtifactCandidate(projectRoot, targetPath, options) {
+    const sourceRelativePath = await resolveProjectRelativeFilePath(projectRoot, targetPath);
+    const manifestPath = getStudyArtifactCandidatesPath(options.studyId);
+    const manifest = await readArtifactCandidateManifest(projectRoot, options.studyId);
+    const nextEntry = {
+        path: sourceRelativePath,
+        type: options.artifactType,
+        task_id: options.taskId,
+        reusable: options.reusable ?? true,
+        scope: options.scope ?? (options.taskId ? 'task' : 'study'),
+        description: options.description,
+        schema: options.schema ?? 'unspecified',
+    };
+    const nextManifest = {
+        artifact_candidates: [
+            ...(manifest.artifact_candidates ?? []).filter((entry) => String(entry.path ?? '').trim() !== sourceRelativePath),
+            nextEntry,
+        ],
+    };
+    await writeYamlFile(projectRoot, manifestPath, nextManifest);
+    if (options.taskId && options.promotionStatus) {
+        const taskDocument = await findTaskDocument(projectRoot, options.taskId);
+        const updatedTaskRecord = {
+            ...taskDocument.record,
+            promotion_status: options.promotionStatus,
+            updated_at: new Date().toISOString(),
+        };
+        await writeMarkdownDocument(projectRoot, taskDocument.relativePath, updatedTaskRecord, taskDocument.body);
+    }
+    return sourceRelativePath;
 }
 // 把某个文件登记进 artifacts/index.yaml。
 // 注意 produced_by 是 provenance，scope 是复用边界，两者分开记录。

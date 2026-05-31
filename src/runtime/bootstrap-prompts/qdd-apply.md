@@ -61,13 +61,13 @@ Before executing, answer these questions:
 - which task is the current first move?
 - which expected output makes the study more judgeable?
 - are there blockers already recorded that must be resolved first?
-- do the declared domain skills actually exist under `.codex/skills/`?
+- do the declared domain skills actually exist under the QDD root `domain-skills/` library?
 
 If the study has multiple tasks, make the execution order explicit and keep moving while the next planned step is still clear.
 
 If the study has only one task, start there.
 
-If a task declares missing local skills, stop immediately. In this case `qdd-apply` is hard-blocked until the missing skill is installed under `.codex/skills/` or the task is rewritten through `qdd-explore`.
+If a task declares missing domain skills, stop immediately. In this case `qdd-apply` is hard-blocked until the missing skill exists under the QDD root `domain-skills/` library or the task is rewritten through `qdd-explore`.
 
 Do not reopen broad skill selection here.
 
@@ -180,6 +180,7 @@ Rules:
 - `output/tmp/` is scratch space only; do not leave final study truth there
 - package final reusable outputs back into `output/data|code|figures|tables|reports` before marking the task complete
 - if you ran substantive analysis code, preserve a readable script in `output/code/`
+- if one script is the main executed analysis surface for this task, normally record it in `artifact-candidates.yaml` as `type: code` unless you directly register it
 - if the study claim depends on visual inspection, save at least one key figure in `output/figures/`
 - keep tables and reports in the matching subdirectories when practical
 - keep purely local intermediate files under `output/tmp/` when they are not part of the final study surface

@@ -45,7 +45,7 @@ Examples:
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
 6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
-7. If task-level executor skill choice matters, inspect study-brain guidance under `.codex/skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
+7. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
 8. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
 
 ---
@@ -177,7 +177,7 @@ Write them concretely:
 - `## Input`: actual study/context/artifact inputs
 - `## Expected Output`: the specific evidence this task should produce
 - `## Checklist`: rewrite the scaffold into task-specific executable steps
-- `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under `.codex/skills/`, and are valid in `.qdd/skills-catalog.json`
+- `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under the QDD root `domain-skills/` library, and are valid in `.qdd/skills-catalog.json`
 - never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
 - if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
 

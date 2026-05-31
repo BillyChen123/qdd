@@ -589,7 +589,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
           level: 'error',
           code: 'missing_layer_policy_skill',
           path: PATHS.layerPolicy,
-          message: `Role policy references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+          message: `Role policy references domain skill '${missingSkillId}', but it does not exist under the QDD root domain-skills/ library.`,
         });
       }
     }
@@ -673,7 +673,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
       level: 'warning',
       code: 'missing_local_skill_registry',
       path: PATHS.codexSkillsDir,
-      message: 'Project-local skill inventory .codex/skills/ is missing.',
+      message: 'Project-local workflow skill surface .codex/skills/ is missing.',
     });
   }
 
@@ -795,7 +795,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
         level: 'error',
         code: 'missing_local_skill_reference',
         path: taskRelativePath,
-        message: `Task references local skill '${missingSkillId}', but it does not exist under ${PATHS.codexSkillsDir}/.`,
+        message: `Task references domain skill '${missingSkillId}', but it does not exist under the QDD root domain-skills/ library.`,
       });
     }
 

@@ -1,6 +1,5 @@
 import os from 'node:os';
 import path from 'node:path';
-import * as fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
@@ -101,59 +100,6 @@ function resolveToolSkillPath(projectRoot, tool, workflowId) {
             return path.join(projectRoot, PATHS.codexSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
     }
 }
-function resolveToolSkillDir(projectRoot, tool, skillId) {
-    switch (tool) {
-        case 'claude':
-            return path.join(projectRoot, PATHS.claudeSkillsDir, skillId);
-        case 'codex':
-            return path.join(projectRoot, PATHS.codexSkillsDir, skillId);
-    }
-}
-async function collectDomainSkillSources(sourceRoot, relativeDir, results) {
-    const absoluteDir = relativeDir.length > 0 ? path.join(sourceRoot, relativeDir) : sourceRoot;
-    const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
-    const hasSkillFile = entries.some((entry) => entry.isFile() && entry.name === 'SKILL.md');
-    if (hasSkillFile && relativeDir.length > 0 && relativeDir.includes('/')) {
-        results.push({
-            id: relativeDir,
-            sourceDir: absoluteDir,
-        });
-        return;
-    }
-    for (const entry of entries) {
-        if (!entry.isDirectory()) {
-            continue;
-        }
-        const childRelativeDir = relativeDir.length > 0 ? path.posix.join(relativeDir, entry.name) : entry.name;
-        await collectDomainSkillSources(sourceRoot, childRelativeDir, results);
-    }
-}
-// 递归发现 domain-skills/ 下的 skill 目录。
-// 例如：
-// - genomics/scanpy-core-workflow/SKILL.md -> genomics/scanpy-core-workflow
-// - singlecell/scrna/sc-batch-integration/SKILL.md -> singlecell/scrna/sc-batch-integration
-async function discoverDomainSkills(sourceRoot) {
-    if (!(await FileSystemUtils.directoryExists(sourceRoot))) {
-        return [];
-    }
-    const results = [];
-    await collectDomainSkillSources(sourceRoot, '', results);
-    return results.sort((left, right) => left.id.localeCompare(right.id));
-}
-// 把一个领域 skill 投影进项目目录。
-// 默认不覆盖项目里已经存在的同名 skill，避免用户本地改动被静默冲掉；
-// 只有 refresh 模式才会重装。
-async function projectDomainSkill(sourceDir, targetDir, refresh) {
-    const targetSkillFile = path.join(targetDir, 'SKILL.md');
-    if (!refresh && (await FileSystemUtils.fileExists(targetSkillFile))) {
-        return;
-    }
-    if (refresh) {
-        await fs.rm(targetDir, { recursive: true, force: true });
-    }
-    await FileSystemUtils.createDirectory(path.dirname(targetDir));
-    await fs.cp(sourceDir, targetDir, { recursive: true });
-}
 function formatToolAsset(tool, content) {
     switch (tool) {
         case 'claude':
@@ -200,12 +146,15 @@ export async function resolveBootstrapToolsForInit(projectRoot, requestedTools) 
 }
 // 安装 QDD bootstrap：
 // 1. 写 workflow prompts/commands/skills
-// 2. 投影 domain skills 到 .codex/.claude
+// 2. 不再把 domain skills 投影到项目目录；领域 skill 真相源固定在 QDD 根 domain-skills/
 // 3. 记录 bootstrap.yaml，方便后续 refresh 和审计
 export async function installBootstrap(projectRoot, options) {
     const toolRecords = [];
     const workflowContents = await getWorkflowContents();
-    const domainSkills = await discoverDomainSkills(options.domainSkillsSourceDir ?? defaultDomainSkillsSourceDir);
+    const domainSkillsSourceDir = options.domainSkillsSourceDir ?? defaultDomainSkillsSourceDir;
+    if (!(await FileSystemUtils.directoryExists(domainSkillsSourceDir))) {
+        throw new Error(`Domain skill source directory '${domainSkillsSourceDir}' does not exist.`);
+    }
     for (const tool of options.tools) {
         const assets = [];
         for (const workflow of workflowContents) {
@@ -226,10 +175,6 @@ export async function installBootstrap(projectRoot, options) {
                 path: normalizeProjectPath(projectRoot, skillPath),
             });
         }
-        for (const domainSkill of domainSkills) {
-            const targetDir = resolveToolSkillDir(projectRoot, tool, domainSkill.id);
-            await projectDomainSkill(domainSkill.sourceDir, targetDir, options.refresh);
-        }
         toolRecords.push({
             tool,
             assets,
@@ -239,6 +184,7 @@ export async function installBootstrap(projectRoot, options) {
         version: BOOTSTRAP_VERSION,
         installed_at: new Date().toISOString(),
         instructions_path: PATHS.instructions,
+        domain_skills_root: normalizeProjectPath(projectRoot, domainSkillsSourceDir),
         tools: toolRecords,
     };
     await writeYamlFile(projectRoot, PATHS.bootstrapConfig, bootstrapConfig);

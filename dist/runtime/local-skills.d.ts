@@ -2,8 +2,6 @@ import type { LocalSkillEntry, ProblemSkillEntry, SkillDomain, SkillStage, Skill
 export declare function normalizeSkillId(value: string): string;
 export declare function normalizeTaskSkillIds(skillIds: string[] | undefined): string[];
 export declare function isWorkflowSkillId(skillId: string): boolean;
-export declare function getCodexLocalSkillPath(skillId: string): string;
-export declare function getClaudeLocalSkillPath(skillId: string): string;
 export declare function isPlanningOnlySkillCategory(skillId: string): boolean;
 export declare function listControlledSkillDomains(): SkillDomain[];
 export declare function listControlledSkillStages(): SkillStage[];

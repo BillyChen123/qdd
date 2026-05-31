@@ -200,7 +200,7 @@ qdd init . --refresh-bootstrap
 ```text
 .qdd/
 .claude/
-.codex/skills/
+.codex/skills/qdd/
 artifacts/data/
 contract.yaml
 evolution.yaml
@@ -225,8 +225,8 @@ $CODEX_HOME/prompts/
 
 也就是说：
 
-- `.codex/skills/` 是**项目级**的，并且是 task skill 的校验真相源
-- `.claude/skills/` 是**项目级**的镜像 skill surface
+- `.codex/skills/qdd/` 是**项目级**的 QDD workflow skill surface
+- `.claude/skills/qdd/` 是**项目级**的 QDD workflow skill surface
 - `~/.codex/prompts/` 是**用户级**的
 
 这和 OpenSpec 的做法一致，便于多个项目共用同一组 Codex prompt 名称。
@@ -246,18 +246,15 @@ domain-skills/
 其中：
 
 - `domain-skills/` 是仓库里的中央领域 skill 源目录
-- `qdd init` 会把这里的全部 skill 复制到目标项目的 `.codex/skills/` 和 `.claude/skills/`
+- `qdd` 会直接从这里解析 task `skills:` 和 `qdd skills suggest`
 - `qdd/*` 是 workflow skill，不应写进 task `skills:`
 - task `skills:` 只应引用领域 skill，例如 `plot/...`、`genomics/...`、`env/...`
 
-投影后的项目内布局大致是：
+项目内保留的只是 workflow bootstrap，大致是：
 
 ```text
 .codex/skills/
-├── qdd/
-├── plot/
-├── genomics/
-└── env/
+└── qdd/
 ```
 
 如果你更新了仓库里的 `domain-skills/`，对某个项目执行：
@@ -266,7 +263,7 @@ domain-skills/
 qdd init . --refresh-bootstrap
 ```
 
-就会把最新的领域 skill 重新同步到该项目。
+就会刷新 workflow bootstrap，并更新 `.qdd/bootstrap.yaml` 里的中央 skill 源路径配置。
 
 ---
 

@@ -22,6 +22,7 @@ export const PATHS = {
     claudeSkillsDir: '.claude/skills',
     codexDir: '.codex',
     codexSkillsDir: '.codex/skills',
+    codexWorkflowSkillDir: '.codex/skills/qdd',
     workflowSkillCategory: 'qdd',
     qddDir: '.qdd',
     instructions: '.qdd/instructions.md',

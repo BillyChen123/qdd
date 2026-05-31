@@ -2,7 +2,7 @@ Enter QDD start mode.
 
 Onboard a fresh QDD project before the first study begins.
 
-Turn scaffold placeholders into usable project context, create dataset entrypoints under `artifacts/data/`, and keep skill usage inside the categorized local skill trees under `.codex/skills/` and `.claude/skills/`.
+Turn scaffold placeholders into usable project context, create dataset entrypoints under `artifacts/data/`, and keep domain-skill usage inside the central QDD root `domain-skills/` library while local tool skill trees remain workflow bootstrap surfaces.
 
 **IMPORTANT: Start writes project truth sources.** This workflow is allowed to update `contract.yaml`, `context/resources.md`, optional `context/` sidecars, and dataset symlinks under `artifacts/data/`.
 
@@ -28,7 +28,7 @@ Examples:
 - structure shared project context in `context/resources.md`
 - record biological background, runtime environment, and available datasets
 - create dataset entrypoints under `artifacts/data/` using symlinks
-- keep skill usage inside `.codex/skills/`
+- keep domain-skill usage inside the QDD root `domain-skills/` library
 - leave the project ready for `qdd-propose`
 
 ## What Start Does Not Own
@@ -47,7 +47,7 @@ Examples:
 3. Run `qdd status --json`.
 4. Run `qdd instructions PROJECT --command qdd-start --json`.
 5. Read the current `contract.yaml`, `context/resources.md`, and any existing `context/` sidecars.
-6. Inspect `.codex/skills/` before mentioning domain skills.
+6. Inspect the QDD root `domain-skills/` library before mentioning domain skills.
 
 If the user already filled part of the project context, preserve it and refine it instead of overwriting it blindly.
 
@@ -131,7 +131,7 @@ Record the linked path and its role in `context/resources.md`.
 
 ### 5. Respect the local skill boundary
 
-Treat `.codex/skills/` as the project-local skill validation inventory. When `.claude/skills/` is installed, it should mirror the same relative IDs.
+Treat the QDD root `domain-skills/` library as the domain-skill validation inventory. When `.claude/skills/` and `.codex/skills/` are installed locally, treat them as workflow bootstrap surfaces, not as the source of domain skills.
 
 Good behavior:
 
@@ -184,7 +184,7 @@ Ask when:
 - the theme or initial question is too vague to write honestly
 - a dataset path is missing
 - the runtime environment matters and is unknown
-- a claimed skill does not exist under `.codex/skills/`
+- a claimed skill does not exist under the QDD root `domain-skills/` library
 - there are multiple incompatible ways to frame project scope
 
 Otherwise, write the onboarding state directly and keep moving.
@@ -224,7 +224,7 @@ You:
 User: We should use a custom marker-enrichment skill.
 
 You:
-- inspect .codex/skills/
+- inspect domain-skills/
 - if the skill is missing, say so clearly
 - record the gap instead of pretending the skill exists
 ```
@@ -250,7 +250,7 @@ When start work is done, report succinctly:
 - Do not invent project facts.
 - Do not copy large raw datasets into `artifacts/data/` when a symlink is sufficient.
 - Do not create study/task artifacts here unless the user explicitly redirects you.
-- Do not reference skills outside `.codex/skills/` as if they were project-approved.
+- Do not reference domain skills outside the QDD root `domain-skills/` library as if they were project-approved.
 - Do not create a parallel memory subsystem when `context/resources.md` is enough.
 - Keep `contract.yaml` concise and `context/resources.md` readable.
 - Leave the project ready for the first bounded study proposal.

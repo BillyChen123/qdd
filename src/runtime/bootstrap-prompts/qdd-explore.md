@@ -61,7 +61,7 @@ qdd context --json
 qdd artifacts:list --json
 ```
 
-If the current task set mentions domain skills, inspect `.codex/skills/` and treat missing local skills as blockers instead of hidden assumptions.
+If the current task set mentions domain skills, inspect the QDD root `domain-skills/` library and treat missing domain skills as blockers instead of hidden assumptions.
 
 When the right executor skill bundle is unclear:
 
@@ -169,7 +169,7 @@ Ask:
 - do current data actually support this study?
 - are there environment blockers?
 - are we ignoring reusable prior outputs?
-- do any current task skills point outside the installed `.codex/skills/` inventory?
+- do any current task skills point outside the installed QDD root `domain-skills/` inventory?
 - do current task skills point to the wrong problem class because propose skipped a planning check?
 
 ### 4. Pressure-test the evidence plan

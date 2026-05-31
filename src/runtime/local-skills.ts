@@ -3,11 +3,13 @@ import * as fs from 'node:fs/promises';
 import type { LocalSkillEntry, ProblemSkillEntry, ProblemSkillMetadata, SkillDomain, SkillStage, SkillSuggestJson, SkillTag, SkillsCatalog } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
+import { readBootstrapConfig } from './bootstrap.js';
 import { readMarkdownFrontmatter } from './store.js';
 
 const SKILL_FILE_NAME = 'SKILL.md';
 const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}/`;
 const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
+const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
 const CONTROLLED_DOMAINS: readonly SkillDomain[] = ['singlecell', 'spatial', 'bulk', 'general'];
 const CONTROLLED_STAGES: readonly SkillStage[] = ['preprocess', 'integration', 'clustering', 'annotation', 'de', 'visualization', 'other'];
 const CONTROLLED_TAGS: readonly SkillTag[] = [
@@ -62,14 +64,6 @@ export function isWorkflowSkillId(skillId: string): boolean {
 
 function isCategorizedSkillId(skillId: string): boolean {
   return normalizeSkillId(skillId).includes('/');
-}
-
-export function getCodexLocalSkillPath(skillId: string): string {
-  return `${PATHS.codexSkillsDir}/${normalizeSkillId(skillId)}/${SKILL_FILE_NAME}`;
-}
-
-export function getClaudeLocalSkillPath(skillId: string): string {
-  return `${PATHS.claudeSkillsDir}/${normalizeSkillId(skillId)}/${SKILL_FILE_NAME}`;
 }
 
 function isPlanningOnlySkillId(skillId: string): boolean {
@@ -153,7 +147,7 @@ async function collectLocalSkills(
   if (hasSkillFile && relativeDirectory.length > 0 && isCategorizedSkillId(relativeDirectory)) {
     results.push({
       id: normalizeSkillId(relativeDirectory),
-      path: getCodexLocalSkillPath(relativeDirectory),
+      path: path.join(directoryPath, SKILL_FILE_NAME),
     });
   }
 
@@ -167,16 +161,32 @@ async function collectLocalSkills(
   }
 }
 
-// 枚举项目当前真正可用的本地 domain skills。
-// 真相源固定在 .codex/skills/，Claude 只是镜像投影，不作为校验依据。
+async function resolveDomainSkillsRoot(projectRoot: string): Promise<{ absolute: string; relative: string }> {
+  const bootstrap = await readBootstrapConfig(projectRoot);
+  if (bootstrap?.domain_skills_root && bootstrap.domain_skills_root.trim().length > 0) {
+    const configuredRoot = bootstrap.domain_skills_root.trim();
+    return {
+      absolute: path.isAbsolute(configuredRoot) ? configuredRoot : path.join(projectRoot, configuredRoot),
+      relative: configuredRoot,
+    };
+  }
+
+  return {
+    absolute: path.join(projectRoot, DEFAULT_DOMAIN_SKILLS_ROOT),
+    relative: DEFAULT_DOMAIN_SKILLS_ROOT,
+  };
+}
+
+// 枚举项目当前真正可用的 domain skills。
+// 真相源固定在 QDD 根目录的 domain-skills/，而不是项目本地的 tool 镜像。
 export async function listLocalSkills(projectRoot: string): Promise<LocalSkillEntry[]> {
-  const skillsRoot = path.join(projectRoot, PATHS.codexSkillsDir);
-  if (!(await FileSystemUtils.directoryExists(skillsRoot))) {
+  const skillsRoot = await resolveDomainSkillsRoot(projectRoot);
+  if (!(await FileSystemUtils.directoryExists(skillsRoot.absolute))) {
     return [];
   }
 
   const results: LocalSkillEntry[] = [];
-  await collectLocalSkills(skillsRoot, '', results);
+  await collectLocalSkills(skillsRoot.absolute, '', results);
   return results.sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -185,7 +195,7 @@ async function readProblemSkillMetadata(projectRoot: string, skillId: string): P
     return null;
   }
 
-  const skillPath = getCodexLocalSkillPath(skillId);
+  const skillPath = path.join((await resolveDomainSkillsRoot(projectRoot)).absolute, normalizeSkillId(skillId), SKILL_FILE_NAME);
   const frontmatter = await readMarkdownFrontmatter<Record<string, unknown>>(projectRoot, skillPath);
   const domain = normalizeSkillDomain(frontmatter.domain);
   const stage = normalizeSkillStage(frontmatter.stage);

@@ -1,4 +1,4 @@
-import type { ArtifactIndexEntry, ArtifactScope, ArtifactType, QuestionChangeType, StudyRecord, TaskRecord } from '../types.js';
+import type { ArtifactIndexEntry, ArtifactScope, ArtifactType, QuestionChangeType, StudyRecord, TaskPromotionStatus, TaskRecord } from '../types.js';
 export interface AddStudyOptions {
     question?: string;
     hypothesis?: string;
@@ -41,6 +41,16 @@ export interface RegisteredArtifactResult {
     artifactId: string;
     entry: ArtifactIndexEntry;
 }
+export interface RecordArtifactCandidateOptions {
+    artifactType: ArtifactType;
+    description: string;
+    studyId: string;
+    taskId?: string;
+    reusable?: boolean;
+    scope?: ArtifactScope;
+    schema?: string;
+    promotionStatus?: TaskPromotionStatus | null;
+}
 export declare function readStudyDocument(projectRoot: string, studyId: string): Promise<{
     relativePath: string;
     record: StudyRecord;
@@ -59,6 +69,7 @@ export declare function findTaskDocument(projectRoot: string, taskId: string): P
 }>;
 export declare function createStudy(projectRoot: string, options?: AddStudyOptions): Promise<CreatedStudyResult>;
 export declare function createTask(projectRoot: string, studyId: string, options?: AddTaskOptions): Promise<CreatedTaskResult>;
+export declare function recordArtifactCandidate(projectRoot: string, targetPath: string, options: RecordArtifactCandidateOptions): Promise<string>;
 export declare function registerArtifact(projectRoot: string, targetPath: string, options: RegisterArtifactOptions): Promise<RegisteredArtifactResult>;
 export declare function closeStudy(projectRoot: string, studyId: string, options: CloseStudyOptions): Promise<void>;
 export declare function deriveStudyLifecycleState(study: StudyRecord, tasks: TaskRecord[]): Exclude<StudyRecord['status'], 'confirmed' | undefined>;

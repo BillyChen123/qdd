@@ -3,7 +3,7 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { readMarkdownFrontmatter } from './store.js';
 import { PATHS } from './constants.js';
 import { getStudyArtifactCandidatesPath, getStudyOutputDir } from './evidence.js';
-import { getClaudeLocalSkillPath, listLocalSkills, resolveLocalSkills } from './local-skills.js';
+import { listLocalSkills, resolveLocalSkills } from './local-skills.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from './layer-policy.js';
 const PROJECT_TARGET_ID = 'PROJECT';
 const STUDY_ID_PATTERN = /^STUDY-\d{3}$/;
@@ -85,12 +85,6 @@ async function collectTaskSkillIds(projectRoot, taskPaths) {
 async function resolveSkillSet(projectRoot, skillIds, allowPlanningOnly = false) {
     const localSkills = await resolveLocalSkills(projectRoot, skillIds, { allowPlanningOnly });
     const matchedPaths = [...localSkills.matched.map((entry) => entry.path)];
-    for (const entry of localSkills.matched) {
-        const claudeMirrorPath = getClaudeLocalSkillPath(entry.id);
-        if (await FileSystemUtils.fileExists(path.join(projectRoot, claudeMirrorPath))) {
-            matchedPaths.push(claudeMirrorPath);
-        }
-    }
     return {
         matchedPaths: uniqueSortedValues(matchedPaths),
         missing: uniqueSortedValues(localSkills.missing),
@@ -101,14 +95,7 @@ async function resolveSkillSet(projectRoot, skillIds, allowPlanningOnly = false)
 }
 async function collectAvailableSkillReadPaths(projectRoot) {
     const availableSkills = await listLocalSkills(projectRoot);
-    const readPaths = [...availableSkills.map((entry) => entry.path)];
-    for (const entry of availableSkills) {
-        const claudeMirrorPath = getClaudeLocalSkillPath(entry.id);
-        if (await FileSystemUtils.fileExists(path.join(projectRoot, claudeMirrorPath))) {
-            readPaths.push(claudeMirrorPath);
-        }
-    }
-    return uniqueSortedValues(readPaths);
+    return uniqueSortedValues(availableSkills.map((entry) => entry.path));
 }
 function validateCommandForTarget(targetKind, command) {
     if (!command) {
@@ -135,7 +122,7 @@ function appendRoleSkillIssues(rules, subject, roleSkills) {
         rules.push(`${subject} role policy must not include planning-only brain skills: ${planningOnly.join(', ')}.`);
     }
     if (missingDefault.length > 0) {
-        rules.push(`${subject} default local skills are missing from .codex/skills/: ${missingDefault.join(', ')}.`);
+        rules.push(`${subject} default domain skills are missing from the QDD root domain-skills/ library: ${missingDefault.join(', ')}.`);
     }
 }
 function buildInstructionHeader(command, role) {
@@ -170,7 +157,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Keep richer project context in context/resources.md and optional context sidecars; use resources.md for project facts plus durable analyst preferences, not as a task-by-task memory log.',
             'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
             'Treat .qdd/layer-policy.yaml as the editable source for command roles and role-level default skills.',
-            'Treat .codex/skills/ as the local skill validation inventory and .claude/skills/ as the mirrored tool surface when present.',
+            'Treat domain skills as read from the QDD root domain-skills/ library, while local workflow skills remain bootstrapped under .codex/skills/qdd/ and .claude/skills/qdd/.',
         ];
         appendRoleSkillIssues(rules, 'Project', roleSkillSet);
         return {
@@ -187,8 +174,9 @@ export async function buildInstructions(projectRoot, id, options = {}) {
                 PATHS.layerPolicy,
                 PATHS.skillsCatalog,
                 `${PATHS.artifactDataDir}/`,
-                `${PATHS.codexSkillsDir}/`,
-                `${PATHS.claudeSkillsDir}/`,
+                `${PATHS.codexSkillsDir}/qdd/`,
+                `${PATHS.claudeSkillsDir}/qdd/`,
+                'domain-skills/',
                 ...contextReadPaths,
                 ...dataReadPaths,
                 ...localSkillReadPaths,
@@ -200,8 +188,8 @@ export async function buildInstructions(projectRoot, id, options = {}) {
                 `${PATHS.contextDir}/`,
                 `${PATHS.artifactDataDir}/`,
                 PATHS.layerPolicy,
-                `${PATHS.codexSkillsDir}/`,
-                `${PATHS.claudeSkillsDir}/`,
+                `${PATHS.codexSkillsDir}/qdd/`,
+                `${PATHS.claudeSkillsDir}/qdd/`,
             ],
             required_skills: roleSkillSet.matchedIds,
             optional_skills: [],
@@ -248,7 +236,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Keep one bounded question per study.',
             'Use the current mode contract from .qdd/instructions.md before reshaping the study or task set.',
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
-            'Only rely on domain task skills that exist under .codex/skills/.',
+            'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
             'Treat brain/* as planning-only domain-prior skills. They may guide study planning, but must not be written into task skills or treated as executor skills.',
             'qdd-propose owns the first-pass study and task-graph creation.',
             'In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.',
@@ -284,7 +272,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push(`Task skill lists must not include planning-only brain skills: ${studyTaskSkills.planningOnly.join(', ')}. Replace them with executor problem-level skills.`);
         }
         if (studyTaskSkills.missing.length > 0) {
-            rules.push(`Missing local skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}. Treat this as a blocker until the skill is installed locally under .codex/skills/ or the task is rewritten.`);
+            rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}. Treat this as a blocker until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);
         }
         return {
             ...buildInstructionHeader(command, role),
@@ -314,7 +302,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Keep the task minimal and evidence-producing.',
             'Produce explicit outputs or blockers.',
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
-            'Only rely on domain task skills that exist under .codex/skills/.',
+            'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
             'Do not add qdd/* workflow skills or brain/* planning skills to task skill lists.',
             'qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.',
             'If task-local executor skills are present, read them first and use them as the primary execution guidance for this task.',
@@ -343,7 +331,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push(`Task skill lists must not include planning-only brain skills: ${taskSkillSet.planningOnly.join(', ')}. Replace them with executor problem-level skills or move them to study planning.`);
         }
         if (taskSkillSet.missing.length > 0) {
-            rules.push(`Missing local skills referenced by this task: ${taskSkillSet.missing.join(', ')}. qdd-apply must hard-block until the skill is installed locally under .codex/skills/ or the task is rewritten.`);
+            rules.push(`Missing domain skills referenced by this task: ${taskSkillSet.missing.join(', ')}. qdd-apply must hard-block until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);
         }
         return {
             ...buildInstructionHeader(command, role),

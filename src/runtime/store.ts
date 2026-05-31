@@ -4,19 +4,23 @@ import { parseYaml, stringifyYaml } from '../utils/yaml.js';
 
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
+function resolveFilePath(projectRoot: string, targetPath: string): string {
+  return path.isAbsolute(targetPath) ? targetPath : path.join(projectRoot, targetPath);
+}
+
 export interface MarkdownDocument<T> {
   frontmatter: T;
   body: string;
 }
 
 export async function readYamlFile<T>(projectRoot: string, relativePath: string): Promise<T> {
-  const filePath = path.join(projectRoot, relativePath);
+  const filePath = resolveFilePath(projectRoot, relativePath);
   const content = await FileSystemUtils.readFile(filePath);
   return parseYaml<T>(content);
 }
 
 export async function writeYamlFile(projectRoot: string, relativePath: string, data: unknown): Promise<void> {
-  const filePath = path.join(projectRoot, relativePath);
+  const filePath = resolveFilePath(projectRoot, relativePath);
   await FileSystemUtils.writeFile(filePath, stringifyYaml(data));
 }
 
@@ -25,7 +29,7 @@ export function serializeMarkdownDocument(frontmatter: unknown, body: string): s
 }
 
 export async function readMarkdownDocument<T>(projectRoot: string, relativePath: string): Promise<MarkdownDocument<T>> {
-  const filePath = path.join(projectRoot, relativePath);
+  const filePath = resolveFilePath(projectRoot, relativePath);
   const content = await FileSystemUtils.readFile(filePath);
   const match = content.match(FRONTMATTER_PATTERN);
 
@@ -46,7 +50,7 @@ export async function writeMarkdownDocument(
   frontmatter: unknown,
   body: string
 ): Promise<void> {
-  const filePath = path.join(projectRoot, relativePath);
+  const filePath = resolveFilePath(projectRoot, relativePath);
   await FileSystemUtils.writeFile(filePath, serializeMarkdownDocument(frontmatter, body));
 }
 

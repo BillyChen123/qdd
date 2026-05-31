@@ -16,6 +16,7 @@ export declare const PATHS: {
     readonly claudeSkillsDir: ".claude/skills";
     readonly codexDir: ".codex";
     readonly codexSkillsDir: ".codex/skills";
+    readonly codexWorkflowSkillDir: ".codex/skills/qdd";
     readonly workflowSkillCategory: "qdd";
     readonly qddDir: ".qdd";
     readonly instructions: ".qdd/instructions.md";

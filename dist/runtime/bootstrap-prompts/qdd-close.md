@@ -116,7 +116,7 @@ When one task clearly produced a reusable output, record that `task_id` in the c
 Examples:
 
 - reusable reports or figures -> register as artifacts if missing
-- main analysis scripts -> register as code artifacts if they are worth reusing or auditing later
+- main executed analysis scripts preserved under `output/code/` -> register as code artifacts if they are worth reusing or auditing later, and prefer explicit code candidates over closure-time guessing
 - stable resource knowledge -> update `context/` resources
 - speculative interpretations -> keep in study outputs, not shared context
 

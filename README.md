@@ -26,8 +26,8 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 - `context/resources.md`
 - `artifacts/data/`
 - `domain-skills/`：本仓库维护的中央领域 skill 源目录
-- `.codex/skills/`
-- `.claude/skills/`
+- `.codex/skills/qdd/`：项目级 QDD workflow surface
+- `.claude/skills/qdd/`：项目级 QDD workflow surface
 - `.qdd/skills-catalog.json`
 
 ### 1. `qdd-proposal`
@@ -94,9 +94,9 @@ QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
 - `contract.yaml`：项目边界和模式
 - `context/resources.md`：项目级背景、数据、环境
 - `artifacts/data/`：项目级共享数据入口，默认用软连接挂真实数据；被正式晋升的数据 artifact 也会落到这里
-- `domain-skills/`：中央维护的领域 skill 源目录，`qdd init` 会把它们投影到项目内
-- `.codex/skills/`：项目级 local skill inventory，task `skills:` 以它为校验真相源
-- `.claude/skills/`：Claude 侧的镜像 skill surface
+- `domain-skills/`：中央维护的领域 skill 源目录，`qdd` 直接从这里读取领域 skill
+- `.codex/skills/qdd/`：项目级 QDD workflow skill surface
+- `.claude/skills/qdd/`：Claude 侧的 QDD workflow skill surface
 - `studies/STUDY-XXX/study.md`：一个研究问题的边界
 - `studies/STUDY-XXX/tasks/TASK-XXX.md`：证据生产任务
 - `studies/STUDY-XXX/output/`：代码、图、表、报告等本地证据
@@ -152,7 +152,8 @@ qdd init .
 
 - Claude Code bootstrap
 - Codex bootstrap
-- 当前仓库 `domain-skills/` 里的全部领域 skill
+- QDD workflow skill surface
+- 指向本仓库 `domain-skills/` 的中央领域 skill 源
 
 后续实际协作顺序就是：
 
@@ -190,10 +191,10 @@ qdd skills suggest --domain singlecell --stage integration --tag multi-sample --
 1. 把 study-brain skill 写在 `domain-skills/brain/...`
 2. 把 executor problem-level skill 写在 `domain-skills/<domain tree>/...`
 3. 对 executor skill 补上受控 frontmatter：`domain / stage / tags`
-2. 运行 `qdd init .` 或 `qdd init . --refresh-bootstrap`
-3. QDD 会把它们复制到目标项目的 `.codex/skills/` 和 `.claude/skills/`
+4. 运行 `qdd init .` 或 `qdd init . --refresh-bootstrap`
+5. QDD 会在 bootstrap 中记录 `domain-skills/` 的源路径，项目本地只保留 QDD workflow surface
 
-可以把 `domain-skills/` 当成中央源，而把项目里的 `.codex/.claude` skill 目录当成 bootstrap 投影。
+可以把 `domain-skills/` 当成中央源，而把项目里的 `.codex/.claude` 目录理解成 QDD workflow bootstrap，不再承载全部领域 skill。
 
 ## 当前定位
 
