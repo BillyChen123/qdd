@@ -53,8 +53,10 @@ Current shared domain branches in the repo root:
 
 - `domain-skills/brain/singlecell/scrna-planning`
 - `domain-skills/brain/singlecell/scatac-planning`
+- `domain-skills/brain/singlecell/public-data-planning`
 - `domain-skills/singlecell/scrna/*`
 - `domain-skills/singlecell/scatac/*`
+- `domain-skills/singlecell/public-data/*`
 
 ## Source Tree
 
@@ -63,10 +65,12 @@ domain-skills/
 ├── brain/
 │   └── singlecell/
 │       ├── scrna-planning/
-│       └── scatac-planning/
+│       ├── scatac-planning/
+│       └── public-data-planning/
 ├── singlecell/
 │   ├── scrna/
-│   └── scatac/
+│   ├── scatac/
+│   └── public-data/
 └── README.md
 
 src/

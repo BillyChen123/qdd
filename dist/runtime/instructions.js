@@ -2,7 +2,7 @@ import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { readMarkdownFrontmatter } from './store.js';
 import { PATHS } from './constants.js';
-import { getStudyArtifactCandidatesPath, getStudyOutputDir } from './evidence.js';
+import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
 import { listLocalSkills, resolveLocalSkills } from './local-skills.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from './layer-policy.js';
 const PROJECT_TARGET_ID = 'PROJECT';
@@ -208,6 +208,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'study-brain');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...studyTaskSkills.matchedIds]);
+        const hasPublicDataTask = studyTaskSkills.matchedIds.includes('singlecell/public-data/cellxgene-discover');
         const readPaths = [
             PATHS.contract,
             PATHS.evolution,
@@ -250,6 +251,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Preserve readable scripts in studies/STUDY-XXX/output/code for substantive analyses.',
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
             'Use studies/STUDY-XXX/output/artifact-candidates.yaml as the explicit promotion boundary for reusable study outputs.',
+            'Use studies/STUDY-XXX/output/public_data_request.yaml only when this study truly depends on external public data; do not create it for studies that can proceed entirely from local resources.',
             'Include task_id in artifact candidates whenever one task clearly produced the reusable output.',
         ];
         if (command === 'qdd-propose' || command === 'qdd-explore') {
@@ -257,12 +259,15 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
             rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
             rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
+            rules.push('When a study genuinely needs external public data, planning may search and narrow candidates, but it should persist only the final selected targets in studies/STUDY-XXX/output/public_data_request.yaml.');
+            rules.push('If no acceptable public dataset is found, either skip the public-data task because local resources are sufficient or record a bounded study/task blocker; do not leak that failure into unrelated execution.');
         }
         if (command === 'qdd-close') {
             rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.');
             rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
             rules.push('Refuse closure when any completed task still has promotion_status pending.');
             rules.push('Refuse closure when non-canonical top-level study output material still remains unpackaged.');
+            rules.push('If this study introduced reusable downloaded datasets under artifacts/data/, record their stable source, alias, and intended reuse role in context/resources.md before closure.');
         }
         appendRoleSkillIssues(rules, 'Study', roleSkillSet);
         if (studyTaskSkills.disallowedWorkflow.length > 0) {
@@ -273,6 +278,12 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         }
         if (studyTaskSkills.missing.length > 0) {
             rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}. Treat this as a blocker until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);
+        }
+        if (hasPublicDataTask) {
+            readPaths.push(getStudyPublicDataRequestPath(id));
+            rules.push(`Treat ${getStudyPublicDataRequestPath(id)} as the planning-owned handoff for public-data selection.`);
+            rules.push('Planning may narrow public-data candidates, but apply may only consume the selected targets already written there.');
+            rules.push('If the selected public datasets were downloaded successfully, qdd-close should decide whether they belong in carried-forward project resources and document them explicitly in context/resources.md.');
         }
         return {
             ...buildInstructionHeader(command, role),
@@ -297,6 +308,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'executor');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...taskSkillSet.matchedIds]);
+        const hasPublicDataTask = taskSkillSet.matchedIds.includes('singlecell/public-data/cellxgene-discover');
         const rules = [
             'Do not redefine the study question.',
             'Keep the task minimal and evidence-producing.',
@@ -312,6 +324,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Escalate to study-level updates when the task changes the study boundary or evidence plan.',
             'Use studies/STUDY-XXX/output/tmp only as scratch space; package final outputs back into canonical study output directories before marking the task complete.',
             `Treat ${getStudyOutputDir(studyId)}/data, code, figures, tables, and reports as the canonical final output surface for this study.`,
+            `Treat ${getStudyPublicDataRequestPath(studyId)} as a planning-owned handoff file. If this task uses it, consume only the selected dataset targets recorded there.`,
             'Preserve readable scripts in studies/STUDY-XXX/output/code for substantive analyses.',
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
             'Add only promotion-worthy outputs to studies/STUDY-XXX/output/artifact-candidates.yaml; do not treat all local outputs as artifacts.',
@@ -323,6 +336,10 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Do not switch strategies just because a heavy command has been running for a few minutes without finishing.',
             'Treat explicit process exit, repeated hard errors, or sustained non-progress after extended inspection as stronger failure evidence than simple elapsed time.',
         ];
+        if (hasPublicDataTask) {
+            rules.push(`Treat ${getStudyPublicDataRequestPath(studyId)} as the only public-data handoff file for this task.`);
+            rules.push('Do not reopen broad public-data search during apply; download only the selected targets already written during planning.');
+        }
         appendRoleSkillIssues(rules, 'Task', roleSkillSet);
         if (taskSkillSet.disallowedWorkflow.length > 0) {
             rules.push(`Task skill lists must not include workflow skills: ${taskSkillSet.disallowedWorkflow.join(', ')}. Replace them with concrete domain skills or remove them.`);

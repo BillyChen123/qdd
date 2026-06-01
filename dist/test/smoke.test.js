@@ -129,8 +129,10 @@ test('qdd init creates minimal project structure', async () => {
     const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-batch-integration'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scatac/scatac-preprocess-lsi'));
+    assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/public-data/cellxgene-discover'));
     assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/scrna-planning'));
     assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/scatac-planning'));
+    assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/public-data-planning'));
 });
 test('qdd init can install codex prompts and refresh bootstrap assets', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-bootstrap-'));
@@ -222,6 +224,7 @@ test('qdd status aggregates study/task frontmatter from the prototype layout', a
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-status-'));
     await initCommand(projectRoot);
     await fs.mkdir(path.join(projectRoot, 'studies', 'STUDY-001', 'tasks'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, 'studies', 'STUDY-001', 'output'), { recursive: true });
     await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'study.md'), [
         '---',
         'study_id: STUDY-001',
@@ -285,6 +288,14 @@ test('qdd skills suggest returns deterministic problem-level candidates', async 
     assert.equal(scatac.low_confidence, false);
     assert.equal(scatac.candidates[0]?.id, 'singlecell/scatac/scatac-preprocess-lsi');
     assert.deepEqual(scatac.candidates[0]?.matched_tags, ['peak-matrix', 'lsi']);
+    const publicData = await suggestProblemSkills(projectRoot, {
+        domain: 'singlecell',
+        stage: 'acquisition',
+        tags: ['public-data', 'cellxgene'],
+    });
+    assert.equal(publicData.low_confidence, false);
+    assert.equal(publicData.candidates[0]?.id, 'singlecell/public-data/cellxgene-discover');
+    assert.deepEqual(publicData.candidates[0]?.matched_tags, ['public-data', 'cellxgene']);
 });
 test('scatac executor skills expose coherent parameter contracts and entry scripts', async () => {
     const repoRoot = process.cwd();
@@ -307,6 +318,18 @@ test('scatac executor skills expose coherent parameter contracts and entry scrip
         await assert.doesNotReject(fs.access(entryScriptPath));
     }
 });
+test('cellxgene public-data executor skill exposes coherent parameter contract and entry script', async () => {
+    const repoRoot = process.cwd();
+    const skillRoot = path.join(repoRoot, 'domain-skills', 'singlecell', 'public-data', 'cellxgene-discover');
+    const skillMarkdown = await fs.readFile(path.join(skillRoot, 'SKILL.md'), 'utf-8');
+    assert.match(skillMarkdown, /^---[\s\S]+^---/m);
+    assert.match(skillMarkdown, /public_data_request\.yaml/);
+    const parameters = parseYaml(await fs.readFile(path.join(skillRoot, 'parameters.yaml'), 'utf-8'));
+    assert.equal(parameters.entry_script, 'scripts/cellxgene_discover.py');
+    assert.ok(parameters.output_contract?.search);
+    assert.ok(parameters.output_contract?.download);
+    await assert.doesNotReject(fs.access(path.join(skillRoot, 'scripts', 'cellxgene_discover.py')));
+});
 test('qdd instructions returns project, study, and task guidance for existing prototype records', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-instr-'));
     await initCommand(projectRoot);
@@ -315,6 +338,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     await fs.writeFile(sourceDatasetPath, 'fake-data', 'utf-8');
     await fs.symlink(sourceDatasetPath, path.join(projectRoot, 'artifacts', 'data', 'study-source.h5ad'));
     await fs.mkdir(path.join(projectRoot, 'studies', 'STUDY-001', 'tasks'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, 'studies', 'STUDY-001', 'output'), { recursive: true });
     await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'study.md'), [
         '---',
         'study_id: STUDY-001',
@@ -393,6 +417,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(studyCloseInstructions.write.includes('context/resources.md'));
     assert.ok(studyCloseInstructions.rules.includes('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.'));
     assert.ok(studyCloseInstructions.rules.includes('Refuse closure when any completed task still has promotion_status pending.'));
+    assert.ok(studyCloseInstructions.rules.includes('If this study introduced reusable downloaded datasets under artifacts/data/, record their stable source, alias, and intended reuse role in context/resources.md before closure.'));
     const taskInstructions = await buildInstructions(projectRoot, 'TASK-001', { command: 'qdd-apply' });
     assert.equal(taskInstructions.target.kind, 'task');
     assert.equal(taskInstructions.command, 'qdd-apply');
@@ -421,8 +446,57 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.equal(studyExploreInstructions.role, 'study-brain');
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/scrna-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/scatac-planning/SKILL.md')));
+    assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/public-data-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.includes('.qdd/skills-catalog.json'));
     assert.ok(studyExploreInstructions.rules.includes('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.'));
+    await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'output', 'public_data_request.yaml'), [
+        'source: cellxgene',
+        'modality: scrna',
+        'goal: validation',
+        '',
+        'query:',
+        '  organism: Homo sapiens',
+        '  tissue: ovary',
+        '  disease: ovarian cancer',
+        '  state: TRM',
+        '  cell_type:',
+        '  max_results: 2',
+        '',
+        'selected:',
+        '  - dataset_id: 123e4567-e89b-12d3-a456-426614174000',
+        '    alias: candidate_01',
+        '',
+        'selection_note: matched ovary cancer validation cohort',
+        '',
+    ].join('\n'), 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'tasks', 'TASK-001.md'), [
+        '---',
+        'task_id: TASK-001',
+        'study_id: STUDY-001',
+        'goal: Download one external validation dataset.',
+        'status: pending',
+        'skills:',
+        '  - singlecell/public-data/cellxgene-discover',
+        'expected_outputs:',
+        '  - validation_dataset.h5ad',
+        '---',
+        '',
+        '## Expected Output',
+        '',
+        'A downloaded validation dataset.',
+        '',
+        '## Skills',
+        '',
+        '- singlecell/public-data/cellxgene-discover',
+        '',
+    ].join('\n'), 'utf-8');
+    const studyApplyPublicDataInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-apply' });
+    assert.ok(studyApplyPublicDataInstructions.read.includes('studies/STUDY-001/output/public_data_request.yaml'));
+    assert.ok(studyApplyPublicDataInstructions.rules.includes('Treat studies/STUDY-001/output/public_data_request.yaml as the planning-owned handoff for public-data selection.'));
+    assert.ok(studyApplyPublicDataInstructions.rules.includes('Planning may narrow public-data candidates, but apply may only consume the selected targets already written there.'));
+    const studyClosePublicDataInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-close' });
+    assert.ok(studyClosePublicDataInstructions.read.includes('studies/STUDY-001/output/public_data_request.yaml'));
+    assert.ok(studyClosePublicDataInstructions.rules.includes('If the selected public datasets were downloaded successfully, qdd-close should decide whether they belong in carried-forward project resources and document them explicitly in context/resources.md.'));
     assert.ok(studyExploreInstructions.rules.includes('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.'));
 });
 test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a study', async () => {

@@ -71,6 +71,9 @@ If a task declares missing domain skills, stop immediately. In this case `qdd-ap
 
 Do not reopen broad skill selection here.
 
+If a task depends on external public data, `qdd-apply` still must not reopen broad dataset search.
+It may only consume the already selected dataset targets recorded in `studies/STUDY-XXX/output/public_data_request.yaml`.
+
 `qdd-apply` consumes the task's declared executor problem-level skills only.
 
 If a task already declares executor skills, do not skip them and jump straight to unconstrained ad hoc coding.
@@ -128,6 +131,13 @@ When a task has declared local executor skills:
 4. keep the produced script, figure, table, or report aligned with the selected skill's problem framing
 
 Treat local skills as execution guidance, not optional decoration.
+
+If one of the declared skills is `singlecell/public-data/cellxgene-discover`:
+
+1. read `studies/STUDY-XXX/output/public_data_request.yaml`
+2. confirm that the selected target set is explicit
+3. download only those selected datasets
+4. if the selected set is empty, treat that as a planning/blocker issue rather than re-running broad search here
 
 ### 2.5 Be patient with heavy analysis
 

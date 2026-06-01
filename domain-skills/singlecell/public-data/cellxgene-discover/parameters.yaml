@@ -1,0 +1,34 @@
+entry_script: scripts/cellxgene_discover.py
+python_env: CellFM_torch
+summary: Search CELLxGENE from a thin structured request and download only the final selected h5ad targets.
+actions:
+  search:
+    description: Read the structured query from public_data_request.yaml, query CELLxGENE metadata, and write a small candidate table plus reports.
+  download:
+    description: Read the selected dataset IDs from public_data_request.yaml and download the corresponding source h5ad files into artifacts/data.
+defaults:
+  action: search
+  max_results: 5
+  primary_only: true
+cli:
+  required:
+    - --action {search,download}
+    - --request <public_data_request.yaml>
+    - --output <study-output-dir>
+    - --artifact-data-dir <artifacts/data>
+  optional:
+    - --max-results <int>
+    - --allow-non-primary
+output_contract:
+  search:
+    tables:
+      - tables/cellxgene_candidates.csv
+    reports:
+      - reports/cellxgene_search_report.md
+      - reports/cellxgene_search_result.json
+  download:
+    data:
+      - artifacts/data/<alias>.h5ad
+    reports:
+      - reports/cellxgene_download_report.md
+      - reports/cellxgene_download_result.json

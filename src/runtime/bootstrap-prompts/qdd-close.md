@@ -117,6 +117,7 @@ Examples:
 
 - reusable reports or figures -> register as artifacts if missing
 - main executed analysis scripts preserved under `output/code/` -> register as code artifacts if they are worth reusing or auditing later, and prefer explicit code candidates over closure-time guessing
+- downloaded public datasets under `artifacts/data/` -> carry them into `context/resources.md` when they are now part of the stable reusable project resource surface; keep source and intended reuse role explicit
 - stable resource knowledge -> update `context/` resources
 - speculative interpretations -> keep in study outputs, not shared context
 

@@ -12,6 +12,8 @@ domain-skills/
 │       │   └── SKILL.md
 │       └── scatac-planning/
 │           └── SKILL.md
+│       └── public-data-planning/
+│           └── SKILL.md
 └── singlecell/
     ├── scrna/
     │   ├── sc-preprocess-qc/
@@ -55,6 +57,12 @@ domain-skills/
             ├── parameters.yaml
             └── scripts/
                 └── scatac_dar.py
+    └── public-data/
+        └── cellxgene-discover/
+            ├── SKILL.md
+            ├── parameters.yaml
+            └── scripts/
+                └── cellxgene_discover.py
 ```
 
 Rules:
@@ -86,5 +94,6 @@ Task files should reference the stable skill IDs, for example:
 - `singlecell/scatac/scatac-batch-latent`
 - `singlecell/scatac/scatac-annotation-geneactivity`
 - `singlecell/scatac/scatac-dar`
+- `singlecell/public-data/cellxgene-discover`
 
 Do not use `qdd/*` workflow skills or `brain/*` planning skills in task `skills:`.

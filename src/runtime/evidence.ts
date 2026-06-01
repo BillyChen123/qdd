@@ -8,7 +8,11 @@ import { readYamlFile, writeYamlFile } from './store.js';
 
 const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'] as const;
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
-const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES: ReadonlySet<string> = new Set([...STUDY_OUTPUT_SUBDIRS, PATHS.artifactCandidatesFileName]);
+const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES: ReadonlySet<string> = new Set([
+  ...STUDY_OUTPUT_SUBDIRS,
+  PATHS.artifactCandidatesFileName,
+  PATHS.publicDataRequestFileName,
+]);
 
 function isArtifactType(value: string): value is ArtifactType {
   return ['data', 'code', 'figure', 'report'].includes(value);
@@ -45,6 +49,10 @@ export function getStudyOutputDir(studyId: string): string {
 
 export function getStudyArtifactCandidatesPath(studyId: string): string {
   return `${getStudyOutputDir(studyId)}/${PATHS.artifactCandidatesFileName}`;
+}
+
+export function getStudyPublicDataRequestPath(studyId: string): string {
+  return `${getStudyOutputDir(studyId)}/${PATHS.publicDataRequestFileName}`;
 }
 
 export function getStudyOutputSubdirPaths(studyId: string): string[] {

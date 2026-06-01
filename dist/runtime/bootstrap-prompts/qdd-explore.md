@@ -69,6 +69,13 @@ When the right executor skill bundle is unclear:
 - then call `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`
 - keep ambiguity explicit until the user confirms the task-level skill choice
 
+When external public data may be needed:
+
+- decide first whether the study can already proceed from local resources
+- only then consider a bounded public-data task
+- keep candidate review in the discussion
+- in `human` and `assist` mode, confirm the final selected target set before writing `public_data_request.yaml`
+
 Read the actual `study.md` and current task files listed by the instructions output.
 
 ### When no study exists yet
@@ -120,6 +127,7 @@ Depending on what the user brings, you might:
 - Do we really have the runtime environment?
 - Do we really have the required local skills?
 - Are there blockers hidden inside the current task?
+- Are we confusing “external public data could help” with “this study truly requires an external dataset now”?
 
 **Test the evidence plan**
 
@@ -132,6 +140,7 @@ Depending on what the user brings, you might:
 - one broad task vs two narrow tasks
 - reality check first vs direct analysis first
 - reuse existing artifact vs regenerate fresh output
+- local-only execution vs bounded public-data acquisition
 
 **Visualize the plan**
 
@@ -189,6 +198,7 @@ Offer changes such as:
 - add a blocker note
 - tighten expected outputs
 - replace a weak executor skill choice with a better problem-level skill bundle
+- add or remove a public-data task depending on whether outside data is actually required now
 
 ### 6. Confirm before writing in `human` and `assist`
 

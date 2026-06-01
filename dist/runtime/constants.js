@@ -17,6 +17,7 @@ export const PATHS = {
     artifactFiguresDir: 'artifacts/figures',
     artifactReportsDir: 'artifacts/reports',
     artifactCandidatesFileName: 'artifact-candidates.yaml',
+    publicDataRequestFileName: 'public_data_request.yaml',
     claudeDir: '.claude',
     claudeCommandsDir: '.claude/commands',
     claudeSkillsDir: '.claude/skills',

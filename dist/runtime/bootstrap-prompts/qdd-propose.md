@@ -47,6 +47,7 @@ Examples:
 6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
 7. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
 8. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
+9. If the study may need external public data, decide that here instead of leaving it for apply to improvise later.
 
 ---
 
@@ -139,6 +140,25 @@ Prefer problem-level skills such as:
 - `singlecell/scatac/scatac-batch-latent`
 - `singlecell/scatac/scatac-annotation-geneactivity`
 - `singlecell/scatac/scatac-dar`
+- `singlecell/public-data/cellxgene-discover`
+
+### 4.6 Handle external public data during planning
+
+When the study may need external public data:
+
+- first decide whether local resources are already sufficient
+- do not create a public-data task by reflex
+- if outside data is genuinely required, use the public-data planning brain guidance
+- use `qdd skills suggest --domain singlecell --stage acquisition --tag public-data --tag cellxgene --json` when the executor skill choice matters
+- keep candidate review in the planning conversation
+- persist only the final selected target set in `studies/STUDY-XXX/output/public_data_request.yaml`
+
+If no acceptable public dataset is found:
+
+- either keep the study local-only
+- or record a bounded blocker if outside data is genuinely required
+
+Do not invent a fake selected target just to keep the task graph moving.
 
 ### 5. Stop once the first pass is usable
 
@@ -184,6 +204,7 @@ Write them concretely:
 - `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under the QDD root `domain-skills/` library, and are valid in `.qdd/skills-catalog.json`
 - never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
 - if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
+- if the task is a public-data acquisition task, finalize `studies/STUDY-XXX/output/public_data_request.yaml` during planning so apply only downloads the selected targets
 
 Each initial task should be:
 

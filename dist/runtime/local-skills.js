@@ -9,11 +9,17 @@ const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}/`;
 const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
 const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
 const CONTROLLED_DOMAINS = ['singlecell', 'spatial', 'bulk', 'general'];
-const CONTROLLED_STAGES = ['preprocess', 'integration', 'clustering', 'annotation', 'de', 'visualization', 'other'];
+const CONTROLLED_STAGES = ['preprocess', 'integration', 'clustering', 'annotation', 'acquisition', 'de', 'visualization', 'other'];
 const CONTROLLED_TAGS = [
     'scanpy',
     'anndata',
     'h5ad',
+    'public-data',
+    'dataset-search',
+    'dataset-download',
+    'cellxgene',
+    'citation',
+    'title-match',
     'raw-counts',
     'qc',
     'normalization',

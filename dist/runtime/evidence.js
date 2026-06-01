@@ -6,7 +6,11 @@ import { createDefaultArtifactCandidateManifest } from './defaults.js';
 import { readYamlFile, writeYamlFile } from './store.js';
 const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'];
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
-const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([...STUDY_OUTPUT_SUBDIRS, PATHS.artifactCandidatesFileName]);
+const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([
+    ...STUDY_OUTPUT_SUBDIRS,
+    PATHS.artifactCandidatesFileName,
+    PATHS.publicDataRequestFileName,
+]);
 function isArtifactType(value) {
     return ['data', 'code', 'figure', 'report'].includes(value);
 }
@@ -36,6 +40,9 @@ export function getStudyOutputDir(studyId) {
 }
 export function getStudyArtifactCandidatesPath(studyId) {
     return `${getStudyOutputDir(studyId)}/${PATHS.artifactCandidatesFileName}`;
+}
+export function getStudyPublicDataRequestPath(studyId) {
+    return `${getStudyOutputDir(studyId)}/${PATHS.publicDataRequestFileName}`;
 }
 export function getStudyOutputSubdirPaths(studyId) {
     return STUDY_OUTPUT_SUBDIRS.map((subdir) => `${getStudyOutputDir(studyId)}/${subdir}`);
