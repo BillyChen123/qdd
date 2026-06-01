@@ -1,9 +1,9 @@
 ---
-name: brain/study-planning-core
+name: brain/singlecell/scrna-planning
 description: Single-cell study-brain protocol for QDD. Use during qdd-propose and qdd-explore whenever the study involves scRNA-seq planning on h5ad/AnnData and the agent must decide which stages are already reusable, which stages must be rerun, and which executor skills should be attached to tasks.
 ---
 
-# brain/study-planning-core
+# brain/singlecell/scrna-planning
 
 ## When To Use
 
@@ -68,6 +68,14 @@ The target before downstream is a single reusable study-level analysis object:
 - it can be reused across later studies or tasks
 
 If multiple candidate h5ad objects exist, choose one as the primary downstream base and explain why.
+
+## Storage & Memory Rules
+
+Treat the canonical handoff object as memory-sensitive.
+
+- keep `.X` sparse when saving `h5ad` unless a later method explicitly requires dense input
+- avoid `sc.pp.scale` unless the downstream method truly needs scaled dense values
+- if a method requires dense materialization, isolate that conversion to the smallest possible scope and do not promote the dense form as the long-lived project base
 
 ## Required Read Order
 

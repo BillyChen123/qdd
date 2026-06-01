@@ -1,0 +1,37 @@
+entry_script: scripts/scatac_dar.py
+python_env: CellFM_torch
+summary: Run differential accessibility comparisons on matrix-style scATAC h5ad objects and emit reusable DAR ranking tables.
+methods:
+  wilcoxon:
+    description: Use Scanpy rank_genes_groups with a rank-based comparison for each target group.
+  t-test:
+    description: Use Scanpy rank_genes_groups with a t-test style comparison.
+  logreg:
+    description: Use Scanpy rank_genes_groups with logistic regression.
+defaults:
+  method: wilcoxon
+  n_features: 30
+  min_pct: 0.05
+  use_binary: true
+cli:
+  required:
+    - --input
+    - --output
+    - --groupby
+  optional:
+    - --reference <group-name>
+    - --subset-key <obs-column>
+    - --subset-value <obs-value>
+    - --method {wilcoxon,t-test,logreg}
+    - --n-features <int>
+    - --min-pct <float>
+    - --use-binary
+output_contract:
+  main_h5ad: ranked.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/dar_rankings.csv
+    - tables/dar_summary.csv
+  figures:
+    - figures/top_dar_heatmap.png

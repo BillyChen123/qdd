@@ -1,0 +1,49 @@
+entry_script: scripts/scatac_preprocess_lsi.py
+python_env: CellFM_torch
+summary: Inspect scATAC-style h5ad inputs, repair mixed RNA+ATAC feature spaces when needed, and build a reusable TF-IDF/LSI representation.
+methods:
+  auto:
+    description: Detect peak-like versus gene-like features, subset to a peak-oriented matrix, compute QC summaries, and build LSI unless inspection-only logic applies.
+  repair:
+    description: Force the repair path for mixed or semantically inconsistent feature spaces before rebuilding the ATAC latent representation.
+  inspect:
+    description: Inspect structure, classify features, and write reports without filtering or computing TF-IDF/LSI.
+defaults:
+  mode: auto
+  feature_type_column: feature_type
+  peak_label: Peaks
+  gene_label: Gene Expression
+  peak_source: auto
+  min_features_per_cell: 200
+  min_cells_per_feature: 10
+  max_features_per_cell: 50000
+  binarize: false
+  n_components: 50
+  random_state: 0
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --mode {auto,repair,inspect}
+    - --feature-type-column <var-column>
+    - --peak-label <string>
+    - --gene-label <string>
+    - --peak-source {auto,feature_type,regex}
+    - --min-features-per-cell <int>
+    - --min-cells-per-feature <int>
+    - --max-features-per-cell <int>
+    - --binarize
+    - --n-components <int>
+    - --random-state <int>
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/feature_summary.csv
+    - tables/cell_qc_metrics.csv
+    - tables/selected_features.csv
+  figures:
+    - figures/cell_accessibility_histograms.png
+    - figures/feature_class_breakdown.png

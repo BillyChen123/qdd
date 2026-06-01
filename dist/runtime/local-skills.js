@@ -17,6 +17,11 @@ const CONTROLLED_TAGS = [
     'raw-counts',
     'qc',
     'normalization',
+    'peaks',
+    'peak-matrix',
+    'multiome',
+    'tfidf',
+    'lsi',
     'multi-sample',
     'batch-correction',
     'batch-diagnosis',
@@ -25,9 +30,11 @@ const CONTROLLED_TAGS = [
     'umap',
     'markers',
     'marker-based',
+    'gene-activity',
     'cell-type',
     'cell-state',
     'differential-expression',
+    'differential-accessibility',
     'condition-comparison',
 ];
 // skill id 在 runtime 内统一用 category/name 形式。

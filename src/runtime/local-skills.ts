@@ -19,6 +19,11 @@ const CONTROLLED_TAGS: readonly SkillTag[] = [
   'raw-counts',
   'qc',
   'normalization',
+  'peaks',
+  'peak-matrix',
+  'multiome',
+  'tfidf',
+  'lsi',
   'multi-sample',
   'batch-correction',
   'batch-diagnosis',
@@ -27,9 +32,11 @@ const CONTROLLED_TAGS: readonly SkillTag[] = [
   'umap',
   'markers',
   'marker-based',
+  'gene-activity',
   'cell-type',
   'cell-state',
   'differential-expression',
+  'differential-accessibility',
   'condition-comparison',
 ];
 

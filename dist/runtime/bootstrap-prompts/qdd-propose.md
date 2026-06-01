@@ -135,6 +135,10 @@ Prefer problem-level skills such as:
 - `singlecell/scrna/sc-batch-integration`
 - `singlecell/scrna/sc-clustering`
 - `singlecell/scrna/sc-marker-annotation`
+- `singlecell/scatac/scatac-preprocess-lsi`
+- `singlecell/scatac/scatac-batch-latent`
+- `singlecell/scatac/scatac-annotation-geneactivity`
+- `singlecell/scatac/scatac-dar`
 
 ### 5. Stop once the first pass is usable
 

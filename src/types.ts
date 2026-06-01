@@ -360,6 +360,11 @@ export type SkillTag =
   | 'raw-counts'
   | 'qc'
   | 'normalization'
+  | 'peaks'
+  | 'peak-matrix'
+  | 'multiome'
+  | 'tfidf'
+  | 'lsi'
   | 'multi-sample'
   | 'batch-correction'
   | 'batch-diagnosis'
@@ -368,9 +373,11 @@ export type SkillTag =
   | 'umap'
   | 'markers'
   | 'marker-based'
+  | 'gene-activity'
   | 'cell-type'
   | 'cell-state'
   | 'differential-expression'
+  | 'differential-accessibility'
   | 'condition-comparison';
 
 // problem-level skill 的 metadata。

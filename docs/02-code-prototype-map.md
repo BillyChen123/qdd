@@ -49,9 +49,26 @@ Not implemented yet:
 - TUI / auto mode
 - assist-mode next-study planner
 
+Current shared domain branches in the repo root:
+
+- `domain-skills/brain/singlecell/scrna-planning`
+- `domain-skills/brain/singlecell/scatac-planning`
+- `domain-skills/singlecell/scrna/*`
+- `domain-skills/singlecell/scatac/*`
+
 ## Source Tree
 
 ```text
+domain-skills/
+├── brain/
+│   └── singlecell/
+│       ├── scrna-planning/
+│       └── scatac-planning/
+├── singlecell/
+│   ├── scrna/
+│   └── scatac/
+└── README.md
+
 src/
 ├── cli/
 │   └── index.ts

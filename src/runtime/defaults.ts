@@ -45,7 +45,7 @@ export function createDefaultLayerPolicy(): LayerPolicy {
         default_skills: [],
       },
       'study-brain': {
-        default_skills: ['brain/study-planning-core'],
+        default_skills: ['brain/singlecell/scrna-planning', 'brain/singlecell/scatac-planning'],
       },
       executor: {
         default_skills: [],

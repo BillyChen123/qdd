@@ -163,7 +163,7 @@ export interface LocalSkillEntry {
 }
 export type SkillDomain = 'singlecell' | 'spatial' | 'bulk' | 'general';
 export type SkillStage = 'preprocess' | 'integration' | 'clustering' | 'annotation' | 'de' | 'visualization' | 'other';
-export type SkillTag = 'scanpy' | 'anndata' | 'h5ad' | 'raw-counts' | 'qc' | 'normalization' | 'multi-sample' | 'batch-correction' | 'batch-diagnosis' | 'neighbors' | 'leiden' | 'umap' | 'markers' | 'marker-based' | 'cell-type' | 'cell-state' | 'differential-expression' | 'condition-comparison';
+export type SkillTag = 'scanpy' | 'anndata' | 'h5ad' | 'raw-counts' | 'qc' | 'normalization' | 'peaks' | 'peak-matrix' | 'multiome' | 'tfidf' | 'lsi' | 'multi-sample' | 'batch-correction' | 'batch-diagnosis' | 'neighbors' | 'leiden' | 'umap' | 'markers' | 'marker-based' | 'gene-activity' | 'cell-type' | 'cell-state' | 'differential-expression' | 'differential-accessibility' | 'condition-comparison';
 export interface ProblemSkillMetadata {
     id: string;
     domain: SkillDomain;

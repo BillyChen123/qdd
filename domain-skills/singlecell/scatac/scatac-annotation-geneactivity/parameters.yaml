@@ -1,0 +1,46 @@
+entry_script: scripts/scatac_annotation_geneactivity.py
+python_env: CellFM_torch
+summary: Rank cluster-level ATAC features and convert them into auditable labels from gene-linked markers, marker peaks, or trusted paired labels.
+methods:
+  marker_file:
+    description: Score each cluster against a marker file containing either peaks or gene-level markers.
+  existing_labels:
+    description: Use an existing obs label column as a cluster-level evidence source through majority-vote purity.
+defaults:
+  marker_mode: auto
+  feature_column: gene_symbol
+  annotation_key: cell_type
+  unknown_label: unknown
+  min_marker_score: 0.15
+  min_label_purity: 0.6
+  n_top_features: 30
+  rank_method: wilcoxon
+  compute_umap_if_missing: true
+cli:
+  required:
+    - --input
+    - --output
+    - --cluster-key
+  optional:
+    - --marker-file <path>
+    - --marker-mode {auto,peak,gene}
+    - --feature-column <var-column>
+    - --existing-label-key <obs-column>
+    - --annotation-key <obs-column>
+    - --unknown-label <string>
+    - --min-marker-score <float>
+    - --min-label-purity <float>
+    - --n-top-features <int>
+    - --rank-method {wilcoxon,t-test,logreg}
+    - --compute-umap-if-missing
+output_contract:
+  main_h5ad: annotated.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/marker_rankings.csv
+    - tables/annotation_scores.csv
+    - tables/cluster_annotation_summary.csv
+  figures:
+    - figures/umap_by_annotation.png
+    - figures/annotation_score_heatmap.png
