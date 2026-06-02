@@ -11,6 +11,7 @@ const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES: ReadonlySet<string> = new Set([
   ...STUDY_OUTPUT_SUBDIRS,
   PATHS.artifactCandidatesFileName,
+  PATHS.boundaryUpdatesFileName,
   PATHS.publicDataRequestFileName,
 ]);
 
@@ -53,6 +54,10 @@ export function getStudyArtifactCandidatesPath(studyId: string): string {
 
 export function getStudyPublicDataRequestPath(studyId: string): string {
   return `${getStudyOutputDir(studyId)}/${PATHS.publicDataRequestFileName}`;
+}
+
+export function getStudyBoundaryUpdatesPath(studyId: string): string {
+  return `${getStudyOutputDir(studyId)}/${PATHS.boundaryUpdatesFileName}`;
 }
 
 export function getStudyOutputSubdirPaths(studyId: string): string[] {

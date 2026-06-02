@@ -4,6 +4,8 @@ export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
+export type BoundaryStatus = 'open' | 'narrowed' | 'resolved' | 'dissolved';
+export type BoundaryUpdateAction = 'add' | 'narrow' | 'resolve' | 'dissolve';
 export type TaskPromotionStatus = 'pending' | 'none' | 'candidate-recorded' | 'registered';
 export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
 export type QddCommand = BootstrapWorkflow;
@@ -24,10 +26,44 @@ export interface QuestionDelta {
     change_driver: string;
     open_boundaries: string[];
 }
+export interface BoundaryRecord {
+    id: string;
+    text: string;
+    depends_on: string[];
+    weight: number;
+    status: BoundaryStatus;
+}
+export interface BoundaryState {
+    boundaries: BoundaryRecord[];
+}
+export interface BoundaryUpdateSummaryEntry {
+    boundary_id: string;
+    action: BoundaryUpdateAction;
+}
+export interface BoundaryAddUpdate {
+    action: 'add';
+    boundary: BoundaryRecord;
+}
+export interface BoundaryNarrowUpdate {
+    action: 'narrow';
+    id: string;
+    text?: string;
+    depends_on?: string[];
+    weight?: number;
+}
+export interface BoundaryStatusUpdate {
+    action: 'resolve' | 'dissolve';
+    id: string;
+}
+export type BoundaryUpdateEntry = BoundaryAddUpdate | BoundaryNarrowUpdate | BoundaryStatusUpdate;
+export interface BoundaryUpdateManifest {
+    updates: BoundaryUpdateEntry[];
+}
 export interface EvolutionTrail {
     evolution_trail: Array<{
         study_id: string;
         question_delta: QuestionDelta;
+        boundary_updates?: BoundaryUpdateSummaryEntry[];
         timestamp: string;
     }>;
 }
@@ -81,6 +117,7 @@ export interface StudyRecord {
     study_id: string;
     question: string;
     hypothesis: string;
+    target_boundaries?: string[];
     status?: 'created' | 'confirmed' | 'running' | 'blocked' | 'completed' | 'closed';
     blockers?: string[];
     task_ids?: string[];
@@ -129,6 +166,14 @@ export interface StatusJson {
         count: number;
         latest: string[];
     };
+    boundaries: {
+        total: number;
+        open: number;
+        narrowed: number;
+        resolved: number;
+        dissolved: number;
+        active: string[];
+    };
     question_state: {
         last_change_type: QuestionChangeType | null;
         open_boundaries: string[];
@@ -158,6 +203,7 @@ export interface ValidationResult {
     issues: ValidationIssue[];
     checked: {
         contract: boolean;
+        boundaries: boolean;
         evolution: boolean;
         artifactIndex: boolean;
         layerPolicy: boolean;

@@ -4,7 +4,9 @@
 // 这样改目录结构时只需要集中改一处，而不是全项目到处改字符串。
 export const PATHS = {
     contract: 'contract.yaml',
+    boundaries: 'boundaries.yaml',
     evolution: 'evolution.yaml',
+    boundaryGraphHtml: 'boundary-graph.html',
     contextDir: 'context',
     contextResources: 'context/resources.md',
     studiesDir: 'studies',
@@ -17,6 +19,7 @@ export const PATHS = {
     artifactFiguresDir: 'artifacts/figures',
     artifactReportsDir: 'artifacts/reports',
     artifactCandidatesFileName: 'artifact-candidates.yaml',
+    boundaryUpdatesFileName: 'boundary-updates.yaml',
     publicDataRequestFileName: 'public_data_request.yaml',
     claudeDir: '.claude',
     claudeCommandsDir: '.claude/commands',

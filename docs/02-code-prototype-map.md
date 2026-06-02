@@ -7,7 +7,7 @@
 
 The repository now has a **minimal executable CLI runtime** for Question-Driven Discovery plus a first installed bootstrap layer.
 
-It is now strong enough for a **first human-mode end-to-end demo loop**:
+It is now strong enough for a **first human-mode end-to-end demo loop** with a real project-level boundary protocol:
 
 `qdd init -> qdd-start -> qdd-propose -> qdd-explore -> qdd-apply -> qdd-close`
 
@@ -21,6 +21,9 @@ Implemented commands:
 
 - `qdd init`
 - `qdd status --json`
+- `qdd boundaries --json`
+- `qdd boundaries apply --file <updates.yaml>`
+- `qdd boundaries render --output <path>`
 - `qdd instructions <id> [--command qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close] --json`
 - `qdd skills suggest --domain <domain> --stage <stage> [--tag <tag>...] --json`
 - `qdd add-study`
@@ -80,6 +83,7 @@ src/
 │   ├── add-study.ts
 │   ├── add-task.ts
 │   ├── artifacts-list.ts
+│   ├── boundaries.ts
 │   ├── close-study.ts
 │   ├── context.ts
 │   ├── init.ts
@@ -89,6 +93,7 @@ src/
 │   └── status.ts
 ├── runtime/
 │   ├── bootstrap.ts
+│   ├── boundaries.ts
 │   ├── constants.ts
 │   ├── defaults.ts
 │   ├── discovery.ts
@@ -116,6 +121,7 @@ CLI
     -> commands/add-study.ts
     -> commands/add-task.ts
     -> commands/artifacts-list.ts
+    -> commands/boundaries.ts
     -> commands/register-artifact.ts
     -> commands/close-study.ts
     -> commands/context.ts
@@ -136,6 +142,11 @@ Commands
 
   artifacts-list.ts
     -> runtime/inspection.ts
+    -> runtime/paths.ts
+
+  boundaries.ts
+    -> runtime/boundaries.ts
+    -> runtime/constants.ts
     -> runtime/paths.ts
 
   register-artifact.ts
@@ -175,6 +186,15 @@ Commands
     -> runtime/paths.ts
 
 Runtime
+  boundaries.ts
+    -> runtime/constants.ts
+    -> runtime/defaults.ts
+    -> runtime/discovery.ts
+    -> runtime/evidence.ts
+    -> runtime/store.ts
+    -> utils/file-system.ts
+    -> types.ts
+
   bootstrap.ts
     -> runtime/constants.ts
     -> runtime/store.ts
@@ -188,12 +208,14 @@ Runtime
     -> types.ts
 
   status.ts
+    -> runtime/boundaries.ts
     -> runtime/discovery.ts
     -> runtime/store.ts
     -> runtime/constants.ts
     -> types.ts
 
   instructions.ts
+    -> runtime/evidence.ts
     -> runtime/local-skills.ts
     -> runtime/store.ts
     -> runtime/constants.ts
@@ -201,6 +223,7 @@ Runtime
     -> types.ts
 
   inspection.ts
+    -> runtime/boundaries.ts
     -> runtime/discovery.ts
     -> runtime/lifecycle.ts
     -> runtime/local-skills.ts

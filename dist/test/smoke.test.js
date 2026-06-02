@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
+import { applyBoundaryUpdates, readBoundaryState, renderBoundaryGraphHtml } from '../runtime/boundaries.js';
 import { buildStatus } from '../runtime/status.js';
 import { buildInstructions } from '../runtime/instructions.js';
 import { createStudy, createTask, registerArtifact, closeStudy, recordArtifactCandidate } from '../runtime/lifecycle.js';
@@ -15,6 +16,7 @@ test('qdd init creates minimal project structure', async () => {
     await initCommand(projectRoot);
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'contract.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'evolution.yaml')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'boundaries.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'context')));
     await assert.rejects(fs.access(path.join(projectRoot, 'data')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'data')));
@@ -56,11 +58,15 @@ test('qdd init creates minimal project structure', async () => {
     assert.deepEqual(status.tasks.completed, []);
     assert.deepEqual(status.tasks.promotion_pending, []);
     assert.deepEqual(status.output_review.studies_with_unpackaged_output, []);
+    assert.equal(status.boundaries.total, 0);
+    assert.deepEqual(status.boundaries.active, []);
     const instructions = await fs.readFile(path.join(projectRoot, '.qdd', 'instructions.md'), 'utf-8');
     assert.match(instructions, /## Quick Reference/);
     assert.match(instructions, /## Workflow/);
     assert.match(instructions, /## Validation Checklist/);
     assert.match(instructions, /context\/resources\.md/);
+    assert.match(instructions, /boundaries\.yaml/);
+    assert.match(instructions, /boundary-graph\.html/);
     assert.match(instructions, /qdd-start/);
     assert.match(instructions, /qdd-propose/);
     assert.match(instructions, /qdd-explore/);
@@ -69,6 +75,8 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(instructions, /domain-skills\//);
     assert.match(instructions, /qdd instructions PROJECT --command qdd-start --json/);
     assert.match(instructions, /qdd instructions <id> --command <qdd-\.\.\.> --json/);
+    assert.match(instructions, /qdd boundaries --json/);
+    assert.match(instructions, /qdd boundaries apply --file <updates\.yaml>/);
     assert.match(instructions, /\.qdd\/layer-policy\.yaml/);
     assert.match(instructions, /\.qdd\/skills-catalog\.json/);
     const resources = await fs.readFile(path.join(projectRoot, 'context', 'resources.md'), 'utf-8');
@@ -90,6 +98,8 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(startCommand, /artifacts\/data\/source\.h5ad/);
     assert.match(startCommand, /domain-skills\//);
     assert.match(startCommand, /durable analyst preferences/);
+    assert.match(startCommand, /qdd boundaries apply --file/);
+    assert.match(startCommand, /qdd boundaries render --output boundary-graph\.html/);
     const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
     assert.match(proposeCommand, /qdd add-study/);
     assert.match(proposeCommand, /qdd add-task STUDY-XXX/);
@@ -97,6 +107,8 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(proposeCommand, /complete `qdd-start` first/);
     assert.match(proposeCommand, /By default, create \*\*2-4\*\* initial tasks/);
     assert.match(proposeCommand, /## How To Write The Initial Tasks/);
+    assert.match(proposeCommand, /qdd boundaries --json/);
+    assert.match(proposeCommand, /target_boundaries/);
     assert.match(proposeCommand, /rewrite the scaffold into task-specific executable steps/);
     assert.match(proposeCommand, /never write `qdd\/\*` workflow skills or `brain\/\*` planning skills into a task record/);
     assert.match(proposeCommand, /qdd skills suggest/);
@@ -126,6 +138,8 @@ test('qdd init creates minimal project structure', async () => {
     const closeSkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-close', 'SKILL.md'), 'utf-8');
     assert.match(closeSkill, /qdd instructions STUDY-XXX --command qdd-close --json/);
     assert.match(closeSkill, /question_delta/);
+    assert.match(closeSkill, /boundary-updates\.yaml/);
+    assert.match(closeSkill, /qdd boundaries apply --file/);
     const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-batch-integration'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scatac/scatac-preprocess-lsi'));
@@ -230,6 +244,8 @@ test('qdd status aggregates study/task frontmatter from the prototype layout', a
         'study_id: STUDY-001',
         'question: What is the bounded question?',
         'hypothesis: The question can be narrowed.',
+        'target_boundaries:',
+        '  - B001',
         'status: created',
         'task_ids:',
         '  - TASK-001',
@@ -238,6 +254,19 @@ test('qdd status aggregates study/task frontmatter from the prototype layout', a
         '## Question',
         '',
         'What is the bounded question?',
+        '',
+        '## Target Boundaries',
+        '',
+        '- B001',
+        '',
+    ].join('\n'), 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'boundaries.yaml'), [
+        'boundaries:',
+        '  - id: B001',
+        '    text: Example project boundary',
+        '    depends_on: []',
+        '    weight: 3',
+        '    status: open',
         '',
     ].join('\n'), 'utf-8');
     await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'tasks', 'TASK-001.md'), [
@@ -380,6 +409,8 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.equal(projectInstructions.command, 'qdd-start');
     assert.equal(projectInstructions.role, 'thesis-manager');
     assert.ok(projectInstructions.read.includes('contract.yaml'));
+    assert.ok(projectInstructions.read.includes('boundaries.yaml'));
+    assert.ok(projectInstructions.read.includes('boundary-graph.html'));
     assert.ok(projectInstructions.read.includes('context/resources.md'));
     assert.ok(projectInstructions.read.includes('artifacts/data/'));
     assert.ok(projectInstructions.read.includes('domain-skills/'));
@@ -388,8 +419,11 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(projectInstructions.read.includes('.qdd/layer-policy.yaml'));
     assert.ok(projectInstructions.read.includes('.qdd/skills-catalog.json'));
     assert.ok(projectInstructions.write.includes('artifacts/data/'));
+    assert.ok(projectInstructions.write.includes('boundaries.yaml'));
+    assert.ok(projectInstructions.write.includes('boundary-graph.html'));
     assert.ok(projectInstructions.write.includes('.qdd/layer-policy.yaml'));
     assert.ok(projectInstructions.rules.includes('Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.'));
+    assert.ok(projectInstructions.rules.includes('Seed or update project boundary state only through qdd boundaries apply --file <updates.yaml>; do not edit boundaries.yaml directly.'));
     const studyApplyInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-apply' });
     assert.equal(studyApplyInstructions.target.kind, 'study');
     assert.equal(studyApplyInstructions.command, 'qdd-apply');
@@ -397,6 +431,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/study.md'));
     assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/tasks/'));
     assert.ok(studyApplyInstructions.write.includes('studies/STUDY-001/output/artifact-candidates.yaml'));
+    assert.ok(studyApplyInstructions.read.includes('boundaries.yaml'));
     assert.ok(studyApplyInstructions.read.includes('context/resources.md'));
     assert.ok(studyApplyInstructions.read.includes('artifacts/data/study-source.h5ad'));
     assert.ok(studyApplyInstructions.read.some((entry) => entry.endsWith('domain-skills/singlecell/scrna/sc-batch-integration/SKILL.md')));
@@ -414,8 +449,12 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.equal(studyCloseInstructions.command, 'qdd-close');
     assert.equal(studyCloseInstructions.role, 'thesis-manager');
     assert.ok(studyCloseInstructions.write.includes('evolution.yaml'));
+    assert.ok(studyCloseInstructions.write.includes('boundaries.yaml'));
+    assert.ok(studyCloseInstructions.write.includes('boundary-graph.html'));
+    assert.ok(studyCloseInstructions.write.includes('studies/STUDY-001/output/boundary-updates.yaml'));
     assert.ok(studyCloseInstructions.write.includes('context/resources.md'));
     assert.ok(studyCloseInstructions.rules.includes('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.'));
+    assert.ok(studyCloseInstructions.rules.includes('Apply studies/STUDY-001/output/boundary-updates.yaml through qdd boundaries apply --file studies/STUDY-001/output/boundary-updates.yaml before running qdd close-study.'));
     assert.ok(studyCloseInstructions.rules.includes('Refuse closure when any completed task still has promotion_status pending.'));
     assert.ok(studyCloseInstructions.rules.includes('If this study introduced reusable downloaded datasets under artifacts/data/, record their stable source, alias, and intended reuse role in context/resources.md before closure.'));
     const taskInstructions = await buildInstructions(projectRoot, 'TASK-001', { command: 'qdd-apply' });
@@ -424,6 +463,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.equal(taskInstructions.role, 'executor');
     assert.ok(taskInstructions.write.includes('studies/STUDY-001/tasks/TASK-001.md'));
     assert.ok(taskInstructions.write.includes('studies/STUDY-001/output/artifact-candidates.yaml'));
+    assert.ok(taskInstructions.read.includes('boundaries.yaml'));
     assert.ok(taskInstructions.read.includes('studies/STUDY-001/tasks/TASK-001.md'));
     assert.ok(taskInstructions.read.includes('context/resources.md'));
     assert.ok(taskInstructions.read.includes('context/datasets.yaml'));
@@ -434,6 +474,7 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(taskInstructions.rules.includes('Keep task checklist progress in the task Markdown body.'));
     assert.ok(taskInstructions.rules.includes('Rewrite the weak checklist scaffold into task-specific executable steps before or during execution.'));
     assert.ok(taskInstructions.rules.includes('Keep the task minimal and evidence-producing.'));
+    assert.ok(taskInstructions.rules.includes('You may read current project boundary state for alignment, but you must not mutate it from task-level apply.'));
     assert.ok(taskInstructions.rules.includes('Only rely on domain task skills that exist under the QDD root domain-skills/ library.'));
     assert.ok(taskInstructions.rules.includes('qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.'));
     assert.ok(taskInstructions.rules.includes('If task-local executor skills are present, read them first and use them as the primary execution guidance for this task.'));
@@ -444,11 +485,13 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(taskInstructions.rules.includes('Treat slow clustering, UMAP, integration, and large h5ad processing as normal long-running work unless there is explicit evidence of failure.'));
     const studyExploreInstructions = await buildInstructions(projectRoot, 'STUDY-001', { command: 'qdd-explore' });
     assert.equal(studyExploreInstructions.role, 'study-brain');
+    assert.ok(studyExploreInstructions.read.includes('boundaries.yaml'));
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/scrna-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/scatac-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/public-data-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.includes('.qdd/skills-catalog.json'));
     assert.ok(studyExploreInstructions.rules.includes('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.'));
+    assert.ok(studyExploreInstructions.rules.includes('Record explicit target_boundaries in study.md frontmatter and in the ## Target Boundaries section.'));
     await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'output', 'public_data_request.yaml'), [
         'source: cellxgene',
         'modality: scrna',
@@ -498,6 +541,48 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(studyClosePublicDataInstructions.read.includes('studies/STUDY-001/output/public_data_request.yaml'));
     assert.ok(studyClosePublicDataInstructions.rules.includes('If the selected public datasets were downloaded successfully, qdd-close should decide whether they belong in carried-forward project resources and document them explicitly in context/resources.md.'));
     assert.ok(studyExploreInstructions.rules.includes('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.'));
+});
+test('qdd boundaries can apply project-local updates and render a project-local HTML report', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-boundaries-'));
+    await initCommand(projectRoot);
+    await fs.writeFile(path.join(projectRoot, '.qdd', 'seed-boundaries.yaml'), [
+        'updates:',
+        '  - action: add',
+        '    boundary:',
+        '      id: B001',
+        '      text: Batch effects may dominate the shared embedding',
+        '      depends_on: []',
+        '      weight: 5',
+        '      status: open',
+        '  - action: add',
+        '    boundary:',
+        '      id: B002',
+        '      text: Annotation may still depend on integration-aware reclustering',
+        '      depends_on:',
+        '        - B001',
+        '      weight: 3',
+        '      status: open',
+        '',
+    ].join('\n'), 'utf-8');
+    const applied = await applyBoundaryUpdates(projectRoot, '.qdd/seed-boundaries.yaml');
+    assert.equal(applied.updates.length, 2);
+    const boundaryState = await readBoundaryState(projectRoot);
+    assert.deepEqual(boundaryState.boundaries.map((boundary) => boundary.id), ['B001', 'B002']);
+    const createdStudy = await createStudy(projectRoot, {
+        question: 'Can we resolve the dominant integration uncertainty first?',
+        hypothesis: 'A focused integration check should compress the main batch boundary.',
+        targetBoundaries: ['B001'],
+    });
+    await fs.writeFile(path.join(projectRoot, 'studies', createdStudy.studyId, 'output', 'boundary-updates.yaml'), ['updates:', '  - action: resolve', '    id: B001', ''].join('\n'), 'utf-8');
+    const renderPath = await renderBoundaryGraphHtml(projectRoot);
+    const html = await fs.readFile(path.join(projectRoot, renderPath), 'utf-8');
+    assert.match(html, /QDD Boundary Graph/);
+    assert.match(html, /B001/);
+    assert.match(html, /B002/);
+    assert.match(html, /STUDY-001/);
+    const validation = await validateProject(projectRoot);
+    assert.equal(validation.valid, true);
+    assert.equal(validation.checked.boundaries, true);
 });
 test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a study', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-lifecycle-'));
@@ -776,6 +861,8 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
         'study_id: STUDY-001',
         'question: Broken closure check',
         'hypothesis: Should fail validation',
+        'target_boundaries:',
+        '  - B999',
         'status: closed',
         'task_ids:',
         '  - TASK-001',
@@ -846,6 +933,7 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
         '    schema: markdown-report',
         '',
     ].join('\n'), 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'output', 'boundary-updates.yaml'), ['updates:', '  - action: invalid', '    id: B999', ''].join('\n'), 'utf-8');
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, false);
     assert.ok(validation.issues.some((issue) => issue.code === 'closed_study_with_open_tasks'));
@@ -857,6 +945,8 @@ test('qdd validate warns on placeholder onboarding state and reports broken link
     assert.ok(validation.issues.some((issue) => issue.code === 'missing_local_skill_reference'));
     assert.ok(validation.issues.some((issue) => issue.code === 'workflow_skill_not_allowed_in_layer_policy'));
     assert.ok(validation.issues.some((issue) => issue.code === 'planning_skill_not_allowed_in_task_layer_policy'));
+    assert.ok(validation.issues.some((issue) => issue.code === 'unknown_target_boundary'));
+    assert.ok(validation.issues.some((issue) => issue.code === 'invalid_boundary_updates_yaml'));
 });
 test('qdd validate and close enforce promotion review and canonical study output packaging', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-promotion-packaging-'));

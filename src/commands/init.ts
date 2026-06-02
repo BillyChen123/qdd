@@ -3,6 +3,7 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from '../runtime/constants.js';
 import {
   createDefaultArtifactIndex,
+  createDefaultBoundaryState,
   createDefaultEvolutionTrail,
   createDefaultInstructionsMarkdown,
   createDefaultLayerPolicy,
@@ -26,6 +27,7 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
 
   const contractPath = path.join(projectRoot, PATHS.contract);
   const evolutionPath = path.join(projectRoot, PATHS.evolution);
+  const boundariesPath = path.join(projectRoot, PATHS.boundaries);
   const artifactIndexPath = path.join(projectRoot, PATHS.artifactIndex);
   const instructionsPath = path.join(projectRoot, PATHS.instructions);
   const resourcesPath = path.join(projectRoot, PATHS.contextResources);
@@ -40,6 +42,10 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
 
   if (!(await FileSystemUtils.fileExists(evolutionPath))) {
     await writeYamlFile(projectRoot, PATHS.evolution, createDefaultEvolutionTrail());
+  }
+
+  if (!(await FileSystemUtils.fileExists(boundariesPath))) {
+    await writeYamlFile(projectRoot, PATHS.boundaries, createDefaultBoundaryState());
   }
 
   if (!(await FileSystemUtils.fileExists(artifactIndexPath))) {

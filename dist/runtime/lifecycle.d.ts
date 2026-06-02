@@ -4,6 +4,7 @@ export interface AddStudyOptions {
     hypothesis?: string;
     blockers?: string[];
     expectedArtifacts?: string[];
+    targetBoundaries?: string[];
 }
 export interface AddTaskOptions {
     goal?: string;

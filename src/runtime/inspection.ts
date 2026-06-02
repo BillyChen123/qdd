@@ -4,6 +4,7 @@ import type {
   ArtifactCandidateManifest,
   ArtifactIndex,
   ArtifactListJson,
+  BoundaryUpdateSummaryEntry,
   ContextEntry,
   ContextJson,
   EvolutionTrail,
@@ -15,8 +16,9 @@ import type {
 } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
+import { readBoundaryState, readBoundaryUpdateManifest } from './boundaries.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { getStudyArtifactCandidatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
+import { getStudyArtifactCandidatesPath, getStudyBoundaryUpdatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
 import { readLayerPolicy } from './layer-policy.js';
 import {
@@ -31,6 +33,7 @@ import {
 import { readMarkdownDocument, readYamlFile } from './store.js';
 
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
+const BOUNDARY_ID_PATTERN = /^B\d{3}$/;
 
 function isContextFileName(fileName: string): boolean {
   return fileName.endsWith('.yaml') || fileName.endsWith('.md');
@@ -149,6 +152,46 @@ function validateEvolutionTrail(evolution: EvolutionTrail, issues: ValidationIss
         message: `Invalid question_delta.change_type '${String(delta.change_type)}'.`,
       });
     }
+
+    if (entry.boundary_updates !== undefined) {
+      validateBoundaryUpdateSummary(entry.boundary_updates, `${PATHS.evolution}#${index}.boundary_updates`, issues);
+    }
+  }
+}
+
+function validateBoundaryUpdateSummary(
+  updates: BoundaryUpdateSummaryEntry[],
+  pathPrefix: string,
+  issues: ValidationIssue[]
+): void {
+  if (!Array.isArray(updates)) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'invalid_boundary_updates_summary',
+      path: pathPrefix,
+      message: 'boundary_updates must be an array when present.',
+    });
+    return;
+  }
+
+  for (const [index, entry] of updates.entries()) {
+    if (!BOUNDARY_ID_PATTERN.test(String(entry.boundary_id ?? '').trim())) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_boundary_update_summary_id',
+        path: `${pathPrefix}#${index}`,
+        message: `boundary_updates entry has invalid boundary_id '${String(entry.boundary_id ?? '')}'. Expected BXXX.`,
+      });
+    }
+
+    if (!['add', 'narrow', 'resolve', 'dissolve'].includes(String(entry.action ?? ''))) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_boundary_update_summary_action',
+        path: `${pathPrefix}#${index}`,
+        message: `boundary_updates entry has invalid action '${String(entry.action ?? '')}'.`,
+      });
+    }
   }
 }
 
@@ -233,6 +276,63 @@ function validateStudyRecord(study: StudyRecord, issues: ValidationIssue[]): voi
       path: studyPath,
       message: `study.md has invalid status '${String(study.status)}'.`,
     });
+  }
+}
+
+function validateStudyTargetBoundaries(study: StudyRecord, knownBoundaryIds: Set<string>, issues: ValidationIssue[]): void {
+  const studyPath = `${PATHS.studiesDir}/${study.study_id}/study.md`;
+
+  if (study.target_boundaries !== undefined && !Array.isArray(study.target_boundaries)) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'invalid_target_boundaries',
+      path: studyPath,
+      message: 'study.md must store target_boundaries as an array when provided.',
+    });
+    return;
+  }
+
+  const targetBoundaries = Array.isArray(study.target_boundaries) ? study.target_boundaries : [];
+  if (study.status && study.status !== 'created' && targetBoundaries.length === 0) {
+    pushIssue(issues, {
+      level: 'warning',
+      code: 'missing_target_boundaries',
+      path: studyPath,
+      message: 'Study has no declared target_boundaries. Planning should record which project boundaries this study tries to compress.',
+    });
+  }
+
+  const seen = new Set<string>();
+  for (const boundaryId of targetBoundaries) {
+    if (!BOUNDARY_ID_PATTERN.test(String(boundaryId ?? '').trim())) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_target_boundary_id',
+        path: studyPath,
+        message: `Study target_boundaries contains invalid id '${String(boundaryId ?? '')}'. Expected BXXX.`,
+      });
+      continue;
+    }
+
+    if (seen.has(boundaryId)) {
+      pushIssue(issues, {
+        level: 'warning',
+        code: 'duplicate_target_boundary_id',
+        path: studyPath,
+        message: `Study target_boundaries repeats '${boundaryId}'.`,
+      });
+      continue;
+    }
+    seen.add(boundaryId);
+
+    if (!knownBoundaryIds.has(boundaryId)) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'unknown_target_boundary',
+        path: studyPath,
+        message: `Study target_boundaries references unknown project boundary '${boundaryId}'.`,
+      });
+    }
   }
 }
 
@@ -507,9 +607,11 @@ async function listSharedDataPaths(projectRoot: string): Promise<string[]> {
 
 export async function validateProject(projectRoot: string): Promise<ValidationResult> {
   const issues: ValidationIssue[] = [];
+  let knownBoundaryIds = new Set<string>();
 
   const checked: ValidationResult['checked'] = {
     contract: false,
+    boundaries: false,
     evolution: false,
     artifactIndex: false,
     layerPolicy: false,
@@ -529,6 +631,29 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
       path: PATHS.contract,
       message: (error as Error).message,
     });
+  }
+
+  const boundariesPath = path.join(projectRoot, PATHS.boundaries);
+  if (!(await FileSystemUtils.fileExists(boundariesPath))) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'missing_boundaries_yaml',
+      path: PATHS.boundaries,
+      message: 'boundaries.yaml is required as the current project boundary-state truth source.',
+    });
+  } else {
+    try {
+      const boundaryState = await readBoundaryState(projectRoot);
+      checked.boundaries = true;
+      knownBoundaryIds = new Set(boundaryState.boundaries.map((boundary) => boundary.id));
+    } catch (error) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_boundaries_yaml',
+        path: PATHS.boundaries,
+        message: (error as Error).message,
+      });
+    }
   }
 
   try {
@@ -761,6 +886,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
 
   for (const study of studies) {
     validateStudyRecord(study, issues);
+    validateStudyTargetBoundaries(study, knownBoundaryIds, issues);
   }
 
   for (const task of tasks) {
@@ -831,6 +957,26 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
         level: 'error',
         code: 'invalid_artifact_candidates_yaml',
         path: manifestPath,
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  for (const study of studies) {
+    const updatesPath = getStudyBoundaryUpdatesPath(study.study_id);
+    const absolutePath = path.join(projectRoot, updatesPath);
+
+    if (!(await FileSystemUtils.fileExists(absolutePath))) {
+      continue;
+    }
+
+    try {
+      await readBoundaryUpdateManifest(projectRoot, updatesPath);
+    } catch (error) {
+      pushIssue(issues, {
+        level: 'error',
+        code: 'invalid_boundary_updates_yaml',
+        path: updatesPath,
         message: (error as Error).message,
       });
     }

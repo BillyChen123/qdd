@@ -23,8 +23,10 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 初始化后，项目里最重要的人工维护文件是：
 
 - `contract.yaml`
+- `boundaries.yaml`
 - `context/resources.md`
 - `artifacts/data/`
+- `boundary-graph.html`
 - `domain-skills/`：本仓库维护的中央领域 skill 源目录
 - `.codex/skills/qdd/`：项目级 QDD workflow surface
 - `.claude/skills/qdd/`：项目级 QDD workflow surface
@@ -92,6 +94,7 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
 
 - `contract.yaml`：项目边界和模式
+- `boundaries.yaml`：当前 project-level question boundary 状态
 - `context/resources.md`：项目级背景、数据、环境
 - `artifacts/data/`：项目级共享数据入口，默认用软连接挂真实数据；被正式晋升的数据 artifact 也会落到这里
 - `domain-skills/`：中央维护的领域 skill 源目录，`qdd` 直接从这里读取领域 skill
@@ -100,7 +103,9 @@ QDD 不想让仓库里充满复杂中间层。当前最关键的文件就是：
 - `studies/STUDY-XXX/study.md`：一个研究问题的边界
 - `studies/STUDY-XXX/tasks/TASK-XXX.md`：证据生产任务
 - `studies/STUDY-XXX/output/`：代码、图、表、报告等本地证据
+- `studies/STUDY-XXX/output/boundary-updates.yaml`：study 对 project boundary state 的受控更新
 - `artifacts/index.yaml`：明确登记过的可复用证据
+- `boundary-graph.html`：项目级 boundary 视图
 - `evolution.yaml`：问题如何演化
 
 ## 安装
@@ -167,6 +172,9 @@ qdd init .
 
 ```bash
 qdd status --json
+qdd boundaries --json
+qdd boundaries apply --file studies/STUDY-001/output/boundary-updates.yaml
+qdd boundaries render --output boundary-graph.html
 qdd instructions PROJECT --command qdd-start --json
 qdd instructions STUDY-001 --command qdd-apply --json
 qdd instructions TASK-001 --command qdd-apply --json

@@ -44,10 +44,11 @@ Examples:
 3. Run `qdd status --json`.
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
-6. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
-7. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
-8. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
-9. If the study may need external public data, decide that here instead of leaving it for apply to improvise later.
+6. Read `qdd boundaries --json` before planning so the study targets the current project question state.
+7. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
+8. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
+9. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
+10. If the study may need external public data, decide that here instead of leaving it for apply to improvise later.
 
 ---
 
@@ -79,6 +80,7 @@ At minimum, fill in:
 
 - the bounded question
 - the working hypothesis or expectation
+- the `target_boundaries` this study will try to compress
 - why this study matters now
 - resource fit
 - evidence plan
@@ -181,6 +183,7 @@ Write them concretely:
 
 - `## Question`: one bounded question only
 - `## Hypothesis`: a falsifiable expectation, not a slogan
+- `## Target Boundaries`: explicit `BXXX` identifiers from `qdd boundaries --json`
 - `## Why Now`: why this belongs in the current loop
 - `## Resource Fit`: what data, runtime, biology, or prior artifacts matter
 - `## Evidence Plan`: what outputs would make the study judgeable
@@ -188,6 +191,7 @@ Write them concretely:
 - `## Tasks`: list the initial tasks you just created
 
 Do not leave these as generic filler if you already know the answer.
+Do not leave `target_boundaries` empty once the study direction is clear enough to propose.
 
 ---
 

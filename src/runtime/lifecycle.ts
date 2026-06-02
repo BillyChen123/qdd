@@ -14,11 +14,13 @@ import type {
 } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
+import { readBoundaryUpdateManifest } from './boundaries.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import {
   buildCanonicalArtifactPath,
   ensureStudyOutputLayout,
   getStudyArtifactCandidatesPath,
+  getStudyBoundaryUpdatesPath,
   getStudyOutputDir,
   listNonCanonicalStudyOutputEntries,
   relocateArtifactToCanonicalPath,
@@ -43,6 +45,7 @@ export interface AddStudyOptions {
   hypothesis?: string;
   blockers?: string[];
   expectedArtifacts?: string[];
+  targetBoundaries?: string[];
 }
 
 export interface AddTaskOptions {
@@ -145,6 +148,10 @@ function buildStudyBody(record: StudyRecord): string {
     record.expected_artifacts && record.expected_artifacts.length > 0
       ? record.expected_artifacts.map((value) => `- ${value}`).join('\n')
       : '- Define the minimum evidence needed to judge this study.';
+  const targetBoundaries =
+    record.target_boundaries && record.target_boundaries.length > 0
+      ? record.target_boundaries.map((value) => `- ${value}`).join('\n')
+      : '- None declared yet. Read `qdd boundaries --json` and declare the project boundaries this study will try to compress.';
 
   return [
     '## Question',
@@ -154,6 +161,10 @@ function buildStudyBody(record: StudyRecord): string {
     '## Hypothesis',
     '',
     record.hypothesis,
+    '',
+    '## Target Boundaries',
+    '',
+    targetBoundaries,
     '',
     '## Why Now',
     '',
@@ -256,6 +267,7 @@ export async function readStudyDocument(projectRoot: string, studyId: string): P
     record: {
       ...document.frontmatter,
       study_id: document.frontmatter.study_id ?? studyId,
+      target_boundaries: document.frontmatter.target_boundaries ?? [],
       task_ids: document.frontmatter.task_ids ?? [],
       blockers: document.frontmatter.blockers ?? [],
       expected_artifacts: document.frontmatter.expected_artifacts ?? [],
@@ -329,6 +341,7 @@ export async function createStudy(projectRoot: string, options: AddStudyOptions 
     study_id: studyId,
     question: options.question?.trim() || 'Unspecified study question',
     hypothesis: options.hypothesis?.trim() || 'Unspecified hypothesis',
+    target_boundaries: options.targetBoundaries ?? [],
     status: 'created',
     task_ids: [],
     blockers: options.blockers ?? [],
@@ -695,6 +708,15 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
   }
 
   const currentQuestion = findCurrentQuestion(studyDocument.record, evolution);
+  let boundaryUpdatesSummary: EvolutionTrail['evolution_trail'][number]['boundary_updates'] | undefined;
+  const boundaryUpdatesPath = getStudyBoundaryUpdatesPath(studyId);
+  if (await FileSystemUtils.fileExists(path.join(projectRoot, boundaryUpdatesPath))) {
+    const manifest = await readBoundaryUpdateManifest(projectRoot, boundaryUpdatesPath);
+    boundaryUpdatesSummary = manifest.updates.map((update) => ({
+      boundary_id: update.action === 'add' ? update.boundary.id : update.id,
+      action: update.action,
+    }));
+  }
   const nextEvolution: EvolutionTrail = {
     evolution_trail: [
       ...evolution.evolution_trail,
@@ -707,6 +729,7 @@ export async function closeStudy(projectRoot: string, studyId: string, options: 
           change_driver: options.changeDriver,
           open_boundaries: options.openBoundaries,
         },
+        ...(boundaryUpdatesSummary && boundaryUpdatesSummary.length > 0 ? { boundary_updates: boundaryUpdatesSummary } : {}),
         timestamp: new Date().toISOString(),
       },
     ],

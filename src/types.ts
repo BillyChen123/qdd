@@ -20,6 +20,17 @@ export type BootstrapTool = 'claude' | 'codex';
 // QDD 当前定义的核心工作流名称。
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
 
+// project-level boundary 当前所处的状态。
+// - open: 仍然开放，尚未被有效压缩
+// - narrowed: 仍然开放，但边界已经变窄
+// - resolved: 已被当前项目内证据充分解决
+// - dissolved: 这个问题边界不再构成有效问题
+export type BoundaryStatus = 'open' | 'narrowed' | 'resolved' | 'dissolved';
+
+// 受控的 boundary 更新动作。
+// 第一版故意收得很小，只支持最核心的四种状态迁移。
+export type BoundaryUpdateAction = 'add' | 'narrow' | 'resolve' | 'dissolve';
+
 // task 在 apply / close 之间的 promotion review 状态。
 // 这里刻意保持很小，只回答一个问题：
 // “这个 task 的可复用输出，apply 到底审没审过？”
@@ -73,6 +84,66 @@ export interface QuestionDelta {
   open_boundaries: string[];
 }
 
+// project 当前的 boundary 节点。
+// 这里表达的是“项目级未决问题状态”，不是 task 或 method。
+export interface BoundaryRecord {
+  // 稳定 boundary ID，例如 B001。
+  id: string;
+
+  // 边界描述，应该写成问题或约束，而不是方法名。
+  text: string;
+
+  // 这个 boundary 依赖哪些上游 boundary 先被澄清。
+  depends_on: string[];
+
+  // 人工维护的轻量权重，后续可用于 priority / quality 计算。
+  weight: number;
+
+  // 当前状态。
+  status: BoundaryStatus;
+}
+
+// boundaries.yaml 的结构。
+export interface BoundaryState {
+  boundaries: BoundaryRecord[];
+}
+
+// evolution / render / apply 里需要的轻量 boundary update 摘要。
+export interface BoundaryUpdateSummaryEntry {
+  boundary_id: string;
+  action: BoundaryUpdateAction;
+}
+
+// boundary-updates.yaml 中 add 动作的完整负载。
+export interface BoundaryAddUpdate {
+  action: 'add';
+  boundary: BoundaryRecord;
+}
+
+// boundary-updates.yaml 中 narrow 动作的负载。
+// narrow 允许更新 text / depends_on / weight，但最终状态固定为 narrowed。
+export interface BoundaryNarrowUpdate {
+  action: 'narrow';
+  id: string;
+  text?: string;
+  depends_on?: string[];
+  weight?: number;
+}
+
+// resolve / dissolve 只需要指定目标 boundary。
+export interface BoundaryStatusUpdate {
+  action: 'resolve' | 'dissolve';
+  id: string;
+}
+
+// boundary-updates.yaml 中允许的更新条目。
+export type BoundaryUpdateEntry = BoundaryAddUpdate | BoundaryNarrowUpdate | BoundaryStatusUpdate;
+
+// study-local boundary 更新文件。
+export interface BoundaryUpdateManifest {
+  updates: BoundaryUpdateEntry[];
+}
+
 // 项目级问题演化历史。
 // evolution.yaml 会用这个结构记录每一轮 study 对问题空间造成的变化。
 export interface EvolutionTrail {
@@ -82,6 +153,9 @@ export interface EvolutionTrail {
 
     // 本轮对问题的更新内容。
     question_delta: QuestionDelta;
+
+    // 本轮对 project-level boundary state 做了哪些受控更新。
+    boundary_updates?: BoundaryUpdateSummaryEntry[];
 
     // 写入时间，通常为 ISO 时间字符串。
     timestamp: string;
@@ -196,6 +270,9 @@ export interface StudyRecord {
   // 当前 study 的核心假设。
   hypothesis: string;
 
+  // 这轮 study 试图压缩哪些 project-level boundaries。
+  target_boundaries?: string[];
+
   // study 当前状态。
   status?: 'created' | 'confirmed' | 'running' | 'blocked' | 'completed' | 'closed';
 
@@ -286,6 +363,14 @@ export interface StatusJson {
     count: number;
     latest: string[];
   };
+  boundaries: {
+    total: number;
+    open: number;
+    narrowed: number;
+    resolved: number;
+    dissolved: number;
+    active: string[];
+  };
   question_state: {
     last_change_type: QuestionChangeType | null;
     open_boundaries: string[];
@@ -323,6 +408,7 @@ export interface ValidationResult {
   issues: ValidationIssue[];
   checked: {
     contract: boolean;
+    boundaries: boolean;
     evolution: boolean;
     artifactIndex: boolean;
     layerPolicy: boolean;

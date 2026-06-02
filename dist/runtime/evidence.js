@@ -9,6 +9,7 @@ const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([
     ...STUDY_OUTPUT_SUBDIRS,
     PATHS.artifactCandidatesFileName,
+    PATHS.boundaryUpdatesFileName,
     PATHS.publicDataRequestFileName,
 ]);
 function isArtifactType(value) {
@@ -43,6 +44,9 @@ export function getStudyArtifactCandidatesPath(studyId) {
 }
 export function getStudyPublicDataRequestPath(studyId) {
     return `${getStudyOutputDir(studyId)}/${PATHS.publicDataRequestFileName}`;
+}
+export function getStudyBoundaryUpdatesPath(studyId) {
+    return `${getStudyOutputDir(studyId)}/${PATHS.boundaryUpdatesFileName}`;
 }
 export function getStudyOutputSubdirPaths(studyId) {
     return STUDY_OUTPUT_SUBDIRS.map((subdir) => `${getStudyOutputDir(studyId)}/${subdir}`);

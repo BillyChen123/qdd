@@ -3,7 +3,7 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import type { InstructionsJson, QddCommand, QddRole, StudyRecord, TaskRecord } from '../types.js';
 import { readMarkdownFrontmatter } from './store.js';
 import { PATHS } from './constants.js';
-import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
+import { getStudyArtifactCandidatesPath, getStudyBoundaryUpdatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
 import { listLocalSkills, resolveLocalSkills } from './local-skills.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from './layer-policy.js';
 
@@ -210,6 +210,9 @@ export async function buildInstructions(
       'Do not invent project facts that are not grounded in user input or existing files.',
       'Use qdd-start to fill shared project context before the first study is proposed.',
       'Keep contract.yaml concise and machine-readable.',
+      'Treat boundaries.yaml as the current project question-state truth source.',
+      'Seed or update project boundary state only through qdd boundaries apply --file <updates.yaml>; do not edit boundaries.yaml directly.',
+      'Treat boundary-graph.html as a derived report, not a truth source.',
       'Keep richer project context in context/resources.md and optional context sidecars; use resources.md for project facts plus durable analyst preferences, not as a task-by-task memory log.',
       'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
       'Treat .qdd/layer-policy.yaml as the editable source for command roles and role-level default skills.',
@@ -226,7 +229,9 @@ export async function buildInstructions(
       },
       read: uniqueSortedValues([
         PATHS.contract,
+        PATHS.boundaries,
         PATHS.evolution,
+        PATHS.boundaryGraphHtml,
         PATHS.instructions,
         PATHS.bootstrapConfig,
         PATHS.layerPolicy,
@@ -242,6 +247,8 @@ export async function buildInstructions(
       ]),
       write: [
         PATHS.contract,
+        PATHS.boundaries,
+        PATHS.boundaryGraphHtml,
         PATHS.contextResources,
         `${PATHS.contextDir}/`,
         `${PATHS.artifactDataDir}/`,
@@ -271,6 +278,7 @@ export async function buildInstructions(
     const hasPublicDataTask = studyTaskSkills.matchedIds.includes('singlecell/public-data/cellxgene-discover');
     const readPaths = [
       PATHS.contract,
+      PATHS.boundaries,
       PATHS.evolution,
       PATHS.instructions,
       PATHS.layerPolicy,
@@ -291,7 +299,8 @@ export async function buildInstructions(
     ];
 
     if (command === 'qdd-close') {
-      writePaths.push(PATHS.evolution, PATHS.contextResources, `${PATHS.contextDir}/`);
+      readPaths.push(getStudyBoundaryUpdatesPath(id));
+      writePaths.push(PATHS.evolution, PATHS.contextResources, `${PATHS.contextDir}/`, PATHS.boundaries, PATHS.boundaryGraphHtml, getStudyBoundaryUpdatesPath(id));
     }
 
     const rules = [
@@ -301,6 +310,7 @@ export async function buildInstructions(
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
       'Treat brain/* as planning-only domain-prior skills. They may guide study planning, but must not be written into task skills or treated as executor skills.',
+      'Read current project boundary state before making study-level decisions that depend on unresolved question constraints.',
       'qdd-propose owns the first-pass study and task-graph creation.',
       'In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.',
       'Record blockers explicitly.',
@@ -319,6 +329,9 @@ export async function buildInstructions(
 
     if (command === 'qdd-propose' || command === 'qdd-explore') {
       readPaths.push(PATHS.skillsCatalog);
+      rules.push('Read qdd boundaries --json or boundaries.yaml before planning and keep the study aligned to current project question state.');
+      rules.push('Record explicit target_boundaries in study.md frontmatter and in the ## Target Boundaries section.');
+      rules.push('qdd-propose and qdd-explore may refine which boundaries the study targets, but they must not mutate project boundary state.');
       rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
       rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
       rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
@@ -328,6 +341,9 @@ export async function buildInstructions(
 
     if (command === 'qdd-close') {
       rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.');
+      rules.push(`Prepare ${getStudyBoundaryUpdatesPath(id)} as the explicit study-local boundary handoff before final closure.`);
+      rules.push(`Apply ${getStudyBoundaryUpdatesPath(id)} through qdd boundaries apply --file ${getStudyBoundaryUpdatesPath(id)} before running qdd close-study.`);
+      rules.push(`Refresh ${PATHS.boundaryGraphHtml} with qdd boundaries render --output ${PATHS.boundaryGraphHtml} after boundary state changes.`);
       rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
       rules.push('Refuse closure when any completed task still has promotion_status pending.');
       rules.push('Refuse closure when non-canonical top-level study output material still remains unpackaged.');
@@ -387,10 +403,11 @@ export async function buildInstructions(
     const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
     const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...taskSkillSet.matchedIds]);
     const hasPublicDataTask = taskSkillSet.matchedIds.includes('singlecell/public-data/cellxgene-discover');
-    const rules = [
+      const rules = [
       'Do not redefine the study question.',
       'Keep the task minimal and evidence-producing.',
       'Produce explicit outputs or blockers.',
+      'You may read current project boundary state for alignment, but you must not mutate it from task-level apply.',
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
       'Do not add qdd/* workflow skills or brain/* planning skills to task skill lists.',
@@ -448,6 +465,7 @@ export async function buildInstructions(
       },
       read: uniqueSortedValues([
         PATHS.contract,
+        PATHS.boundaries,
         PATHS.evolution,
         PATHS.instructions,
         PATHS.layerPolicy,

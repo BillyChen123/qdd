@@ -23,6 +23,7 @@ If omitted:
 - synthesize the study evidence
 - decide whether closure is actually justified
 - register any missing reusable outputs from the explicit candidate list
+- prepare and apply `studies/STUDY-XXX/output/boundary-updates.yaml`
 - write `question_delta` through `qdd close-study`
 - carry forward stable reusable context
 - suggest next study directions without auto-creating them
@@ -44,6 +45,7 @@ If omitted:
 5. Read the current study, its task files, and relevant outputs.
 6. Inspect `artifacts/index.yaml` and `qdd artifacts:list --json` when reusable outputs matter.
 7. Read `studies/STUDY-XXX/output/artifact-candidates.yaml` before deciding what to promote.
+8. Read `qdd boundaries --json` before deciding how the project boundary state should change.
 
 If validation or open task state shows the study is not ready to close, say so clearly.
 
@@ -96,6 +98,30 @@ Use these meanings:
 - `dissolution` - the study dissolved the question rather than narrowing it
 
 Be explicit. Do not hide uncertainty inside vague prose.
+
+## Update Project Boundary State
+
+Before final closure, prepare:
+
+```text
+studies/STUDY-XXX/output/boundary-updates.yaml
+```
+
+Use it to express only controlled project-boundary changes:
+
+- `add`
+- `narrow`
+- `resolve`
+- `dissolve`
+
+Then apply it through:
+
+```bash
+qdd boundaries apply --file studies/STUDY-XXX/output/boundary-updates.yaml
+qdd boundaries render --output boundary-graph.html
+```
+
+Do not hand-edit `boundaries.yaml`.
 
 ---
 
@@ -226,6 +252,7 @@ There is no rigid output template, but the reasoning must be explicit.
 
 - Run `qdd validate --json` before closure or handoff.
 - Make `question_delta` explicit.
+- Apply `studies/STUDY-XXX/output/boundary-updates.yaml` through `qdd boundaries apply --file ...` before `qdd close-study`.
 - Refuse closure when completed tasks still have `promotion_status: pending`.
 - Refuse closure when non-canonical top-level study output material still remains unpackaged.
 - Register missing reusable outputs from `artifact-candidates.yaml` before closure.

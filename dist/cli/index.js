@@ -10,6 +10,7 @@ import { closeStudyCommand } from '../commands/close-study.js';
 import { validateCommand } from '../commands/validate.js';
 import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
+import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
@@ -81,6 +82,48 @@ program
     .action(async (options) => {
     try {
         await contextCommand(options);
+    }
+    catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+});
+const boundaries = program
+    .command('boundaries')
+    .description('Inspect, update, or render the project boundary state');
+boundaries
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+    try {
+        await boundariesCommand(options);
+    }
+    catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+});
+boundaries
+    .command('apply')
+    .description('Apply controlled boundary updates from a YAML manifest')
+    .requiredOption('--file <path>', 'Project-local boundary update file')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+    try {
+        await boundariesApplyCommand(options?.file, options);
+    }
+    catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+});
+boundaries
+    .command('render')
+    .description('Render a project-local HTML boundary graph report')
+    .option('--output <path>', 'Output path within the current project', 'boundary-graph.html')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+    try {
+        await boundariesRenderCommand(options);
     }
     catch (error) {
         console.error(`Error: ${error.message}`);

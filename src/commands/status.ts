@@ -20,4 +20,6 @@ export async function statusCommand(options: { json?: boolean } = {}): Promise<v
   console.log(`Completed tasks pending promotion review: ${status.tasks.promotion_pending.length}`);
   console.log(`Studies with unpackaged output: ${status.output_review.studies_with_unpackaged_output.length}`);
   console.log(`Artifacts: ${status.artifacts.count}`);
+  console.log(`Open boundaries: ${status.boundaries.open}`);
+  console.log(`Resolved boundaries: ${status.boundaries.resolved}`);
 }

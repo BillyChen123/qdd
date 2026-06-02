@@ -1,4 +1,5 @@
 import { PATHS } from './constants.js';
+import { readBoundaryState, summarizeBoundaryState } from './boundaries.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
 import { listNonCanonicalStudyOutputEntries } from './evidence.js';
@@ -11,6 +12,7 @@ import { readYamlFile } from './store.js';
 // 最后把它们整理成一个稳定的 JSON 结构，给 CLI 或 agent 直接消费。
 export async function buildStatus(projectRoot) {
     const contract = await readYamlFile(projectRoot, PATHS.contract);
+    const boundaryState = await readBoundaryState(projectRoot);
     const evolution = await readYamlFile(projectRoot, PATHS.evolution);
     const artifactIndex = await readYamlFile(projectRoot, PATHS.artifactIndex);
     const studies = await discoverStudies(projectRoot);
@@ -26,6 +28,7 @@ export async function buildStatus(projectRoot) {
     const lastEvolutionEntry = evolution.evolution_trail[evolution.evolution_trail.length - 1] ?? null;
     const lastDelta = lastEvolutionEntry?.question_delta ?? null;
     const currentQuestion = lastDelta?.question_after ?? contract.initial_question;
+    const boundarySummary = summarizeBoundaryState(boundaryState);
     return {
         project: {
             theme: contract.theme,
@@ -77,6 +80,7 @@ export async function buildStatus(projectRoot) {
             count: artifactIndex.artifacts.length,
             latest: artifactIndex.artifacts.slice(-5).map((entry) => entry.id),
         },
+        boundaries: boundarySummary,
         question_state: {
             // 这里关心的是“问题现在怎么变过来、还有哪些开放边界未收束”。
             last_change_type: lastDelta?.change_type ?? null,

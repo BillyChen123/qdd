@@ -27,6 +27,7 @@ Examples:
 - confirm or write the project theme and initial question in `contract.yaml`
 - structure shared project context in `context/resources.md`
 - record biological background, runtime environment, and available datasets
+- seed the first real project boundary state through `qdd boundaries apply`
 - create dataset entrypoints under `artifacts/data/` using symlinks
 - keep domain-skill usage inside the QDD root `domain-skills/` library
 - leave the project ready for `qdd-propose`
@@ -48,6 +49,7 @@ Examples:
 4. Run `qdd instructions PROJECT --command qdd-start --json`.
 5. Read the current `contract.yaml`, `context/resources.md`, and any existing `context/` sidecars.
 6. Inspect the QDD root `domain-skills/` library before mentioning domain skills.
+7. Inspect `qdd boundaries --json` before seeding or refreshing project boundary state.
 
 If the user already filled part of the project context, preserve it and refine it instead of overwriting it blindly.
 
@@ -129,7 +131,23 @@ ln -sfn /abs/path/to/new-source.h5ad artifacts/data/source.h5ad
 
 Record the linked path and its role in `context/resources.md`.
 
-### 5. Respect the local skill boundary
+### 5. Seed the first real boundary state
+
+After `contract.yaml` and `context/resources.md` are minimally real, prepare a small project-local updates file and apply it through:
+
+```bash
+qdd boundaries apply --file <updates.yaml>
+```
+
+Do not hand-edit `boundaries.yaml`.
+
+Once the boundary state is materially updated, refresh the project-local report:
+
+```bash
+qdd boundaries render --output boundary-graph.html
+```
+
+### 6. Respect the local skill boundary
 
 Treat the QDD root `domain-skills/` library as the domain-skill validation inventory. When `.claude/skills/` and `.codex/skills/` are installed locally, treat them as workflow bootstrap surfaces, not as the source of domain skills.
 
@@ -145,7 +163,7 @@ Bad behavior:
 - writing task skill references that do not exist in the project
 - writing `qdd/*` workflow skills into task `skills:`
 
-### 6. Stop when the project is ready for study proposal
+### 7. Stop when the project is ready for study proposal
 
 Start mode is done when:
 
