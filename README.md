@@ -43,6 +43,8 @@ QDD 是一个面向 AI 辅助科研的轻量 CLI，完整名称是 `Question-Dri
 
 这里的重点不是把计划说得很完美，而是先把一个可执行的 study 边界和初始 task 落到文件里。
 
+如果用户给的是一个很大的 long-range 假设，而当前 `boundaries.yaml` 显示它还依赖多个未解决前置边界，那么 `qdd-propose` 应该先保留这个大目标，再把当前 study 收缩为一个 frontier-sized 的可执行切片，而不是靠堆更多 task 硬撑一个过大的 study。
+
 ### 2. `qdd-explore`
 
 当前安装的 workflow surface：`qdd-explore`
@@ -173,6 +175,8 @@ qdd init .
 ```bash
 qdd status --json
 qdd boundaries --json
+qdd boundaries score --targets B001,B002 --json
+qdd boundaries score --study STUDY-001 --json
 qdd boundaries apply --file studies/STUDY-001/output/boundary-updates.yaml
 qdd boundaries render --output boundary-graph.html
 qdd instructions PROJECT --command qdd-start --json
@@ -180,6 +184,14 @@ qdd instructions STUDY-001 --command qdd-apply --json
 qdd instructions TASK-001 --command qdd-apply --json
 qdd validate --json
 ```
+
+其中 `qdd boundaries score` 是 proposal / explore 阶段的结构化评分面。它会返回：
+
+- 当前 target set 是否适合作为单轮 study
+- 还缺哪些 active ancestor
+- 建议先做哪个 frontier
+- `quality_score`：当前 study readiness
+- `priority_score`：这个 frontier 对整个 project 的结构杠杆
 
 task 里的 `skills:` 现在有两个硬约束：
 

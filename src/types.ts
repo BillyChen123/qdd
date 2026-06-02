@@ -377,6 +377,30 @@ export interface StatusJson {
   };
 }
 
+// `qdd boundaries score --json` 的输出结构。
+// 它给 planning 一个纯结构化的 proposal 评分面：
+// - 这个 target set 现在能不能作为单轮 study
+// - 如果不能，建议先收缩到哪个 frontier
+// - 当前 proposal 的 readiness / leverage 大概怎样
+export interface BoundaryScoreJson {
+  mode: 'targets' | 'study';
+  target_boundaries: string[];
+  legal: boolean;
+  missing_active_ancestors: string[];
+  suggested_frontier: string[];
+  closure: string[];
+  frontier: string[];
+  closure_size: number;
+  frontier_size: number;
+  closure_mass: number;
+  frontier_mass: number;
+  reachable_active_mass: number;
+  active_project_mass: number;
+  quality_score: number;
+  priority_score: number;
+  notes: string[];
+}
+
 // `qdd instructions <id> --json` 的输出结构。
 // 它告诉 Agent：面对某个 project / study / task 时应该读什么、写什么、遵守什么规则。
 export interface InstructionsJson {

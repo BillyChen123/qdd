@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
-import { applyBoundaryUpdates, readBoundaryState, renderBoundaryGraphHtml } from '../runtime/boundaries.js';
+import { applyBoundaryUpdates, readBoundaryState, renderBoundaryGraphHtml, scoreBoundaryTargets, scoreStudyBoundaries } from '../runtime/boundaries.js';
 import { buildStatus } from '../runtime/status.js';
 import { buildInstructions } from '../runtime/instructions.js';
 import { createStudy, createTask, registerArtifact, closeStudy, recordArtifactCandidate } from '../runtime/lifecycle.js';
@@ -108,7 +108,10 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(proposeCommand, /By default, create \*\*2-4\*\* initial tasks/);
     assert.match(proposeCommand, /## How To Write The Initial Tasks/);
     assert.match(proposeCommand, /qdd boundaries --json/);
+    assert.match(proposeCommand, /qdd boundaries score --targets <B001,B002> --json/);
     assert.match(proposeCommand, /target_boundaries/);
+    assert.match(proposeCommand, /long-range target/);
+    assert.match(proposeCommand, /shrink the current study to the suggested frontier/);
     assert.match(proposeCommand, /rewrite the scaffold into task-specific executable steps/);
     assert.match(proposeCommand, /never write `qdd\/\*` workflow skills or `brain\/\*` planning skills into a task record/);
     assert.match(proposeCommand, /qdd skills suggest/);
@@ -117,7 +120,9 @@ test('qdd init creates minimal project structure', async () => {
     assert.match(proposeCommand, /qdd instructions STUDY-XXX --command qdd-propose --json/);
     const exploreCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-explore.md'), 'utf-8');
     assert.match(exploreCommand, /qdd instructions STUDY-XXX --command qdd-explore --json/);
+    assert.match(exploreCommand, /qdd boundaries score --study STUDY-XXX --json/);
     assert.match(exploreCommand, /In `human` and `assist` mode, do not modify `study.md` or `task` files until the user confirms/);
+    assert.match(exploreCommand, /downshift the study to the suggested frontier/);
     assert.match(exploreCommand, /## The Stance/);
     const applySkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd', 'qdd-apply', 'SKILL.md'), 'utf-8');
     assert.match(applySkill, /name: qdd-apply/);
@@ -490,6 +495,9 @@ test('qdd instructions returns project, study, and task guidance for existing pr
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/scatac-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.some((entry) => entry.endsWith('domain-skills/brain/singlecell/public-data-planning/SKILL.md')));
     assert.ok(studyExploreInstructions.read.includes('.qdd/skills-catalog.json'));
+    assert.ok(studyExploreInstructions.rules.includes('Use qdd boundaries score --targets <B001,B002> --json or qdd boundaries score --study <id> --json to test legality, readiness, and frontier breadth before finalizing or reshaping a study.'));
+    assert.ok(studyExploreInstructions.rules.includes("Distinguish the user's long-range scientific target from the current executable study; if active ancestors remain, preserve the long-range target in explanation but downshift the current study to the suggested frontier."));
+    assert.ok(studyExploreInstructions.rules.includes('Do not hide cross-layer study scope by merely adding more tasks; use boundary decomposition first, then write the small first-pass task graph for the resulting current study.'));
     assert.ok(studyExploreInstructions.rules.includes('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.'));
     assert.ok(studyExploreInstructions.rules.includes('Record explicit target_boundaries in study.md frontmatter and in the ## Target Boundaries section.'));
     await fs.writeFile(path.join(projectRoot, 'studies', 'STUDY-001', 'output', 'public_data_request.yaml'), [
@@ -583,6 +591,69 @@ test('qdd boundaries can apply project-local updates and render a project-local 
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, true);
     assert.equal(validation.checked.boundaries, true);
+});
+test('qdd boundaries scoring computes closure, frontier, and proposal scores', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-boundary-score-'));
+    await initCommand(projectRoot);
+    await fs.writeFile(path.join(projectRoot, '.qdd', 'seed-boundaries.yaml'), [
+        'updates:',
+        '  - action: add',
+        '    boundary:',
+        '      id: B001',
+        '      text: Data onboarding is still unresolved',
+        '      depends_on: []',
+        '      weight: 2',
+        '      status: open',
+        '  - action: add',
+        '    boundary:',
+        '      id: B002',
+        '      text: Integration quality is still unresolved',
+        '      depends_on:',
+        '        - B001',
+        '      weight: 5',
+        '      status: open',
+        '  - action: add',
+        '    boundary:',
+        '      id: B003',
+        '      text: Annotation validity is still unresolved',
+        '      depends_on:',
+        '        - B002',
+        '      weight: 4',
+        '      status: narrowed',
+        '  - action: add',
+        '    boundary:',
+        '      id: B004',
+        '      text: Downstream progression judgment remains unresolved',
+        '      depends_on:',
+        '        - B003',
+        '      weight: 3',
+        '      status: open',
+        '',
+    ].join('\n'), 'utf-8');
+    await applyBoundaryUpdates(projectRoot, '.qdd/seed-boundaries.yaml');
+    const state = await readBoundaryState(projectRoot);
+    const score = scoreBoundaryTargets(state, ['B003'], 'targets');
+    assert.equal(score.legal, false);
+    assert.deepEqual(score.missing_active_ancestors, ['B001', 'B002']);
+    assert.deepEqual(score.closure, ['B001', 'B002', 'B003']);
+    assert.deepEqual(score.frontier, ['B001']);
+    assert.deepEqual(score.suggested_frontier, ['B001']);
+    assert.equal(score.closure_mass, 11);
+    assert.equal(score.frontier_mass, 2);
+    assert.equal(score.reachable_active_mass, 14);
+    assert.equal(score.active_project_mass, 14);
+    assert.equal(score.quality_score, 0.1818);
+    assert.equal(score.priority_score, 1);
+    assert.ok(score.notes.includes('needs-frontier-downshift'));
+    const createdStudy = await createStudy(projectRoot, {
+        question: 'Can the annotation question be judged now?',
+        hypothesis: 'Not until the upstream integration boundary is compressed.',
+        targetBoundaries: ['B003'],
+    });
+    const studyScore = await scoreStudyBoundaries(projectRoot, createdStudy.studyId);
+    assert.equal(studyScore.mode, 'study');
+    assert.deepEqual(studyScore.target_boundaries, ['B003']);
+    assert.deepEqual(studyScore.suggested_frontier, ['B001']);
 });
 test('qdd lifecycle scaffolds studies/tasks, registers artifacts, and closes a study', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-lifecycle-'));

@@ -179,6 +179,24 @@ export interface StatusJson {
         open_boundaries: string[];
     };
 }
+export interface BoundaryScoreJson {
+    mode: 'targets' | 'study';
+    target_boundaries: string[];
+    legal: boolean;
+    missing_active_ancestors: string[];
+    suggested_frontier: string[];
+    closure: string[];
+    frontier: string[];
+    closure_size: number;
+    frontier_size: number;
+    closure_mass: number;
+    frontier_mass: number;
+    reachable_active_mass: number;
+    active_project_mass: number;
+    quality_score: number;
+    priority_score: number;
+    notes: string[];
+}
 export interface InstructionsJson {
     command: QddCommand | null;
     target: {

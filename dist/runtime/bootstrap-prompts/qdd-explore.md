@@ -54,6 +54,12 @@ Then read the active study bounds:
 qdd instructions STUDY-XXX --command qdd-explore --json
 ```
 
+And score the current study:
+
+```bash
+qdd boundaries score --study STUDY-XXX --json
+```
+
 When resource fit or reuse matters, also inspect:
 
 ```bash
@@ -120,6 +126,8 @@ Depending on what the user brings, you might:
 - Is the study question actually bounded?
 - Is it too broad for one study?
 - Is it already partially answered by an existing artifact?
+- Does boundary scoring say it still depends on unresolved active ancestors?
+- Is the frontier already too wide even if the study is technically legal?
 
 **Test feasibility**
 
@@ -160,6 +168,11 @@ Say what the study is trying to answer right now.
 
 If the written question and the implied task disagree, call that out.
 
+If the user originally wanted something larger, distinguish:
+
+- the long-range target
+- the current executable study
+
 ### 2. Trace the current task set
 
 Look at the existing tasks and ask:
@@ -181,6 +194,15 @@ Ask:
 - do any current task skills point outside the installed QDD root `domain-skills/` inventory?
 - do current task skills point to the wrong problem class because propose skipped a planning check?
 
+Also inspect the score output:
+
+- `legal`
+- `missing_active_ancestors`
+- `suggested_frontier`
+- `quality_score`
+- `priority_score`
+- `frontier_size`
+
 ### 4. Pressure-test the evidence plan
 
 Ask what evidence would make the study judgeable.
@@ -192,6 +214,7 @@ If the current plan does not lead to a judgment, say so directly.
 Offer changes such as:
 
 - narrow the question
+- downshift the study to the suggested frontier
 - split a task
 - delete a weak task
 - replace the first task with a reality check
@@ -205,6 +228,8 @@ Offer changes such as:
 When the recommended changes are clear, ask whether to update the current `study/task` artifacts.
 
 Do not silently write them first.
+
+If the score shows a multi-layer scope problem, say so directly. Do not solve that problem by merely multiplying tasks inside the same oversized study.
 
 ---
 

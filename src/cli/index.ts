@@ -10,7 +10,7 @@ import { closeStudyCommand } from '../commands/close-study.js';
 import { validateCommand } from '../commands/validate.js';
 import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
-import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand } from '../commands/boundaries.js';
+import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 
 const require = createRequire(import.meta.url);
@@ -129,6 +129,21 @@ boundaries
   .action(async (options?: { output?: string; json?: boolean }) => {
     try {
       await boundariesRenderCommand(options);
+    } catch (error) {
+      console.error(`Error: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+boundaries
+  .command('score')
+  .description('Score a target boundary set or one study against current boundary state')
+  .option('--targets <ids>', 'Comma-separated target boundary IDs such as B001,B002')
+  .option('--study <id>', 'Study ID whose target_boundaries should be scored')
+  .option('--json', 'Output as JSON')
+  .action(async (options?: { targets?: string; study?: string; json?: boolean }) => {
+    try {
+      await boundariesScoreCommand(options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);

@@ -1,6 +1,15 @@
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
-import type { BoundaryRecord, BoundaryState, BoundaryStatus, BoundaryUpdateEntry, BoundaryUpdateManifest, BoundaryUpdateSummaryEntry, StudyRecord } from '../types.js';
+import type {
+  BoundaryRecord,
+  BoundaryScoreJson,
+  BoundaryState,
+  BoundaryStatus,
+  BoundaryUpdateEntry,
+  BoundaryUpdateManifest,
+  BoundaryUpdateSummaryEntry,
+  StudyRecord,
+} from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { createDefaultBoundaryState } from './defaults.js';
@@ -23,6 +32,10 @@ function normalizeProjectRelativePath(projectRoot: string, targetPath: string): 
 
 function isBoundaryStatus(value: string): value is BoundaryStatus {
   return ['open', 'narrowed', 'resolved', 'dissolved'].includes(value);
+}
+
+function isActiveBoundary(boundary: Pick<BoundaryRecord, 'status'>): boolean {
+  return boundary.status === 'open' || boundary.status === 'narrowed';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -287,6 +300,161 @@ export function summarizeBoundaryState(state: BoundaryState): {
   }
 
   return summary;
+}
+
+function uniqueSortedValues(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function requireKnownBoundaryIds(boundariesById: Map<string, BoundaryRecord>, targetIds: string[]): void {
+  for (const targetId of targetIds) {
+    if (!BOUNDARY_ID_PATTERN.test(targetId)) {
+      throw new Error(`Invalid boundary id '${targetId}'. Expected BXXX.`);
+    }
+    if (!boundariesById.has(targetId)) {
+      throw new Error(`Unknown project boundary '${targetId}'.`);
+    }
+  }
+}
+
+function collectActiveAncestors(boundariesById: Map<string, BoundaryRecord>, boundaryId: string, seen = new Set<string>()): Set<string> {
+  if (seen.has(boundaryId)) {
+    return seen;
+  }
+
+  seen.add(boundaryId);
+  const boundary = boundariesById.get(boundaryId);
+  if (!boundary) {
+    return seen;
+  }
+
+  for (const dependencyId of boundary.depends_on) {
+    const dependency = boundariesById.get(dependencyId);
+    if (dependency && isActiveBoundary(dependency)) {
+      collectActiveAncestors(boundariesById, dependencyId, seen);
+    }
+  }
+
+  return seen;
+}
+
+function collectReachableActiveDescendants(boundariesById: Map<string, BoundaryRecord>, startIds: string[]): Set<string> {
+  const reachable = new Set<string>();
+  const queue = [...startIds];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (reachable.has(currentId)) {
+      continue;
+    }
+
+    const current = boundariesById.get(currentId);
+    if (!current || !isActiveBoundary(current)) {
+      continue;
+    }
+
+    reachable.add(currentId);
+    for (const candidate of boundariesById.values()) {
+      if (!isActiveBoundary(candidate)) {
+        continue;
+      }
+      if (candidate.depends_on.includes(currentId)) {
+        queue.push(candidate.id);
+      }
+    }
+  }
+
+  return reachable;
+}
+
+function sumBoundaryMass(boundariesById: Map<string, BoundaryRecord>, boundaryIds: string[]): number {
+  return boundaryIds.reduce((total, boundaryId) => total + (boundariesById.get(boundaryId)?.weight ?? 0), 0);
+}
+
+export function scoreBoundaryTargets(state: BoundaryState, requestedTargetIds: string[], mode: 'targets' | 'study'): BoundaryScoreJson {
+  const targetIds = uniqueSortedValues(requestedTargetIds.map((value) => value.trim()).filter((value) => value.length > 0));
+  if (targetIds.length === 0) {
+    throw new Error('Boundary score requires at least one target boundary.');
+  }
+
+  const boundariesById = new Map(state.boundaries.map((boundary) => [boundary.id, boundary]));
+  requireKnownBoundaryIds(boundariesById, targetIds);
+
+  const activeProjectIds = state.boundaries.filter((boundary) => isActiveBoundary(boundary)).map((boundary) => boundary.id);
+  const activeProjectMass = sumBoundaryMass(boundariesById, activeProjectIds);
+  const inactiveTargets = targetIds.filter((targetId) => !isActiveBoundary(boundariesById.get(targetId)!));
+
+  const closureSet = new Set<string>();
+  const missingAncestorSet = new Set<string>();
+
+  for (const targetId of targetIds) {
+    const target = boundariesById.get(targetId)!;
+    if (!isActiveBoundary(target)) {
+      continue;
+    }
+
+    const activeAncestors = collectActiveAncestors(boundariesById, targetId);
+    for (const ancestorId of activeAncestors) {
+      closureSet.add(ancestorId);
+      if (ancestorId !== targetId && !targetIds.includes(ancestorId)) {
+        missingAncestorSet.add(ancestorId);
+      }
+    }
+  }
+
+  const closure = uniqueSortedValues([...closureSet]);
+  const frontier = closure.filter((boundaryId) => {
+    const boundary = boundariesById.get(boundaryId)!;
+    return !boundary.depends_on.some((dependencyId) => closureSet.has(dependencyId) && isActiveBoundary(boundariesById.get(dependencyId)!));
+  });
+
+  const closureMass = sumBoundaryMass(boundariesById, closure);
+  const frontierMass = sumBoundaryMass(boundariesById, frontier);
+  const reachableActiveIds = uniqueSortedValues([...collectReachableActiveDescendants(boundariesById, frontier)]);
+  const reachableActiveMass = sumBoundaryMass(boundariesById, reachableActiveIds);
+  const legal = inactiveTargets.length === 0 && missingAncestorSet.size === 0;
+  const notes: string[] = [];
+
+  if (inactiveTargets.length > 0) {
+    notes.push('inactive-targets');
+  }
+  if (missingAncestorSet.size > 0) {
+    notes.push('needs-frontier-downshift');
+  }
+  if (frontier.length > 1) {
+    notes.push('wide-frontier');
+  }
+
+  return {
+    mode,
+    target_boundaries: targetIds,
+    legal,
+    missing_active_ancestors: uniqueSortedValues([...missingAncestorSet]),
+    suggested_frontier: frontier,
+    closure,
+    frontier,
+    closure_size: closure.length,
+    frontier_size: frontier.length,
+    closure_mass: closureMass,
+    frontier_mass: frontierMass,
+    reachable_active_mass: reachableActiveMass,
+    active_project_mass: activeProjectMass,
+    quality_score: closureMass === 0 ? 0 : Number((frontierMass / closureMass).toFixed(4)),
+    priority_score: activeProjectMass === 0 ? 0 : Number((reachableActiveMass / activeProjectMass).toFixed(4)),
+    notes,
+  };
+}
+
+export async function scoreStudyBoundaries(projectRoot: string, studyId: string): Promise<BoundaryScoreJson> {
+  const state = await readBoundaryState(projectRoot);
+  const record = await readMarkdownFrontmatter<StudyRecord>(projectRoot, `${PATHS.studiesDir}/${studyId}/study.md`);
+  const targetBoundaries = Array.isArray(record.target_boundaries) ? record.target_boundaries : [];
+
+  if (targetBoundaries.length === 0) {
+    throw new Error(`Study '${studyId}' has no declared target_boundaries to score.`);
+  }
+
+  return scoreBoundaryTargets(state, targetBoundaries, 'study');
 }
 
 async function readStudyTargetBoundaries(projectRoot: string): Promise<Array<{ study_id: string; target_boundaries: string[] }>> {

@@ -267,8 +267,11 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         if (command === 'qdd-propose' || command === 'qdd-explore') {
             readPaths.push(PATHS.skillsCatalog);
             rules.push('Read qdd boundaries --json or boundaries.yaml before planning and keep the study aligned to current project question state.');
+            rules.push('Use qdd boundaries score --targets <B001,B002> --json or qdd boundaries score --study <id> --json to test legality, readiness, and frontier breadth before finalizing or reshaping a study.');
             rules.push('Record explicit target_boundaries in study.md frontmatter and in the ## Target Boundaries section.');
             rules.push('qdd-propose and qdd-explore may refine which boundaries the study targets, but they must not mutate project boundary state.');
+            rules.push('Distinguish the user\'s long-range scientific target from the current executable study; if active ancestors remain, preserve the long-range target in explanation but downshift the current study to the suggested frontier.');
+            rules.push('Do not hide cross-layer study scope by merely adding more tasks; use boundary decomposition first, then write the small first-pass task graph for the resulting current study.');
             rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
             rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
             rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
