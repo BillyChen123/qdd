@@ -1,8 +1,8 @@
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { listNonCanonicalStudyOutputEntries } from './evidence.js';
+import { inspectArtifactCandidatePaths, listNonCanonicalStudyOutputEntries } from './evidence.js';
 import { listRecentStudyMemoryPaths, readEvolutionState, summarizeEvolutionBoundaries, getCurrentProjectQuestion } from './evolution.js';
-import { deriveStudyLifecycleState } from './lifecycle.js';
+import { deriveStudyLifecycleState, inspectStudyClosePreflight } from './lifecycle.js';
 import { readYamlFile } from './store.js';
 import type { ArtifactIndex, ResearchContract, StatusJson } from '../types.js';
 
@@ -35,6 +35,23 @@ export async function buildStatus(projectRoot: string): Promise<StatusJson> {
   )
     .filter((entry) => entry.unpackaged.length > 0)
     .map((entry) => entry.studyId);
+
+  const studiesWithInvalidCandidatePaths = (
+    await Promise.all(
+      studies.map(async (study) => ({
+        studyId: study.study_id,
+        issues: await inspectArtifactCandidatePaths(projectRoot, study.study_id),
+      }))
+    )
+  )
+    .filter((entry) => entry.issues.length > 0)
+    .map((entry) => entry.studyId);
+
+  const closePreflight = await Promise.all(
+    studies
+      .filter((study) => deriveStudyLifecycleState(study, tasks.filter((task) => task.study_id === study.study_id || (study.task_ids ?? []).includes(task.task_id))) !== 'closed')
+      .map((study) => inspectStudyClosePreflight(projectRoot, study.study_id))
+  );
 
   return {
     project: {
@@ -93,6 +110,16 @@ export async function buildStatus(projectRoot: string): Promise<StatusJson> {
     },
     output_review: {
       studies_with_unpackaged_output: studiesWithUnpackagedOutput,
+      studies_with_invalid_candidate_paths: studiesWithInvalidCandidatePaths,
+    },
+    close_preflight: {
+      ready: closePreflight.filter((entry) => entry.ready).map((entry) => entry.study_id),
+      blocked: closePreflight
+        .filter((entry) => !entry.ready)
+        .map((entry) => ({
+          study_id: entry.study_id,
+          reasons: entry.reasons,
+        })),
     },
     artifacts: {
       count: artifactIndex.artifacts.length,

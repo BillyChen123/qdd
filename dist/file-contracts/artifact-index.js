@@ -1,5 +1,5 @@
 import { renderYamlDocument } from './shared.js';
-export const ARTIFACT_TYPE_VALUES = ['data', 'code', 'figure', 'report'];
+export const ARTIFACT_TYPE_VALUES = ['data', 'code', 'figure', 'table', 'report'];
 export const ARTIFACT_SCOPE_VALUES = ['project', 'study', 'task'];
 export function createDefaultArtifactIndex() {
     return {
@@ -55,8 +55,8 @@ export const artifactIndexFileContract = {
         { path: 'artifacts[].schema', type: 'string', required: true, description: 'Expected structural or semantic schema label.' },
     ],
     notes: [
-        'Promoted artifacts should already live under canonical artifacts/{data,code,figures,reports}/ paths.',
-        'This slice still uses type=data for tabular data; later proposals may add table explicitly.',
+        'Promoted artifacts should already live under canonical artifacts/{data,code,figures,tables,reports}/ paths.',
+        'Use type=table for reusable tabular outputs instead of overloading data.',
     ],
     renderExample: () => renderYamlDocument(createExampleArtifactIndex()),
 };

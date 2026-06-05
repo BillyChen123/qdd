@@ -2,7 +2,7 @@ import type { ArtifactIndex } from '../types.js';
 import type { ManagedFileContract } from './shared.js';
 import { renderYamlDocument } from './shared.js';
 
-export const ARTIFACT_TYPE_VALUES = ['data', 'code', 'figure', 'report'] as const;
+export const ARTIFACT_TYPE_VALUES = ['data', 'code', 'figure', 'table', 'report'] as const;
 export const ARTIFACT_SCOPE_VALUES = ['project', 'study', 'task'] as const;
 
 export function createDefaultArtifactIndex(): ArtifactIndex {
@@ -61,8 +61,8 @@ export const artifactIndexFileContract: ManagedFileContract = {
     { path: 'artifacts[].schema', type: 'string', required: true, description: 'Expected structural or semantic schema label.' },
   ],
   notes: [
-    'Promoted artifacts should already live under canonical artifacts/{data,code,figures,reports}/ paths.',
-    'This slice still uses type=data for tabular data; later proposals may add table explicitly.',
+    'Promoted artifacts should already live under canonical artifacts/{data,code,figures,tables,reports}/ paths.',
+    'Use type=table for reusable tabular outputs instead of overloading data.',
   ],
   renderExample: () => renderYamlDocument(createExampleArtifactIndex()),
 };

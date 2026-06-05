@@ -18,7 +18,11 @@ export declare function buildStudyMemoryMarkdown(options: {
     studyId: string;
     question: string;
     kind: QuestionChangeType;
-    changeDriver: string;
+    summary: string;
+    promotedArtifacts: string[];
+    reusedMaterials: string[];
+    usedSkills: string[];
+    adHocScripts: string[];
     openBoundaryTexts: string[];
     nextCandidates: string[];
     resolvedBoundaryTexts: string[];

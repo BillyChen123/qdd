@@ -21,7 +21,7 @@ export async function registerArtifactCommand(
   }
 
   if (!options.type) {
-    throw new Error('Missing required option --type <data|code|figure|report>.');
+    throw new Error('Missing required option --type <data|code|figure|table|report>.');
   }
 
   if (!options.description) {

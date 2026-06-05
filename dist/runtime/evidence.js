@@ -5,7 +5,8 @@ import { createDefaultArtifactCandidateManifest } from '../file-contracts/artifa
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { readYamlFile, writeYamlFile } from './store.js';
-const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'];
+const FINAL_STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports'];
+const STUDY_OUTPUT_SUBDIRS = [...FINAL_STUDY_OUTPUT_SUBDIRS, 'tmp'];
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([
     ...STUDY_OUTPUT_SUBDIRS,
@@ -29,9 +30,34 @@ function getArtifactDirectoryForType(type) {
             return PATHS.artifactCodeDir;
         case 'figure':
             return PATHS.artifactFiguresDir;
+        case 'table':
+            return PATHS.artifactTablesDir;
         case 'report':
             return PATHS.artifactReportsDir;
     }
+}
+export function isCanonicalStudyOutputPath(studyId, relativePath) {
+    const normalized = relativePath.split(path.sep).join('/');
+    const studyOutputPrefix = `${getStudyOutputDir(studyId)}/`;
+    if (!normalized.startsWith(studyOutputPrefix)) {
+        return false;
+    }
+    const suffix = normalized.slice(studyOutputPrefix.length);
+    return STUDY_OUTPUT_SUBDIRS.some((subdir) => suffix === subdir || suffix.startsWith(`${subdir}/`));
+}
+export function isScratchStudyOutputPath(studyId, relativePath) {
+    const normalized = relativePath.split(path.sep).join('/');
+    const tmpPrefix = `${getStudyOutputDir(studyId)}/tmp/`;
+    return normalized === `${getStudyOutputDir(studyId)}/tmp` || normalized.startsWith(tmpPrefix);
+}
+export function isPromotableStudyOutputPath(studyId, relativePath) {
+    const normalized = relativePath.split(path.sep).join('/');
+    const studyOutputPrefix = `${getStudyOutputDir(studyId)}/`;
+    if (!normalized.startsWith(studyOutputPrefix)) {
+        return false;
+    }
+    const suffix = normalized.slice(studyOutputPrefix.length);
+    return FINAL_STUDY_OUTPUT_SUBDIRS.some((subdir) => suffix === subdir || suffix.startsWith(`${subdir}/`));
 }
 function sanitizeArtifactBaseName(fileName) {
     return fileName.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'artifact';
@@ -131,6 +157,58 @@ export async function readArtifactCandidateManifest(projectRoot, studyId) {
     }
     return readYamlFile(projectRoot, relativePath);
 }
+export async function inspectArtifactCandidatePaths(projectRoot, studyId) {
+    const relativePath = getStudyArtifactCandidatesPath(studyId);
+    const manifest = await readArtifactCandidateManifest(projectRoot, studyId);
+    if (!Array.isArray(manifest.artifact_candidates)) {
+        return [
+            {
+                index: -1,
+                path: relativePath,
+                reason: 'artifact_candidates must be an array.',
+            },
+        ];
+    }
+    const issues = [];
+    for (const [index, candidate] of manifest.artifact_candidates.entries()) {
+        if (!isRecord(candidate)) {
+            issues.push({
+                index,
+                path: '',
+                reason: 'entry must be an object.',
+            });
+            continue;
+        }
+        const rawPath = String(candidate.path ?? '').trim();
+        if (!rawPath) {
+            issues.push({
+                index,
+                path: '',
+                reason: 'path is missing or empty.',
+            });
+            continue;
+        }
+        try {
+            const normalizedPath = await resolveProjectRelativeFilePath(projectRoot, rawPath);
+            if (!isPromotableStudyOutputPath(studyId, normalizedPath)) {
+                issues.push({
+                    index,
+                    path: normalizedPath,
+                    reason: `must point under studies/${studyId}/output/{data,code,figures,tables,reports}/.`,
+                });
+                continue;
+            }
+        }
+        catch (error) {
+            issues.push({
+                index,
+                path: rawPath,
+                reason: error.message,
+            });
+        }
+    }
+    return issues;
+}
 // 把 artifact candidate 规范化成 runtime 真正消费的结构。
 //
 // 这里有一个重要语义：
@@ -163,6 +241,9 @@ export async function readNormalizedArtifactCandidatesForPromotion(projectRoot, 
             throw new Error(`${relativePath}#${index} is missing a non-empty description.`);
         }
         const normalizedPath = await resolveProjectRelativeFilePath(projectRoot, rawPath);
+        if (!isPromotableStudyOutputPath(studyId, normalizedPath)) {
+            throw new Error(`${relativePath}#${index} path '${normalizedPath}' must point under studies/${studyId}/output/{data,code,figures,tables,reports}/.`);
+        }
         const taskId = typeof candidate.task_id === 'string' && candidate.task_id.trim().length > 0 ? candidate.task_id.trim() : undefined;
         if (taskId && !TASK_ID_PATTERN.test(taskId)) {
             throw new Error(`${relativePath}#${index} has invalid task_id '${taskId}'. Expected TASK-XXX.`);

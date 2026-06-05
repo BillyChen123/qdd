@@ -1,6 +1,6 @@
 export type QddMode = 'human' | 'assist' | 'auto';
 export type QuestionChangeType = 'refinement' | 'confirmation' | 'pivot' | 'dissolution';
-export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
+export type ArtifactType = 'data' | 'code' | 'figure' | 'table' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
@@ -72,8 +72,6 @@ export interface EvolutionBoundary {
     id: string;
     text: string;
     state: EvolutionBoundaryState;
-    deps?: string[];
-    weight?: number;
 }
 export interface EvolutionStudyEvent {
     id: string;
@@ -184,6 +182,14 @@ export interface StatusJson {
     };
     output_review: {
         studies_with_unpackaged_output: string[];
+        studies_with_invalid_candidate_paths: string[];
+    };
+    close_preflight: {
+        ready: string[];
+        blocked: Array<{
+            study_id: string;
+            reasons: string[];
+        }>;
     };
     artifacts: {
         count: number;

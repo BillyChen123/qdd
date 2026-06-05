@@ -12,6 +12,7 @@ export declare const PATHS: {
     readonly artifactDataDir: "artifacts/data";
     readonly artifactCodeDir: "artifacts/code";
     readonly artifactFiguresDir: "artifacts/figures";
+    readonly artifactTablesDir: "artifacts/tables";
     readonly artifactReportsDir: "artifacts/reports";
     readonly artifactCandidatesFileName: "artifact-candidates.yaml";
     readonly publicDataRequestFileName: "public_data_request.yaml";

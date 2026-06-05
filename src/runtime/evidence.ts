@@ -10,7 +10,8 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { readYamlFile, writeYamlFile } from './store.js';
 
-const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'] as const;
+const FINAL_STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports'] as const;
+const STUDY_OUTPUT_SUBDIRS = [...FINAL_STUDY_OUTPUT_SUBDIRS, 'tmp'] as const;
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
 const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES: ReadonlySet<string> = new Set([
   ...STUDY_OUTPUT_SUBDIRS,
@@ -38,9 +39,39 @@ function getArtifactDirectoryForType(type: ArtifactType): string {
       return PATHS.artifactCodeDir;
     case 'figure':
       return PATHS.artifactFiguresDir;
+    case 'table':
+      return PATHS.artifactTablesDir;
     case 'report':
       return PATHS.artifactReportsDir;
   }
+}
+
+export function isCanonicalStudyOutputPath(studyId: string, relativePath: string): boolean {
+  const normalized = relativePath.split(path.sep).join('/');
+  const studyOutputPrefix = `${getStudyOutputDir(studyId)}/`;
+  if (!normalized.startsWith(studyOutputPrefix)) {
+    return false;
+  }
+
+  const suffix = normalized.slice(studyOutputPrefix.length);
+  return STUDY_OUTPUT_SUBDIRS.some((subdir) => suffix === subdir || suffix.startsWith(`${subdir}/`));
+}
+
+export function isScratchStudyOutputPath(studyId: string, relativePath: string): boolean {
+  const normalized = relativePath.split(path.sep).join('/');
+  const tmpPrefix = `${getStudyOutputDir(studyId)}/tmp/`;
+  return normalized === `${getStudyOutputDir(studyId)}/tmp` || normalized.startsWith(tmpPrefix);
+}
+
+export function isPromotableStudyOutputPath(studyId: string, relativePath: string): boolean {
+  const normalized = relativePath.split(path.sep).join('/');
+  const studyOutputPrefix = `${getStudyOutputDir(studyId)}/`;
+  if (!normalized.startsWith(studyOutputPrefix)) {
+    return false;
+  }
+
+  const suffix = normalized.slice(studyOutputPrefix.length);
+  return FINAL_STUDY_OUTPUT_SUBDIRS.some((subdir) => suffix === subdir || suffix.startsWith(`${subdir}/`));
 }
 
 function sanitizeArtifactBaseName(fileName: string): string {
@@ -169,6 +200,68 @@ export async function readArtifactCandidateManifest(projectRoot: string, studyId
   return readYamlFile<ArtifactCandidateManifest>(projectRoot, relativePath);
 }
 
+export interface CandidatePathIssue {
+  index: number;
+  path: string;
+  reason: string;
+}
+
+export async function inspectArtifactCandidatePaths(projectRoot: string, studyId: string): Promise<CandidatePathIssue[]> {
+  const relativePath = getStudyArtifactCandidatesPath(studyId);
+  const manifest = await readArtifactCandidateManifest(projectRoot, studyId);
+  if (!Array.isArray(manifest.artifact_candidates)) {
+    return [
+      {
+        index: -1,
+        path: relativePath,
+        reason: 'artifact_candidates must be an array.',
+      },
+    ];
+  }
+
+  const issues: CandidatePathIssue[] = [];
+  for (const [index, candidate] of manifest.artifact_candidates.entries()) {
+    if (!isRecord(candidate)) {
+      issues.push({
+        index,
+        path: '',
+        reason: 'entry must be an object.',
+      });
+      continue;
+    }
+
+    const rawPath = String(candidate.path ?? '').trim();
+    if (!rawPath) {
+      issues.push({
+        index,
+        path: '',
+        reason: 'path is missing or empty.',
+      });
+      continue;
+    }
+
+    try {
+      const normalizedPath = await resolveProjectRelativeFilePath(projectRoot, rawPath);
+      if (!isPromotableStudyOutputPath(studyId, normalizedPath)) {
+        issues.push({
+          index,
+          path: normalizedPath,
+          reason: `must point under studies/${studyId}/output/{data,code,figures,tables,reports}/.`,
+        });
+        continue;
+      }
+    } catch (error) {
+      issues.push({
+        index,
+        path: rawPath,
+        reason: (error as Error).message,
+      });
+    }
+  }
+
+  return issues;
+}
+
 // 把 artifact candidate 规范化成 runtime 真正消费的结构。
 //
 // 这里有一个重要语义：
@@ -208,6 +301,12 @@ export async function readNormalizedArtifactCandidatesForPromotion(projectRoot: 
     }
 
     const normalizedPath = await resolveProjectRelativeFilePath(projectRoot, rawPath);
+    if (!isPromotableStudyOutputPath(studyId, normalizedPath)) {
+      throw new Error(
+        `${relativePath}#${index} path '${normalizedPath}' must point under studies/${studyId}/output/{data,code,figures,tables,reports}/.`
+      );
+    }
+
     const taskId = typeof candidate.task_id === 'string' && candidate.task_id.trim().length > 0 ? candidate.task_id.trim() : undefined;
     if (taskId && !TASK_ID_PATTERN.test(taskId)) {
       throw new Error(`${relativePath}#${index} has invalid task_id '${taskId}'. Expected TASK-XXX.`);

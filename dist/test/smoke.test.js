@@ -41,6 +41,11 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'bootstrap.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'layer-policy.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'skills-catalog.json')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'data')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'code')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'figures')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'tables')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, 'artifacts', 'reports')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-explore.md')));
@@ -64,6 +69,7 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.match(schemaReference, /contract\.yaml/);
     assert.match(schemaReference, /task\.example\.md/);
     assert.match(schemaReference, /Optional human-readable descriptions may follow/);
+    assert.match(schemaReference, /Use type=table for reusable tabular outputs/);
     const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
     assert.match(startCommand, /contract\.yaml/);
     assert.match(startCommand, /context\/resources\.md/);
@@ -78,6 +84,7 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
     assert.match(closeCommand, /context\/memory/);
     assert.match(closeCommand, /research-map\.html/);
+    assert.doesNotMatch(closeCommand, /Get human approval before running `qdd close-study`\./);
     assert.doesNotMatch(closeCommand, /boundary-updates\.yaml/);
     assert.doesNotMatch(closeCommand, /question_delta/);
     const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8'));
@@ -122,6 +129,7 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(studyInstructions.write.includes('context/resources.md'));
     assert.ok(studyInstructions.write.includes('context/memory/'));
     assert.ok(studyInstructions.write.includes('research-map.html'));
+    assert.ok(studyInstructions.rules.includes('If close preflight passes, run qdd close-study directly instead of waiting for an extra manual confirmation gate.'));
     assert.ok(!studyInstructions.write.includes(`studies/${studyId}/output/boundary-updates.yaml`));
     assert.ok(studyInstructions.required_skills.includes('singlecell/scrna/sc-batch-integration'));
     const proposeInstructions = await buildInstructions(projectRoot, studyId, { command: 'qdd-propose' });
@@ -135,6 +143,7 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(taskInstructions.read.includes('evolution.yaml'));
     assert.ok(taskInstructions.read.includes(`studies/${studyId}/tasks/${taskId}.md`));
     assert.ok(taskInstructions.rules.includes('You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.'));
+    assert.ok(taskInstructions.rules.includes('Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.'));
     assert.ok(!taskInstructions.read.includes('boundaries.yaml'));
 });
 test('qdd closeStudy promotes candidates and writes evolution, memory, and research-map', async () => {
@@ -154,7 +163,13 @@ test('qdd closeStudy promotes candidates and writes evolution, memory, and resea
         boundaries: [{ id: 'B001', text: 'Need a clearer first-pass integration check', state: 'open' }],
     });
     const scriptPath = path.join(projectRoot, 'studies', studyId, 'output', 'code', 'integration.py');
+    const tablePath = path.join(projectRoot, 'studies', studyId, 'output', 'tables', 'integration-summary.csv');
+    const dataPath = path.join(projectRoot, 'studies', studyId, 'output', 'data', 'integration-final.h5ad');
+    const scratchPath = path.join(projectRoot, 'studies', studyId, 'output', 'tmp', 'integration-intermediate.h5ad');
     await fs.writeFile(scriptPath, 'print("integration")\n', 'utf-8');
+    await fs.writeFile(tablePath, 'sample,score\nA,1\n', 'utf-8');
+    await fs.writeFile(dataPath, 'fake-h5ad-content\n', 'utf-8');
+    await fs.writeFile(scratchPath, 'scratch-h5ad-content\n', 'utf-8');
     await setTaskCompleted(projectRoot, studyId, taskId);
     await recordArtifactCandidate(projectRoot, scriptPath, {
         artifactType: 'code',
@@ -166,17 +181,45 @@ test('qdd closeStudy promotes candidates and writes evolution, memory, and resea
         schema: 'python-script',
         promotionStatus: 'candidate-recorded',
     });
+    await recordArtifactCandidate(projectRoot, tablePath, {
+        artifactType: 'table',
+        description: 'Reusable integration summary table',
+        studyId,
+        taskId,
+        reusable: true,
+        scope: 'study',
+        schema: 'csv-table',
+        promotionStatus: 'candidate-recorded',
+    });
+    await recordArtifactCandidate(projectRoot, dataPath, {
+        artifactType: 'data',
+        description: 'Final processed h5ad kept for downstream reuse',
+        studyId,
+        taskId,
+        reusable: true,
+        scope: 'study',
+        schema: 'h5ad',
+        promotionStatus: 'candidate-recorded',
+    });
     await closeStudy(projectRoot, studyId, {
-        questionAfter: 'Should we validate the narrowed integration result in a second dataset?',
         changeType: 'refinement',
-        changeDriver: 'The first-pass integration run narrowed the next comparison question.',
+        summary: 'The first-pass integration run narrowed the next comparison question and produced one reusable integration script.',
         openBoundaries: ['Validate the narrowed result in a second dataset'],
+        nextCandidates: ['Should we validate the narrowed integration result in a second dataset?'],
     });
     const artifacts = await listArtifacts(projectRoot);
-    assert.equal(artifacts.artifacts.length, 1);
-    assert.equal(artifacts.artifacts[0]?.type, 'code');
-    assert.match(artifacts.artifacts[0]?.path ?? '', /^artifacts\/code\/ART-\d{3}-/);
-    assert.equal(artifacts.artifacts[0]?.produced_by, `${studyId}/${taskId}`);
+    assert.equal(artifacts.artifacts.length, 3);
+    assert.ok(artifacts.artifacts.some((entry) => entry.type === 'code' && /^artifacts\/code\/ART-\d{3}-/.test(entry.path)));
+    assert.ok(artifacts.artifacts.some((entry) => entry.type === 'table' && /^artifacts\/tables\/ART-\d{3}-/.test(entry.path)));
+    assert.ok(artifacts.artifacts.some((entry) => entry.type === 'data' && /^artifacts\/data\/ART-\d{3}-/.test(entry.path)));
+    assert.ok(artifacts.artifacts.every((entry) => entry.produced_by === `${studyId}/${taskId}`));
+    const scriptStats = await fs.lstat(scriptPath);
+    const tableStats = await fs.lstat(tablePath);
+    const dataStats = await fs.lstat(dataPath);
+    assert.equal(scriptStats.isSymbolicLink(), true);
+    assert.equal(tableStats.isSymbolicLink(), true);
+    assert.equal(dataStats.isSymbolicLink(), true);
+    await assert.rejects(fs.access(scratchPath));
     const evolution = await readYamlFile(projectRoot, 'evolution.yaml');
     assert.equal(evolution.studies.length, 1);
     assert.equal(evolution.studies[0]?.id, studyId);
@@ -189,6 +232,11 @@ test('qdd closeStudy promotes candidates and writes evolution, memory, and resea
     const memoryPath = path.join(projectRoot, 'context', 'memory', `${studyId}.md`);
     const memory = await fs.readFile(memoryPath, 'utf-8');
     assert.match(memory, new RegExp(`# ${studyId} Memory`));
+    assert.match(memory, /## Promoted Artifacts/);
+    assert.match(memory, /ART-001/);
+    assert.match(memory, /`table`/);
+    assert.match(memory, /`data`/);
+    assert.match(memory, /singlecell\/scrna\/sc-batch-integration/);
     assert.match(memory, /Validate the narrowed result in a second dataset/);
     const studyDocument = await readMarkdownDocument(projectRoot, `studies/${studyId}/study.md`);
     assert.equal(studyDocument.frontmatter.status, 'closed');
@@ -199,6 +247,7 @@ test('qdd closeStudy promotes candidates and writes evolution, memory, and resea
     assert.deepEqual(status.question_state.next_candidates, ['Should we validate the narrowed integration result in a second dataset?']);
     assert.equal(status.memory.recent[0], `context/memory/${studyId}.md`);
     assert.equal(status.boundaries.open, 1);
+    assert.ok(!status.output_review.studies_with_invalid_candidate_paths.includes(studyId));
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, true);
 });
@@ -236,6 +285,7 @@ test('generated managed-file examples stay aligned with validation and task skil
     await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'study.md'), studyExample, 'utf-8');
     await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'tasks', `${taskId}.md`), taskExample, 'utf-8');
     await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'output', 'code', 'integration.py'), 'print("ok")\n', 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'output', 'tables', 'integration-summary.csv'), 'x,y\n1,2\n', 'utf-8');
     await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'output', 'artifact-candidates.yaml'), candidateExample, 'utf-8');
     const taskDocument = await readMarkdownDocument(projectRoot, `studies/${studyId}/tasks/${taskId}.md`);
     const parsedSkillSection = parseTaskSkillSection(taskDocument.body);
@@ -243,6 +293,62 @@ test('generated managed-file examples stay aligned with validation and task skil
     assert.deepEqual(parsedSkillSection.skillIds, ['singlecell/scrna/sc-batch-integration']);
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, true);
+});
+test('qdd rejects scratch-space artifact candidates and surfaces them in status and validation', async () => {
+    const projectRoot = await createTempProject('qdd-invalid-candidate-');
+    const { studyId } = await createStudy(projectRoot, {
+        question: 'Can invalid tmp candidates be surfaced before close?',
+        hypothesis: 'Yes, scratch-path candidates should block close.',
+    });
+    const { taskId } = await createTask(projectRoot, studyId, {
+        goal: 'Create one invalid scratch candidate.',
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const scratchPath = path.join(projectRoot, 'studies', studyId, 'output', 'tmp', 'bad-intermediate.h5ad');
+    await fs.writeFile(scratchPath, 'scratch\n', 'utf-8');
+    await assert.rejects(recordArtifactCandidate(projectRoot, scratchPath, {
+        artifactType: 'data',
+        description: 'Invalid scratch candidate',
+        studyId,
+        taskId,
+        reusable: true,
+        scope: 'study',
+        schema: 'h5ad',
+        promotionStatus: 'candidate-recorded',
+    }), /must point to final study outputs/);
+    const taskPath = `studies/${studyId}/tasks/${taskId}.md`;
+    const taskDocument = await readMarkdownDocument(projectRoot, taskPath);
+    await writeMarkdownDocument(projectRoot, taskPath, {
+        ...taskDocument.frontmatter,
+        status: 'completed',
+        promotion_status: 'candidate-recorded',
+        updated_at: new Date().toISOString(),
+    }, taskDocument.body);
+    await writeYamlFile(projectRoot, `studies/${studyId}/output/artifact-candidates.yaml`, {
+        artifact_candidates: [
+            {
+                path: `studies/${studyId}/output/tmp/bad-intermediate.h5ad`,
+                type: 'data',
+                task_id: taskId,
+                reusable: true,
+                scope: 'study',
+                description: 'Invalid scratch candidate',
+                schema: 'h5ad',
+            },
+        ],
+    });
+    const status = await buildStatus(projectRoot);
+    assert.ok(status.output_review.studies_with_invalid_candidate_paths.includes(studyId));
+    assert.ok(status.close_preflight.blocked.some((entry) => entry.study_id === studyId));
+    const validation = await validateProject(projectRoot);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.issues.some((issue) => issue.code === 'invalid_artifact_candidate_path'));
+    await assert.rejects(closeStudy(projectRoot, studyId, {
+        changeType: 'refinement',
+        summary: 'This should fail before close.',
+        openBoundaries: ['Need a valid final packaged output instead of tmp scratch'],
+        nextCandidates: ['Repackage the final output correctly'],
+    }), /failed close preflight/);
 });
 test('qdd validate rejects task skill bullets that do not start with a skill id', async () => {
     const projectRoot = await createTempProject('qdd-invalid-skill-body-');

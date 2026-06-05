@@ -16,9 +16,31 @@ The current project-state model is centered on four files:
 - `context/resources.md`: durable shared context
 - `context/memory/STUDY-XXX.md`: per-study memory written at close time
 
+More concretely, `evolution.yaml` now keeps only:
+
+- `studies[].id`
+- `studies[].question`
+- `studies[].kind`
+- `studies[].resolves`
+- `studies[].opens`
+- `studies[].candidates`
+- `studies[].ts`
+- `boundaries[].id`
+- `boundaries[].text`
+- `boundaries[].state`
+
 `research-map.html` is derived from `evolution.yaml`. It is useful for review, but it is not a truth source.
 
 `qdd boundaries` still exists, but it is only a compatibility surface derived from `evolution.yaml`. It is no longer the core governance path.
+
+The current artifact lifecycle is also explicitly hardened:
+
+- final study truth lives under `studies/STUDY-XXX/output/{data,code,figures,tables,reports}/`
+- `studies/STUDY-XXX/output/tmp/` is scratch space only
+- promotion candidates are explicit in `artifact-candidates.yaml`
+- `qdd status --json` exposes close-preflight blockers such as unpackaged outputs or invalid candidate paths
+- promoted truth lands in `artifacts/{data,code,figures,tables,reports}/`
+- successful close removes heavy scratch leftovers such as temporary `.h5ad`
 
 ## Commands Implemented
 
@@ -154,13 +176,13 @@ Core responsibilities:
 Important modules:
 
 - [contract.ts](/data/chenyz/project/qdd/src/file-contracts/contract.ts): `contract.yaml`
-- [evolution.ts](/data/chenyz/project/qdd/src/file-contracts/evolution.ts): `evolution.yaml`
+- [evolution.ts](/data/chenyz/project/qdd/src/file-contracts/evolution.ts): `evolution.yaml` contract with the new sparse study event shape
 - [study.ts](/data/chenyz/project/qdd/src/file-contracts/study.ts): `study.md` template and example
 - [task.ts](/data/chenyz/project/qdd/src/file-contracts/task.ts): `task.md` template, example, and `## Skills` parsing rules
 - [artifact-candidates.ts](/data/chenyz/project/qdd/src/file-contracts/artifact-candidates.ts): promotion candidate schema
 - [artifact-index.ts](/data/chenyz/project/qdd/src/file-contracts/artifact-index.ts): promoted artifact registry schema
 - [resources.ts](/data/chenyz/project/qdd/src/file-contracts/resources.ts): `context/resources.md`
-- [memory.ts](/data/chenyz/project/qdd/src/file-contracts/memory.ts): `context/memory/STUDY-XXX.md`
+- [memory.ts](/data/chenyz/project/qdd/src/file-contracts/memory.ts): `context/memory/STUDY-XXX.md` as the only default study narrative report
 - [layer-policy.ts](/data/chenyz/project/qdd/src/file-contracts/layer-policy.ts): `.qdd/layer-policy.yaml`
 - [index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts): schema-reference and example projection
 
@@ -184,9 +206,9 @@ Important modules:
 - [defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts): thin default wrappers that now delegate to `src/file-contracts/*`
 - [bootstrap.ts](/data/chenyz/project/qdd/src/runtime/bootstrap.ts): installs Claude/Codex workflow assets
 - [evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts): reads and writes `evolution.yaml`, study memory, research map
-- [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): create study/task, record candidates, close study
+- [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): create study/task, record candidates, run close preflight, promote canonical artifacts, clean scratch outputs, and close study
 - [instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts): builds `qdd instructions ... --json`
-- [status.ts](/data/chenyz/project/qdd/src/runtime/status.ts): builds `qdd status --json`
+- [status.ts](/data/chenyz/project/qdd/src/runtime/status.ts): builds `qdd status --json`, including close-preflight visibility
 - [inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts): validate/context/artifact inspection
 - [local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts): resolves domain skills and suggests executor skills
 - [boundaries.ts](/data/chenyz/project/qdd/src/runtime/boundaries.ts): compatibility layer over the derived boundary view
@@ -215,6 +237,7 @@ project-root/
 │   ├── data/
 │   ├── code/
 │   ├── figures/
+│   ├── tables/
 │   └── reports/
 ├── .claude/
 │   ├── commands/
@@ -231,6 +254,14 @@ project-root/
 ```
 
 Study outputs still live under `studies/STUDY-XXX/output/`. Promotion-worthy outputs are listed in `artifact-candidates.yaml`, then promoted into `artifacts/index.yaml` and moved into canonical artifact folders at close time.
+
+Current lifecycle rules:
+
+- final promoted candidates must come from `output/{data,code,figures,tables,reports}/`
+- `output/tmp/` is scratch only and cannot be promoted
+- successful close leaves study-local back-links after promotion
+- successful close cleans heavy scratch leftovers such as temporary `.h5ad`
+- `qdd status --json` surfaces both unpackaged outputs and invalid candidate paths before close
 
 The new rule is:
 
@@ -280,7 +311,10 @@ That order shows:
 - study creation and task creation
 - study-local artifact candidate recording
 - artifact promotion and registration
-- close-time study memory writing
+- close-preflight visibility for unpackaged outputs and invalid candidate paths
+- table artifacts and `artifacts/tables/`
+- scratch cleanup after successful close while preserving final packaged truth
+- close-time study memory writing with promoted artifacts, reused materials, used skills, ad hoc scripts, and next candidates
 - close-time `evolution.yaml` update
 - derived `research-map.html` rendering
 - status, instructions, validate, context, and artifacts inspection

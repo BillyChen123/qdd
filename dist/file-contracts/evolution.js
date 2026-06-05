@@ -25,14 +25,11 @@ export function createExampleEvolutionState() {
                 id: 'B001',
                 text: 'Need a first-pass integration reality check.',
                 state: 'resolved',
-                weight: 1,
             },
             {
                 id: 'B002',
                 text: 'Need an external validation dataset for the narrowed result.',
                 state: 'open',
-                deps: ['B001'],
-                weight: 2,
             },
         ],
     };
@@ -69,12 +66,11 @@ export const evolutionFileContract = {
             description: 'Current project-level boundary state.',
             allowedValues: EVOLUTION_BOUNDARY_STATE_VALUES,
         },
-        { path: 'boundaries[].deps', type: 'BXXX[]', required: false, description: 'Optional upstream boundary dependencies.' },
-        { path: 'boundaries[].weight', type: 'number', required: false, description: 'Optional lightweight priority signal.' },
     ],
     notes: [
         'Keep evolution sparse. Narrative detail belongs in context/memory/STUDY-XXX.md.',
         'Use current runtime field names exactly: id, question, kind, resolves, opens, candidates, ts.',
+        'Boundary records stay intentionally light: id, text, and state are the stable core fields.',
     ],
     renderExample: () => renderYamlDocument(createExampleEvolutionState()),
 };

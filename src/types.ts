@@ -8,7 +8,8 @@ export type QddMode = 'human' | 'assist' | 'auto';
 export type QuestionChangeType = 'refinement' | 'confirmation' | 'pivot' | 'dissolution';
 
 // 可登记为 artifact 的材料类型。
-export type ArtifactType = 'data' | 'code' | 'figure' | 'report';
+// `table` 在这里是一等公民，不再被迫塞进 data。
+export type ArtifactType = 'data' | 'code' | 'figure' | 'table' | 'report';
 
 // artifact 的复用边界。
 // 这里描述“它适合在哪一层复用”，而不是“它由哪一层产出”。
@@ -169,8 +170,6 @@ export interface EvolutionBoundary {
   id: string;
   text: string;
   state: EvolutionBoundaryState;
-  deps?: string[];
-  weight?: number;
 }
 
 // 新版 evolution.yaml 的单轮 study 事件。
@@ -393,6 +392,14 @@ export interface StatusJson {
   };
   output_review: {
     studies_with_unpackaged_output: string[];
+    studies_with_invalid_candidate_paths: string[];
+  };
+  close_preflight: {
+    ready: string[];
+    blocked: Array<{
+      study_id: string;
+      reasons: string[];
+    }>;
   };
   artifacts: {
     count: number;

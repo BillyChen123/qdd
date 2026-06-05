@@ -18,6 +18,7 @@ export const PATHS = {
     artifactDataDir: 'artifacts/data',
     artifactCodeDir: 'artifacts/code',
     artifactFiguresDir: 'artifacts/figures',
+    artifactTablesDir: 'artifacts/tables',
     artifactReportsDir: 'artifacts/reports',
     artifactCandidatesFileName: 'artifact-candidates.yaml',
     publicDataRequestFileName: 'public_data_request.yaml',

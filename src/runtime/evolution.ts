@@ -55,27 +55,10 @@ function normalizeBoundary(raw: unknown, index: number): EvolutionBoundary {
     throw new Error(`evolution.yaml boundaries#${index} must include non-empty text.`);
   }
 
-  const deps = Array.isArray(raw.deps)
-    ? raw.deps.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
-    : [];
-
-  for (const dep of deps) {
-    if (!BOUNDARY_ID_PATTERN.test(dep)) {
-      throw new Error(`evolution.yaml boundaries#${index} has invalid dep '${dep}'. Expected BXXX.`);
-    }
-  }
-
-  const weightValue = raw.weight === undefined ? undefined : Number(raw.weight);
-  if (weightValue !== undefined && (!Number.isFinite(weightValue) || weightValue < 0)) {
-    throw new Error(`evolution.yaml boundaries#${index} has invalid weight '${String(raw.weight)}'.`);
-  }
-
   return {
     id,
     text,
     state: normalizeBoundaryState(raw.state),
-    ...(deps.length > 0 ? { deps } : {}),
-    ...(weightValue !== undefined ? { weight: weightValue } : {}),
   };
 }
 
@@ -150,10 +133,8 @@ function normalizeEvolutionState(raw: unknown): EvolutionState {
   }
 
   for (const boundary of boundaries) {
-    for (const dep of boundary.deps ?? []) {
-      if (!seenIds.has(dep)) {
-        throw new Error(`evolution.yaml boundary '${boundary.id}' depends on unknown boundary '${dep}'.`);
-      }
+    if (!boundary.id || !boundary.text) {
+      throw new Error(`evolution.yaml boundary '${boundary.id || `#${boundaries.indexOf(boundary)}`}' is invalid.`);
     }
   }
 
@@ -276,8 +257,8 @@ export function toBoundaryState(state: EvolutionState): BoundaryState {
     boundaries: state.boundaries.map<BoundaryRecord>((boundary) => ({
       id: boundary.id,
       text: boundary.text,
-      depends_on: boundary.deps ?? [],
-      weight: boundary.weight ?? 1,
+      depends_on: [],
+      weight: 1,
       status: boundary.state === 'resolved' ? 'resolved' : 'open',
     })),
   };
@@ -290,8 +271,6 @@ export function mergeBoundaryStateIntoEvolution(state: EvolutionState, boundaryS
       id: boundary.id,
       text: boundary.text,
       state: boundary.status === 'resolved' || boundary.status === 'dissolved' ? 'resolved' : 'open',
-      ...(boundary.depends_on.length > 0 ? { deps: boundary.depends_on } : {}),
-      ...(boundary.weight !== 1 ? { weight: boundary.weight } : {}),
     })),
   };
 }
@@ -307,7 +286,7 @@ export function applyOpenBoundaryTexts(
   const normalizedOpenTexts = [...new Set(openBoundaryTexts.map((value) => value.trim()).filter((value) => value.length > 0))];
   const nextState: EvolutionState = {
     studies: [...state.studies],
-    boundaries: state.boundaries.map((boundary) => ({ ...boundary, ...(boundary.deps ? { deps: [...boundary.deps] } : {}) })),
+    boundaries: state.boundaries.map((boundary) => ({ ...boundary })),
   };
 
   const currentOpen = nextState.boundaries.filter((boundary) => boundary.state === 'open');
@@ -373,7 +352,11 @@ export function buildStudyMemoryMarkdown(options: {
   studyId: string;
   question: string;
   kind: QuestionChangeType;
-  changeDriver: string;
+  summary: string;
+  promotedArtifacts: string[];
+  reusedMaterials: string[];
+  usedSkills: string[];
+  adHocScripts: string[];
   openBoundaryTexts: string[];
   nextCandidates: string[];
   resolvedBoundaryTexts: string[];
@@ -422,7 +405,6 @@ export async function renderResearchMapHtml(projectRoot: string, outputPath: str
         <tr>
           <td>${escapeHtml(boundary.id)}</td>
           <td>${escapeHtml(boundary.state)}</td>
-          <td>${escapeHtml((boundary.deps ?? []).join(', ') || '-')}</td>
           <td>${escapeHtml(boundary.text)}</td>
         </tr>`
     )
@@ -448,7 +430,6 @@ export async function renderResearchMapHtml(projectRoot: string, outputPath: str
   const edges = [
     ...state.studies.flatMap((study) => study.resolves.map((boundaryId) => ({ from: study.id, to: boundaryId, kind: 'resolves' }))),
     ...state.studies.flatMap((study) => study.opens.map((boundaryId) => ({ from: study.id, to: boundaryId, kind: 'opens' }))),
-    ...state.boundaries.flatMap((boundary) => (boundary.deps ?? []).map((dependencyId) => ({ from: dependencyId, to: boundary.id, kind: 'depends' }))),
   ];
 
   const html = `<!DOCTYPE html>
@@ -527,9 +508,9 @@ export async function renderResearchMapHtml(projectRoot: string, outputPath: str
             <h2>Boundary Map</h2>
             <table>
               <thead>
-                <tr><th>ID</th><th>State</th><th>Depends On</th><th>Text</th></tr>
+                <tr><th>ID</th><th>State</th><th>Text</th></tr>
               </thead>
-              <tbody>${boundaryRows || '<tr><td colspan="4">No project boundaries recorded yet.</td></tr>'}</tbody>
+              <tbody>${boundaryRows || '<tr><td colspan="3">No project boundaries recorded yet.</td></tr>'}</tbody>
             </table>
           </div>
         </div>
@@ -555,8 +536,7 @@ export async function renderResearchMapHtml(projectRoot: string, outputPath: str
         const from = positions.get(edge.from);
         const to = positions.get(edge.to);
         if (!from || !to) return;
-        const stroke = edge.kind === 'depends' ? '#94a3b8' : edge.kind === 'resolves' ? '#16a34a' : '#f59e0b';
-        const dash = edge.kind === 'depends' ? '6 4' : '';
+        const stroke = edge.kind === 'resolves' ? '#16a34a' : '#f59e0b';
         draw('line', {
           x1: from.x,
           y1: from.y + (from.type === 'study' ? 18 : 0),
@@ -564,7 +544,6 @@ export async function renderResearchMapHtml(projectRoot: string, outputPath: str
           y2: to.y - (to.type === 'study' ? 18 : 0),
           stroke,
           'stroke-width': 2,
-          ...(dash ? { 'stroke-dasharray': dash } : {}),
         });
       });
 

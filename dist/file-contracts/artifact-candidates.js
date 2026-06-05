@@ -17,6 +17,15 @@ export function createExampleArtifactCandidateManifest() {
                 description: 'Main executed integration script for the study.',
                 schema: 'python-script',
             },
+            {
+                path: 'studies/STUDY-001/output/tables/integration-summary.csv',
+                type: 'table',
+                task_id: 'TASK-001',
+                reusable: true,
+                scope: 'study',
+                description: 'Reusable integration summary table preserved for downstream comparison.',
+                schema: 'csv-table',
+            },
         ],
     };
 }
@@ -52,6 +61,7 @@ export const artifactCandidateFileContract = {
     notes: [
         'Only promotion-worthy outputs belong here; not every study-local file is an artifact candidate.',
         'Task-scoped candidates should also declare task_id.',
+        'Candidate paths must point to canonical study outputs, never to output/tmp scratch files.',
     ],
     renderExample: () => renderYamlDocument(createExampleArtifactCandidateManifest()),
 };

@@ -25,22 +25,37 @@ This is analogous to spec-driven development (SDD):
 
 ## What QDD Does Differently
 
-### 1. Question Delta as First-Class Object
+### 1. Sparse Evolution Event as First-Class Object
 
-Every study closure produces a `question_delta`:
+Every study closure produces one sparse study event plus one memory file:
 
 ```yaml
-question_delta:
-  question_before: "What cell types are in this dataset?"
-  question_after: "What are the T cell subtypes and their activation states?"
-  change_type: refinement  # or confirmation, pivot, dissolution
-  change_driver: "Initial clustering revealed 8 major types; immune cells show highest heterogeneity"
-  open_boundaries:
-    - "Activation state markers need validation"
-    - "Rare subtypes (<1%) not yet characterized"
+studies:
+  - id: STUDY-004
+    question: "What are the T cell subtypes and their activation states?"
+    kind: refinement
+    resolves: [B002]
+    opens: [B005, B006]
+    candidates:
+      - "Can the activation-state signal be validated in a second cohort?"
+      - "Do rare subtypes remain stable after stricter QC?"
+    ts: 2026-06-05T12:00:00Z
+
+boundaries:
+  - id: B005
+    text: "Activation state markers need validation"
+    state: open
+  - id: B006
+    text: "Rare subtypes (<1%) are not yet characterized"
+    state: open
 ```
 
-**This is not a summary—it's a structured contract** between the study layer (execution) and project layer (question management).
+Narrative detail then lives in `context/memory/STUDY-XXX.md`: what happened, what was promoted, what was reused, which skills were used, what remained open, and what the next credible study directions are.
+
+**This is not just a summary.** It is a structured close-time contract between the study layer and the project layer, split into:
+
+- sparse structured evolution state
+- readable per-study memory
 
 ### 2. Three-Layer Quality Metrics
 
@@ -111,7 +126,7 @@ Specifically:
 
 1. **Formalization**: Question convergence is defined through three measurable dimensions (structural, logical, convergence), not subjective judgment.
 
-2. **Mechanism**: `question_delta` provides structured signal between execution layer (studies/tasks) and question management layer (project).
+2. **Mechanism**: close-time study events plus per-study memory provide structured signal between execution layer (studies/tasks) and project-level question management.
 
 3. **Validation**: Convergence metrics are objective and testable. We can detect when a question is:
    - Converging (boundaries shrinking, artifacts reused)

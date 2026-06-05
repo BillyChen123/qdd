@@ -24,10 +24,10 @@ export interface RegisterArtifactOptions {
     updateTaskPromotionStatus?: boolean;
 }
 export interface CloseStudyOptions {
-    questionAfter: string;
     changeType: QuestionChangeType;
-    changeDriver: string;
+    summary: string;
     openBoundaries: string[];
+    nextCandidates?: string[];
 }
 export interface CreatedStudyResult {
     studyId: string;
@@ -41,6 +41,16 @@ export interface CreatedTaskResult {
 export interface RegisteredArtifactResult {
     artifactId: string;
     entry: ArtifactIndexEntry;
+}
+export interface StudyClosePreflightResult {
+    study_id: string;
+    inferred_state: Exclude<StudyRecord['status'], 'confirmed' | undefined>;
+    ready: boolean;
+    reasons: string[];
+    pending_or_running_tasks: string[];
+    promotion_pending_tasks: string[];
+    unpackaged_entries: string[];
+    invalid_candidate_paths: string[];
 }
 export interface RecordArtifactCandidateOptions {
     artifactType: ArtifactType;
@@ -72,6 +82,7 @@ export declare function createStudy(projectRoot: string, options?: AddStudyOptio
 export declare function createTask(projectRoot: string, studyId: string, options?: AddTaskOptions): Promise<CreatedTaskResult>;
 export declare function recordArtifactCandidate(projectRoot: string, targetPath: string, options: RecordArtifactCandidateOptions): Promise<string>;
 export declare function registerArtifact(projectRoot: string, targetPath: string, options: RegisterArtifactOptions): Promise<RegisteredArtifactResult>;
+export declare function inspectStudyClosePreflight(projectRoot: string, studyId: string): Promise<StudyClosePreflightResult>;
 export declare function closeStudy(projectRoot: string, studyId: string, options: CloseStudyOptions): Promise<void>;
 export declare function deriveStudyLifecycleState(study: StudyRecord, tasks: TaskRecord[]): Exclude<StudyRecord['status'], 'confirmed' | undefined>;
 //# sourceMappingURL=lifecycle.d.ts.map

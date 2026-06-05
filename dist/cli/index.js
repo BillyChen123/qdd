@@ -211,7 +211,7 @@ program
 program
     .command('register-artifact <artifactPath>')
     .description('Register a reusable artifact in artifacts/index.yaml')
-    .requiredOption('--type <type>', 'Artifact type: data|code|figure|report')
+    .requiredOption('--type <type>', 'Artifact type: data|code|figure|table|report')
     .requiredOption('--description <text>', 'Artifact description')
     .option('--reusable', 'Mark artifact as reusable')
     .option('--study <id>', 'Study provenance')
@@ -230,17 +230,17 @@ program
 program
     .command('close-study <studyId>')
     .description('Close a study and append one sparse study event to evolution.yaml')
-    .requiredOption('--question-after <text>', 'Resulting question after study execution')
     .requiredOption('--change-type <type>', 'Study change type: refinement|confirmation|pivot|dissolution')
-    .requiredOption('--change-driver <text>', 'Primary reason for the question change')
+    .requiredOption('--summary <text>', 'Compact closure summary written into study memory')
     .option('--open-boundary <text...>', 'Remaining open boundaries')
+    .option('--next-candidate <text...>', 'One to three candidate next study questions')
     .action(async (studyId, options) => {
     try {
         await closeStudyCommand(studyId, {
-            questionAfter: options?.questionAfter,
             changeType: options?.changeType,
-            changeDriver: options?.changeDriver,
+            summary: options?.summary,
             openBoundaries: options?.openBoundary,
+            nextCandidates: options?.nextCandidate,
         });
     }
     catch (error) {

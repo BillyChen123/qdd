@@ -24,7 +24,7 @@ If omitted:
 - execute the current approved study/task set
 - update study/task Markdown as the work progresses
 - produce outputs in the study output directory
-- package code, figures, tables, and reports so the study stays reviewable
+- package final data, code, figures, tables, and reports so the study stays reviewable
 - review promotion-worthiness before a completed task is left behind
 - maintain `artifact-candidates.yaml` for promotion-worthy reusable outputs
 - register reusable artifacts
@@ -189,9 +189,11 @@ Rules:
 
 - `output/tmp/` is scratch space only; do not leave final study truth there
 - package final reusable outputs back into `output/data|code|figures|tables|reports` before marking the task complete
+- if the task produces the final kept processed h5ad or equivalent reusable data object, preserve it in `output/data/`
 - if you ran substantive analysis code, preserve a readable script in `output/code/`
 - if one script is the main executed analysis surface for this task, normally record it in `artifact-candidates.yaml` as `type: code` unless you directly register it
 - if the study claim depends on visual inspection, save at least one key figure in `output/figures/`
+- keep reusable summary CSV/TSV tables in `output/tables/` and normally promote them as `type: table` when they matter beyond this study
 - keep tables and reports in the matching subdirectories when practical
 - keep purely local intermediate files under `output/tmp/` when they are not part of the final study surface
 

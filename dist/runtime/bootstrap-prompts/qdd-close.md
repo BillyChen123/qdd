@@ -86,10 +86,11 @@ Summarize what the study actually established, not just what work was performed.
 
 You must decide:
 
-- `question_after`
+- the current study question to preserve in `evolution.yaml`
 - `change_type`
-- `change_driver`
+- `summary`
 - `open_boundaries`
+- `next_candidates`
 
 Use these meanings:
 
@@ -104,8 +105,10 @@ Use this reasoning order:
 
 1. identify what the current project question was before this study closed
 2. decide whether the study kept, narrowed, pivoted, or dissolved that question
-3. write the resulting `question_after`
-4. define which boundaries remain open around that resulting question
+3. preserve the actual study question as the event `question`
+4. write one compact study `summary` describing what the study actually established
+5. define which boundaries remain open after this study
+6. list 1-3 `next_candidates` when there are credible follow-up directions
 
 ---
 
@@ -121,12 +124,16 @@ Trust an empty candidate list only when all completed tasks have already finishe
 
 Do not promote by scanning the whole output directory and guessing from file names or extensions.
 
+Reject any candidate that still points into `studies/STUDY-XXX/output/tmp/` or another scratch-only path.
+
 When one task clearly produced a reusable output, record that `task_id` in the candidate entry so promotion preserves task-level provenance.
 
 Examples:
 
 - reusable reports or figures -> register as artifacts if missing
 - main executed analysis scripts preserved under `output/code/` -> register as code artifacts if they are worth reusing or auditing later, and prefer explicit code candidates over closure-time guessing
+- final kept processed h5ad objects preserved under `output/data/` -> register as data artifacts when they become reusable downstream starting points
+- reusable CSV/TSV summary outputs preserved under `output/tables/` -> register as table artifacts when they are worth reusing or auditing later
 - downloaded public datasets under `artifacts/data/` -> carry them into `context/resources.md` when they are now part of the stable reusable project resource surface; keep source and intended reuse role explicit
 - stable resource knowledge -> update `context/` resources
 - speculative interpretations -> keep in study outputs, not shared context
@@ -140,12 +147,12 @@ If something is useful only for this study, do not promote it as cross-study con
 ### human
 
 - Produce the closure reasoning.
-- Get human approval before running `qdd close-study`.
+- If closure is justified and preflight passes, run `qdd close-study` directly; do not add a second manual confirmation gate.
 
 ### assist
 
-- Same approval rule as `human`.
-- You may draft the closure decision more concretely, but do not silently finalize it.
+- Same execution rule as `human`.
+- You may draft the closure decision more concretely, but do not distort the scientific judgment just to force closure.
 
 ### auto
 
@@ -206,7 +213,7 @@ Your closure report should make these points legible:
 
 - whether closure is justified
 - what the study established
-- how the question changed
+- how the current question changed in type: refinement, confirmation, pivot, or dissolution
 - what remains open
 - what artifacts or context were carried forward
 - what next study direction is most defensible
@@ -235,12 +242,14 @@ There is no rigid output template, but the reasoning must be explicit.
 ## Guardrails
 
 - Run `qdd validate --json` before closure or handoff.
-- Make the resulting question change explicit.
+- Make the resulting study event explicit: current study question, change type, summary, open boundaries, and next candidates.
 - Refuse closure when completed tasks still have `promotion_status: pending`.
 - Refuse closure when non-canonical top-level study output material still remains unpackaged.
+- Refuse closure when artifact candidates still point into `output/tmp/` scratch space.
 - Register missing reusable outputs from `artifact-candidates.yaml` before closure.
 - Preserve task-level provenance for promoted outputs whenever one task was the clear producer.
 - Write one sparse event into `evolution.yaml`, one narrative file into `context/memory/`, and refresh `research-map.html`.
-- Keep closure human-approved in `human` and `assist` mode.
+- Ensure `context/memory/STUDY-XXX.md` records promoted artifacts, reused materials, used skills, ad hoc scripts, resolved/open boundaries, and 1-3 next candidates.
+- Clean heavy scratch leftovers under `output/tmp/` after successful closure while preserving final packaged truth.
 - Update shared context only with evidence-backed reusable information.
 - Suggest next studies, but do not create them automatically.

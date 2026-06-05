@@ -9,9 +9,9 @@ import { STUDY_STATUS_VALUES } from '../file-contracts/study.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { getStudyArtifactCandidatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
+import { getStudyArtifactCandidatesPath, inspectArtifactCandidatePaths, listNonCanonicalStudyOutputEntries } from './evidence.js';
 import { listStudyMemoryPaths, readEvolutionState } from './evolution.js';
-import { deriveStudyLifecycleState } from './lifecycle.js';
+import { deriveStudyLifecycleState, inspectStudyClosePreflight } from './lifecycle.js';
 import { readLayerPolicy } from './layer-policy.js';
 import { listControlledSkillDomains, listControlledSkillStages, listControlledSkillTags, listLocalSkills, listProblemSkills, normalizeTaskSkillIds, resolveLocalSkills, } from './local-skills.js';
 import { readMarkdownDocument, readYamlFile } from './store.js';
@@ -711,6 +711,15 @@ export async function validateProject(projectRoot) {
         try {
             const manifest = await readYamlFile(projectRoot, manifestPath);
             validateArtifactCandidateManifest(study.study_id, manifest, issues);
+            const pathIssues = await inspectArtifactCandidatePaths(projectRoot, study.study_id);
+            for (const issue of pathIssues) {
+                pushIssue(issues, {
+                    level: 'error',
+                    code: 'invalid_artifact_candidate_path',
+                    path: `${manifestPath}#${issue.index >= 0 ? issue.index : 'manifest'}`,
+                    message: `Artifact candidate path '${issue.path || '(missing)'}' ${issue.reason}`,
+                });
+            }
         }
         catch (error) {
             pushIssue(issues, {
@@ -727,6 +736,7 @@ export async function validateProject(projectRoot) {
         const studyTasks = tasks.filter((task) => task.study_id === study.study_id || (study.task_ids ?? []).includes(task.task_id));
         const inferredState = deriveStudyLifecycleState(study, studyTasks);
         const unpackagedEntries = await listNonCanonicalStudyOutputEntries(projectRoot, study.study_id);
+        const closePreflight = await inspectStudyClosePreflight(projectRoot, study.study_id);
         if (study.status === 'closed' && studyTasks.some((task) => (task.status ?? 'pending') === 'pending' || task.status === 'running')) {
             pushIssue(issues, {
                 level: 'error',
@@ -759,6 +769,16 @@ export async function validateProject(projectRoot) {
                     code: 'missing_study_memory',
                     path: expectedMemoryPath,
                     message: `Closed study '${study.study_id}' must have a matching memory file under context/memory/.`,
+                });
+            }
+        }
+        if (study.status !== 'closed' && closePreflight.ready === false && inferredState === 'completed') {
+            for (const reason of closePreflight.reasons) {
+                pushIssue(issues, {
+                    level: 'warning',
+                    code: 'close_preflight_blocked',
+                    path: `${PATHS.studiesDir}/${study.study_id}/study.md`,
+                    message: `Study '${study.study_id}' is completed but not close-ready: ${reason}`,
                 });
             }
         }

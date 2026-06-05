@@ -43,6 +43,7 @@ export async function initCommand(targetPath = '.', options = {}) {
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactDataDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactCodeDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactFiguresDir)),
+        FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactTablesDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactReportsDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.qddDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.examplesDir)),

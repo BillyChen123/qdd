@@ -258,8 +258,10 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Write study outputs into the study output directory.',
             'Use studies/STUDY-XXX/output/tmp only as scratch space; package final outputs back into the canonical study output directories before treating work as complete.',
             'Treat studies/STUDY-XXX/output/data, code, figures, tables, and reports as the canonical final study output surface.',
+            'Preserve the final kept h5ad or equivalent reusable processed data object under studies/STUDY-XXX/output/data/ when this study produces one.',
             'Preserve readable scripts in studies/STUDY-XXX/output/code for substantive analyses.',
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
+            'Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.',
             'Use studies/STUDY-XXX/output/artifact-candidates.yaml as the explicit promotion boundary for reusable study outputs.',
             'Use studies/STUDY-XXX/output/public_data_request.yaml only when this study truly depends on external public data; do not create it for studies that can proceed entirely from local resources.',
             'Include task_id in artifact candidates whenever one task clearly produced the reusable output.',
@@ -277,10 +279,13 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         if (command === 'qdd-close') {
             rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.');
             rules.push('qdd-close must register missing reusable outputs from artifact-candidates.yaml before final closure.');
+            rules.push('qdd-close must reject artifact candidates that still point into studies/STUDY-XXX/output/tmp/ or other scratch-only paths.');
             rules.push('qdd-close must write one sparse study event into evolution.yaml, one narrative memory file into context/memory/, and refresh research-map.html.');
             rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
             rules.push('Refuse closure when any completed task still has promotion_status pending.');
             rules.push('Refuse closure when non-canonical top-level study output material still remains unpackaged.');
+            rules.push('If close preflight passes, run qdd close-study directly instead of waiting for an extra manual confirmation gate.');
+            rules.push('Successful closure should clean heavy scratch leftovers under studies/STUDY-XXX/output/tmp/ while preserving final packaged truth.');
             rules.push('If this study introduced reusable downloaded datasets under artifacts/data/, record their stable source, alias, and intended reuse role in context/resources.md before closure.');
         }
         appendRoleSkillIssues(rules, 'Study', roleSkillSet);
@@ -338,9 +343,11 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Escalate to study-level updates when the task changes the study boundary or evidence plan.',
             'Use studies/STUDY-XXX/output/tmp only as scratch space; package final outputs back into canonical study output directories before marking the task complete.',
             `Treat ${getStudyOutputDir(studyId)}/data, code, figures, tables, and reports as the canonical final output surface for this study.`,
+            `Preserve the final kept h5ad or equivalent reusable processed data object under ${getStudyOutputDir(studyId)}/data/ when this task produces one.`,
             `Treat ${getStudyPublicDataRequestPath(studyId)} as a planning-owned handoff file. If this task uses it, consume only the selected dataset targets recorded there.`,
             'Preserve readable scripts in studies/STUDY-XXX/output/code for substantive analyses.',
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
+            'Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.',
             'Add only promotion-worthy outputs to studies/STUDY-XXX/output/artifact-candidates.yaml; do not treat all local outputs as artifacts.',
             'Include task_id in artifact candidates whenever this task clearly produced the reusable output.',
             'Before a completed task is left in place, set promotion_status explicitly to none, candidate-recorded, or registered; completed tasks must not remain promotion-pending.',

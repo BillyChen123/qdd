@@ -5,7 +5,7 @@ export async function registerArtifactCommand(artifactPath, options = {}) {
         throw new Error('Missing required argument <path>.');
     }
     if (!options.type) {
-        throw new Error('Missing required option --type <data|code|figure|report>.');
+        throw new Error('Missing required option --type <data|code|figure|table|report>.');
     }
     if (!options.description) {
         throw new Error('Missing required option --description <text>.');
