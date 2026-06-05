@@ -11,6 +11,8 @@ import type {
   QuestionChangeType,
   ResearchContract,
 } from '../types.js';
+import { createDefaultEvolutionState as createDefaultEvolutionStateFromContract } from '../file-contracts/evolution.js';
+import { buildStudyMemoryMarkdown as buildStudyMemoryMarkdownFromContract } from '../file-contracts/memory.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { readYamlFile, writeYamlFile } from './store.js';
@@ -216,10 +218,7 @@ function convertLegacyEvolution(legacy: LegacyEvolutionTrail): EvolutionState {
 }
 
 export function createDefaultEvolutionState(): EvolutionState {
-  return {
-    studies: [],
-    boundaries: [],
-  };
+  return createDefaultEvolutionStateFromContract();
 }
 
 export async function readEvolutionState(projectRoot: string): Promise<EvolutionState> {
@@ -379,53 +378,7 @@ export function buildStudyMemoryMarkdown(options: {
   nextCandidates: string[];
   resolvedBoundaryTexts: string[];
 }): string {
-  const openBoundaryLines =
-    options.openBoundaryTexts.length > 0 ? options.openBoundaryTexts.map((value) => `- ${value}`).join('\n') : '- None';
-  const resolvedBoundaryLines =
-    options.resolvedBoundaryTexts.length > 0 ? options.resolvedBoundaryTexts.map((value) => `- ${value}`).join('\n') : '- None';
-  const candidateLines =
-    options.nextCandidates.length > 0 ? options.nextCandidates.map((value) => `- ${value}`).join('\n') : '- None';
-
-  return [
-    `# ${options.studyId} Memory`,
-    '',
-    '## Question',
-    '',
-    options.question,
-    '',
-    '## Outcome',
-    '',
-    `- Kind: ${options.kind}`,
-    '',
-    '## What Happened',
-    '',
-    options.changeDriver,
-    '',
-    '## Evidence Pointers',
-    '',
-    `- Study contract: studies/${options.studyId}/study.md`,
-    `- Task contracts: studies/${options.studyId}/tasks/`,
-    `- Study outputs: studies/${options.studyId}/output/`,
-    '- Registered artifacts: artifacts/index.yaml',
-    '',
-    '## Resolved Boundaries',
-    '',
-    resolvedBoundaryLines,
-    '',
-    '## Open Boundaries',
-    '',
-    openBoundaryLines,
-    '',
-    '## Next Candidates',
-    '',
-    candidateLines,
-    '',
-    '## Reflection',
-    '',
-    '- Keep only durable lessons here; do not turn this file into a raw execution log.',
-    '- If a stable resource, dataset, or method preference should carry across studies, also update context/resources.md explicitly.',
-    '',
-  ].join('\n');
+  return buildStudyMemoryMarkdownFromContract(options);
 }
 
 export async function writeStudyMemory(projectRoot: string, studyId: string, markdown: string): Promise<string> {

@@ -1,9 +1,13 @@
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
 import type { ArtifactCandidateEntry, ArtifactCandidateManifest, ArtifactScope, ArtifactType } from '../types.js';
+import {
+  ARTIFACT_SCOPE_VALUES,
+  ARTIFACT_TYPE_VALUES,
+} from '../file-contracts/artifact-index.js';
+import { createDefaultArtifactCandidateManifest } from '../file-contracts/artifact-candidates.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
-import { createDefaultArtifactCandidateManifest } from './defaults.js';
 import { readYamlFile, writeYamlFile } from './store.js';
 
 const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'] as const;
@@ -15,11 +19,11 @@ const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 function isArtifactType(value: string): value is ArtifactType {
-  return ['data', 'code', 'figure', 'report'].includes(value);
+  return ARTIFACT_TYPE_VALUES.includes(value as ArtifactType);
 }
 
 function isArtifactScope(value: string): value is ArtifactScope {
-  return ['project', 'study', 'task'].includes(value);
+  return ARTIFACT_SCOPE_VALUES.includes(value as ArtifactScope);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

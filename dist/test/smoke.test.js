@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
+import { parseTaskSkillSection } from '../file-contracts/task.js';
 import { buildStatus } from '../runtime/status.js';
 import { buildInstructions } from '../runtime/instructions.js';
 import { closeStudy, createStudy, createTask, recordArtifactCandidate } from '../runtime/lifecycle.js';
@@ -32,6 +33,11 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'context', 'memory')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'research-map.html')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'instructions.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'schema-reference.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'examples', 'contract.example.yaml')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'examples', 'study.example.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'examples', 'task.example.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'examples', 'artifact-candidates.example.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'bootstrap.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'layer-policy.yaml')));
     await assert.doesNotReject(fs.access(path.join(projectRoot, '.qdd', 'skills-catalog.json')));
@@ -54,6 +60,10 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.match(instructions, /research-map\.html/);
     assert.doesNotMatch(instructions, /boundaries\.yaml/);
     assert.doesNotMatch(instructions, /question_delta/);
+    const schemaReference = await fs.readFile(path.join(projectRoot, '.qdd', 'schema-reference.md'), 'utf-8');
+    assert.match(schemaReference, /contract\.yaml/);
+    assert.match(schemaReference, /task\.example\.md/);
+    assert.match(schemaReference, /Optional human-readable descriptions may follow/);
     const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
     assert.match(startCommand, /contract\.yaml/);
     assert.match(startCommand, /context\/resources\.md/);
@@ -89,6 +99,8 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', 'STUDY-000.md'), '# Previous memory\n', 'utf-8');
     const projectInstructions = await buildInstructions(projectRoot, 'PROJECT', { command: 'qdd-start' });
     assert.equal(projectInstructions.role, 'thesis-manager');
+    assert.ok(projectInstructions.read.includes('.qdd/schema-reference.md'));
+    assert.ok(projectInstructions.read.includes('.qdd/examples/contract.example.yaml'));
     assert.ok(projectInstructions.read.includes('contract.yaml'));
     assert.ok(projectInstructions.read.includes('evolution.yaml'));
     assert.ok(projectInstructions.read.includes('research-map.html'));
@@ -100,6 +112,9 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(!projectInstructions.write.includes('boundaries.yaml'));
     const studyInstructions = await buildInstructions(projectRoot, studyId, { command: 'qdd-close' });
     assert.equal(studyInstructions.role, 'thesis-manager');
+    assert.ok(studyInstructions.read.includes('.qdd/schema-reference.md'));
+    assert.ok(studyInstructions.read.includes('.qdd/examples/study.example.md'));
+    assert.ok(studyInstructions.read.includes('.qdd/examples/task.example.md'));
     assert.ok(studyInstructions.read.includes('evolution.yaml'));
     assert.ok(studyInstructions.read.includes(`studies/${studyId}/study.md`));
     assert.ok(studyInstructions.read.includes(`studies/${studyId}/tasks/${taskId}.md`));
@@ -115,6 +130,8 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(proposeInstructions.rules.includes('Keep human propose as the highest semantic authority; treat prior candidates in evolution.yaml only as suggestions.'));
     const taskInstructions = await buildInstructions(projectRoot, taskId, { command: 'qdd-apply' });
     assert.equal(taskInstructions.role, 'executor');
+    assert.ok(taskInstructions.read.includes('.qdd/schema-reference.md'));
+    assert.ok(taskInstructions.read.includes('.qdd/examples/task.example.md'));
     assert.ok(taskInstructions.read.includes('evolution.yaml'));
     assert.ok(taskInstructions.read.includes(`studies/${studyId}/tasks/${taskId}.md`));
     assert.ok(taskInstructions.rules.includes('You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.'));
@@ -202,6 +219,48 @@ test('qdd validate requires study memory for closed studies under the new model'
     assert.equal(validation.valid, false);
     assert.ok(validation.issues.some((issue) => issue.code === 'missing_study_memory'));
     assert.ok(!('boundaries' in validation.checked));
+});
+test('generated managed-file examples stay aligned with validation and task skill parsing', async () => {
+    const projectRoot = await createTempProject('qdd-examples-');
+    const { studyId } = await createStudy(projectRoot, {
+        question: 'Can the generated examples be copied into a real project without validator drift?',
+        hypothesis: 'The managed-file examples should match the runtime validators.',
+    });
+    const { taskId } = await createTask(projectRoot, studyId, {
+        goal: 'Use the generated task example as-is.',
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const studyExample = await fs.readFile(path.join(projectRoot, '.qdd', 'examples', 'study.example.md'), 'utf-8');
+    const taskExample = await fs.readFile(path.join(projectRoot, '.qdd', 'examples', 'task.example.md'), 'utf-8');
+    const candidateExample = await fs.readFile(path.join(projectRoot, '.qdd', 'examples', 'artifact-candidates.example.yaml'), 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'study.md'), studyExample, 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'tasks', `${taskId}.md`), taskExample, 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'output', 'code', 'integration.py'), 'print("ok")\n', 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', studyId, 'output', 'artifact-candidates.yaml'), candidateExample, 'utf-8');
+    const taskDocument = await readMarkdownDocument(projectRoot, `studies/${studyId}/tasks/${taskId}.md`);
+    const parsedSkillSection = parseTaskSkillSection(taskDocument.body);
+    assert.equal(parsedSkillSection.present, true);
+    assert.deepEqual(parsedSkillSection.skillIds, ['singlecell/scrna/sc-batch-integration']);
+    const validation = await validateProject(projectRoot);
+    assert.equal(validation.valid, true);
+});
+test('qdd validate rejects task skill bullets that do not start with a skill id', async () => {
+    const projectRoot = await createTempProject('qdd-invalid-skill-body-');
+    const { studyId } = await createStudy(projectRoot, {
+        question: 'Can invalid task skill body lines be detected?',
+        hypothesis: 'Validator should reject non-machine-readable skill bullets.',
+    });
+    const { taskId } = await createTask(projectRoot, studyId, {
+        goal: 'Create one task with an invalid skills body section.',
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const relativePath = `studies/${studyId}/tasks/${taskId}.md`;
+    const document = await readMarkdownDocument(projectRoot, relativePath);
+    const invalidBody = document.body.replace(/## Skills[\s\S]*$/, ['## Skills', '', '- use scanpy first and decide later'].join('\n'));
+    await writeMarkdownDocument(projectRoot, relativePath, document.frontmatter, invalidBody);
+    const validation = await validateProject(projectRoot);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.issues.some((issue) => issue.code === 'invalid_task_skill_section_entry'));
 });
 test('qdd skills suggest returns executor-facing candidates and excludes brain skills from the catalog', async () => {
     const projectRoot = await createTempProject('qdd-skills-');

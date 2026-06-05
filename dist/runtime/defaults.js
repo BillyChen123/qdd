@@ -1,20 +1,14 @@
+import { createDefaultArtifactCandidateManifest as createDefaultArtifactCandidateManifestFromContract } from '../file-contracts/artifact-candidates.js';
+import { createDefaultArtifactIndex as createDefaultArtifactIndexFromContract } from '../file-contracts/artifact-index.js';
+import { createDefaultResearchContract as createDefaultResearchContractFromContract } from '../file-contracts/contract.js';
+import { createDefaultEvolutionState as createDefaultEvolutionStateFromContract } from '../file-contracts/evolution.js';
+import { createDefaultLayerPolicy as createDefaultLayerPolicyFromContract } from '../file-contracts/layer-policy.js';
+import { createDefaultResourcesMarkdown as createDefaultResourcesMarkdownFromContract } from '../file-contracts/resources.js';
 export function createDefaultResearchContract() {
-    return {
-        theme: 'Unspecified research theme',
-        initial_question: 'Unspecified initial question',
-        mode: 'human',
-        scope: {
-            in_scope: [],
-            out_of_scope: [],
-        },
-        termination_type: 'best_effort',
-    };
+    return createDefaultResearchContractFromContract();
 }
 export function createDefaultEvolutionTrail() {
-    return {
-        studies: [],
-        boundaries: [],
-    };
+    return createDefaultEvolutionStateFromContract();
 }
 export function createDefaultBoundaryState() {
     return {
@@ -22,89 +16,16 @@ export function createDefaultBoundaryState() {
     };
 }
 export function createDefaultArtifactIndex() {
-    return {
-        artifacts: [],
-    };
+    return createDefaultArtifactIndexFromContract();
 }
 export function createDefaultArtifactCandidateManifest() {
-    return {
-        artifact_candidates: [],
-    };
+    return createDefaultArtifactCandidateManifestFromContract();
 }
 export function createDefaultLayerPolicy() {
-    return {
-        commands: {
-            'qdd-start': 'thesis-manager',
-            'qdd-propose': 'study-brain',
-            'qdd-explore': 'study-brain',
-            'qdd-apply': 'executor',
-            'qdd-close': 'thesis-manager',
-        },
-        roles: {
-            'thesis-manager': {
-                default_skills: [],
-            },
-            'study-brain': {
-                default_skills: [
-                    'brain/singlecell/scrna-planning',
-                    'brain/singlecell/scatac-planning',
-                    'brain/singlecell/public-data-planning',
-                ],
-            },
-            executor: {
-                default_skills: [],
-            },
-        },
-    };
+    return createDefaultLayerPolicyFromContract();
 }
 export function createDefaultResourcesMarkdown() {
-    return [
-        '# Project Resources',
-        '',
-        '## Research Theme',
-        '',
-        '- Theme statement: unspecified',
-        '- Current biological focus: unspecified',
-        '',
-        '## Biological Background',
-        '',
-        '- Biological system: unspecified',
-        '- Stable boundaries or assumptions: unspecified',
-        '- Prior knowledge worth reusing: unspecified',
-        '',
-        '## Data Resources',
-        '',
-        '- Linked datasets under `artifacts/data/`: none yet',
-        '- Primary datasets: unspecified',
-        '- Supporting datasets: unspecified',
-        '- Existing evidence assets: none listed yet',
-        '',
-        '## Runtime Environments',
-        '',
-        '- Python: unspecified',
-        '- R: unspecified',
-        '- External tools / compute: unspecified',
-        '',
-        '## Analyst Preferences',
-        '',
-        '- Stable methodological preferences: unspecified',
-        '- Evidence preferences: unspecified',
-        '- Long-lived cautions or anti-patterns: unspecified',
-        '- Preferred reusable environment or tool constraints: unspecified',
-        '',
-        '## Local Skills',
-        '',
-        '- Treat `brain/*` as domain-prior sidecars and planning-time guidance.',
-        '- Treat non-`brain/*` skills with metadata as executor-facing problem-level skills.',
-        '- Use public-data planning only when local resources are insufficient or an external validation/reference dataset is genuinely needed.',
-        '- Keep external dataset search results small and explicit; record only final selected targets in study-local handoff files.',
-        '- Validate task skills against the QDD root `domain-skills/` library and `.qdd/skills-catalog.json`.',
-        '- Keep workflow skills under local `.codex/skills/qdd/` and mirror those workflow skills into `.claude/skills/qdd/` when Claude bootstrap is installed.',
-        '- Keep task-level `skills:` for concrete problem-level dependencies only; do not list `qdd/*` or `brain/*` there.',
-        '- Use `.qdd/layer-policy.yaml` for command -> role mapping and role-level default skills.',
-        '- Domain-specific local skills: none yet',
-        '',
-    ].join('\n');
+    return createDefaultResourcesMarkdownFromContract();
 }
 export function createDefaultInstructionsMarkdown() {
     return [

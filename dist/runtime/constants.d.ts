@@ -24,6 +24,8 @@ export declare const PATHS: {
     readonly workflowSkillCategory: "qdd";
     readonly qddDir: ".qdd";
     readonly instructions: ".qdd/instructions.md";
+    readonly schemaReference: ".qdd/schema-reference.md";
+    readonly examplesDir: ".qdd/examples";
     readonly bootstrapConfig: ".qdd/bootstrap.yaml";
     readonly layerPolicy: ".qdd/layer-policy.yaml";
     readonly skillsCatalog: ".qdd/skills-catalog.json";

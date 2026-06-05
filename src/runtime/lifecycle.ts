@@ -12,6 +12,9 @@ import type {
   TaskPromotionStatus,
   TaskRecord,
 } from '../types.js';
+import { buildStudyMemoryMarkdown } from '../file-contracts/memory.js';
+import { renderStudyBody } from '../file-contracts/study.js';
+import { renderTaskBody } from '../file-contracts/task.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
@@ -35,7 +38,6 @@ import {
 import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
 import {
   applyOpenBoundaryTexts,
-  buildStudyMemoryMarkdown,
   readEvolutionState,
   renderResearchMapHtml,
   writeEvolutionState,
@@ -140,113 +142,6 @@ function replaceMarkdownSection(body: string, heading: string, content: string):
 
   const suffix = body.trim().length > 0 ? '\n\n' : '';
   return `${body.trim()}${suffix}## ${heading}\n\n${normalizedContent}`.trim();
-}
-
-function buildStudyBody(record: StudyRecord): string {
-  const blockers = record.blockers && record.blockers.length > 0 ? record.blockers.map((value) => `- ${value}`).join('\n') : '- None yet.';
-  const tasks = record.task_ids && record.task_ids.length > 0 ? record.task_ids.map((taskId) => `- [ ] ${taskId}`).join('\n') : '- No planned tasks yet.';
-  const expectedArtifacts =
-    record.expected_artifacts && record.expected_artifacts.length > 0
-      ? record.expected_artifacts.map((value) => `- ${value}`).join('\n')
-      : '- None specified yet.';
-  const evidencePlan =
-    record.expected_artifacts && record.expected_artifacts.length > 0
-      ? record.expected_artifacts.map((value) => `- ${value}`).join('\n')
-      : '- Define the minimum evidence needed to judge this study.';
-  const targetBoundaries =
-    record.target_boundaries && record.target_boundaries.length > 0
-      ? record.target_boundaries.map((value) => `- ${value}`).join('\n')
-      : '- None declared yet. Read `evolution.yaml` and declare only the current open boundaries this study will actually clarify.';
-
-  return [
-    '## Question',
-    '',
-    record.question,
-    '',
-    '## Hypothesis',
-    '',
-    record.hypothesis,
-    '',
-    '## Target Boundaries',
-    '',
-    targetBoundaries,
-    '',
-    '## Why Now',
-    '',
-    'Explain why this study is worth doing now and why it belongs in the current project loop.',
-    '',
-    '## Resource Fit',
-    '',
-    '- Data: identify which context resources or prior artifacts support this study.',
-    '- Runtime: identify which tools, packages, or compute resources are needed.',
-    '- Biology: note any stable domain assumptions or prior knowledge that matter.',
-    '- Reuse: note any existing artifacts that should be reused instead of regenerated.',
-    '',
-    '## Evidence Plan',
-    '',
-    evidencePlan,
-    '',
-    '## Blockers',
-    '',
-    blockers,
-    '',
-    '## Tasks',
-    '',
-    tasks,
-    '',
-    '## Expected Artifacts',
-    '',
-    expectedArtifacts,
-  ].join('\n');
-}
-
-function buildTaskBody(record: TaskRecord, studyId: string, inputs: string[]): string {
-  const dependsOn = record.depends_on && record.depends_on.length > 0 ? record.depends_on.map((value) => `- ${value}`).join('\n') : '- None.';
-  const inputLines =
-    inputs.length > 0
-      ? inputs.map((value) => `- ${value}`).join('\n')
-      : ['- `contract.yaml`', '- `context/resources.md`', '- `context/*.yaml` (optional structured sidecars)', `- \`studies/${studyId}/study.md\``].join('\n');
-  const expectedOutputLines =
-    record.expected_outputs && record.expected_outputs.length > 0
-      ? record.expected_outputs.map((value) => `- ${value}`).join('\n')
-      : '- None specified yet.';
-  const checklistLines = [
-    '- Replace this scaffold with 3-7 task-specific executable steps before or during execution.',
-    '- [ ] Reconfirm the concrete success signal for this task',
-    '- [ ] Prepare the real inputs, dependencies, and execution method',
-    '- [ ] Produce the expected evidence or record the blocker explicitly',
-    `- [ ] Write study-local evidence into \`${getStudyOutputDir(studyId)}/\` and summarize what changed`,
-    `- [ ] Package final reusable outputs into \`${getStudyOutputDir(studyId)}/{data,code,figures,tables,reports}/\` before marking the task complete`,
-    `- [ ] Preserve readable analysis scripts in \`${getStudyOutputDir(studyId)}/code/\` when this task runs substantive analysis`,
-    `- [ ] Save at least one key figure in \`${getStudyOutputDir(studyId)}/figures/\` when the task conclusion depends on visual evidence, or record why no figure was needed`,
-    `- [ ] Add only promotion-worthy outputs to \`${getStudyArtifactCandidatesPath(studyId)}\` and include \`task_id\` when this task clearly produced them`,
-    '- [ ] Set promotion review explicitly to none, candidate-recorded, or registered before leaving the task as completed',
-    '- [ ] Register reusable artifacts only if this task produced them and immediate registration is warranted',
-  ].join('\n');
-  const normalizedSkills = normalizeTaskSkillIds(record.skills ?? []);
-  const skillLines = normalizedSkills.length > 0 ? normalizedSkills.map((value) => `- ${value}`).join('\n') : '- None specified.';
-
-  return [
-    '## Depends On',
-    '',
-    dependsOn,
-    '',
-    '## Input',
-    '',
-    inputLines,
-    '',
-    '## Expected Output',
-    '',
-    expectedOutputLines,
-    '',
-    '## Checklist',
-    '',
-    checklistLines,
-    '',
-    '## Skills',
-    '',
-    skillLines,
-  ].join('\n');
 }
 
 async function nextStudyId(projectRoot: string): Promise<string> {
@@ -355,7 +250,7 @@ export async function createStudy(projectRoot: string, options: AddStudyOptions 
 
   await FileSystemUtils.createDirectory(path.join(projectRoot, studyDir, 'tasks'));
   await ensureStudyOutputLayout(projectRoot, studyId);
-  await writeMarkdownDocument(projectRoot, `${studyDir}/study.md`, record, buildStudyBody(record));
+  await writeMarkdownDocument(projectRoot, `${studyDir}/study.md`, record, renderStudyBody(record));
 
   return {
     studyId,
@@ -403,7 +298,7 @@ export async function createTask(projectRoot: string, studyId: string, options: 
     updated_at: new Date().toISOString(),
   };
 
-  await writeMarkdownDocument(projectRoot, relativePath, taskRecord, buildTaskBody(taskRecord, studyId, options.inputs ?? []));
+  await writeMarkdownDocument(projectRoot, relativePath, taskRecord, renderTaskBody(taskRecord, studyId, options.inputs ?? []));
 
   const updatedStudyRecord: StudyRecord = {
     ...study.record,

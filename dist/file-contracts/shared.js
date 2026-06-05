@@ -1,0 +1,70 @@
+import { stringifyYaml } from '../utils/yaml.js';
+export function renderBulletList(values, emptyLine) {
+    return values.length > 0 ? values.map((value) => `- ${value}`).join('\n') : emptyLine;
+}
+export function renderMarkdownDocument(frontmatter, body) {
+    return `---\n${stringifyYaml(frontmatter)}---\n\n${body.trim()}\n`;
+}
+export function renderYamlDocument(value) {
+    return stringifyYaml(value);
+}
+export function extractBulletSection(body, heading) {
+    const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n## |$)`);
+    const match = body.match(pattern);
+    if (!match) {
+        return null;
+    }
+    const lines = match[1]
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('- '));
+    return lines.map((line) => line.slice(2).trim()).filter((line) => line.length > 0);
+}
+function renderFieldLine(field) {
+    const required = field.required ? 'required' : 'optional';
+    const allowed = field.allowedValues && field.allowedValues.length > 0 ? ` Allowed: ${field.allowedValues.join(', ')}.` : '';
+    return `- \`${field.path}\` (${field.type}, ${required}): ${field.description}${allowed}`;
+}
+function renderSectionLine(section) {
+    const required = section.required ? 'required' : 'optional';
+    const rules = section.rules && section.rules.length > 0 ? ` Rules: ${section.rules.join(' ')}` : '';
+    return `- \`${section.name}\` (${required}): ${section.description}${rules}`;
+}
+export function renderSchemaReferenceMarkdown(contracts) {
+    const lines = [
+        '# Managed File Schema Reference',
+        '',
+        '> Generated from `src/file-contracts/*` by `qdd init`.',
+        '> Treat this file and `.qdd/examples/*` as refreshable references, not as protocol truth sources.',
+        '',
+    ];
+    for (const contract of contracts) {
+        lines.push(`## ${contract.title}`);
+        lines.push('');
+        lines.push(`- Project path: \`${contract.projectPath}\``);
+        lines.push(`- Example file: \`.qdd/examples/${contract.exampleFileName}\``);
+        lines.push(`- Format: ${contract.format}`);
+        lines.push(`- Purpose: ${contract.purpose}`);
+        lines.push('');
+        if (contract.fields && contract.fields.length > 0) {
+            lines.push('### Fields');
+            lines.push('');
+            lines.push(...contract.fields.map(renderFieldLine));
+            lines.push('');
+        }
+        if (contract.sections && contract.sections.length > 0) {
+            lines.push('### Markdown Sections');
+            lines.push('');
+            lines.push(...contract.sections.map(renderSectionLine));
+            lines.push('');
+        }
+        if (contract.notes.length > 0) {
+            lines.push('### Notes');
+            lines.push('');
+            lines.push(...contract.notes.map((note) => `- ${note}`));
+            lines.push('');
+        }
+    }
+    return `${lines.join('\n').trim()}\n`;
+}
+//# sourceMappingURL=shared.js.map

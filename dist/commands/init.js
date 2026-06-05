@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
+import { buildManagedFileReferenceOutputs } from '../file-contracts/index.js';
 import { PATHS } from '../runtime/constants.js';
 import { createDefaultArtifactIndex, createDefaultEvolutionTrail, createDefaultInstructionsMarkdown, createDefaultLayerPolicy, createDefaultResourcesMarkdown, createDefaultResearchContract, } from '../runtime/defaults.js';
 import { installBootstrap, resolveBootstrapToolsForInit } from '../runtime/bootstrap.js';
@@ -44,7 +45,11 @@ export async function initCommand(targetPath = '.', options = {}) {
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactFiguresDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.artifactReportsDir)),
         FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.qddDir)),
+        FileSystemUtils.createDirectory(path.join(projectRoot, PATHS.examplesDir)),
     ]);
+    for (const output of buildManagedFileReferenceOutputs()) {
+        await FileSystemUtils.writeFile(path.join(projectRoot, output.relativePath), output.content);
+    }
     const bootstrapTools = await resolveBootstrapToolsForInit(projectRoot, options.tools);
     await installBootstrap(projectRoot, {
         tools: bootstrapTools,

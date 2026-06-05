@@ -30,6 +30,8 @@ export const PATHS = {
     workflowSkillCategory: 'qdd',
     qddDir: '.qdd',
     instructions: '.qdd/instructions.md',
+    schemaReference: '.qdd/schema-reference.md',
+    examplesDir: '.qdd/examples',
     bootstrapConfig: '.qdd/bootstrap.yaml',
     layerPolicy: '.qdd/layer-policy.yaml',
     skillsCatalog: '.qdd/skills-catalog.json',

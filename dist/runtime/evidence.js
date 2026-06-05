@@ -1,8 +1,9 @@
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
+import { ARTIFACT_SCOPE_VALUES, ARTIFACT_TYPE_VALUES, } from '../file-contracts/artifact-index.js';
+import { createDefaultArtifactCandidateManifest } from '../file-contracts/artifact-candidates.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
-import { createDefaultArtifactCandidateManifest } from './defaults.js';
 import { readYamlFile, writeYamlFile } from './store.js';
 const STUDY_OUTPUT_SUBDIRS = ['data', 'code', 'figures', 'tables', 'reports', 'tmp'];
 const TASK_ID_PATTERN = /^TASK-\d{3}$/;
@@ -12,10 +13,10 @@ const CANONICAL_TOP_LEVEL_STUDY_OUTPUT_NAMES = new Set([
     PATHS.publicDataRequestFileName,
 ]);
 function isArtifactType(value) {
-    return ['data', 'code', 'figure', 'report'].includes(value);
+    return ARTIFACT_TYPE_VALUES.includes(value);
 }
 function isArtifactScope(value) {
-    return ['project', 'study', 'task'].includes(value);
+    return ARTIFACT_SCOPE_VALUES.includes(value);
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);

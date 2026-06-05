@@ -41,6 +41,8 @@ The current project-state model is centered on four files:
 ## Bootstrap Installed By `qdd init`
 
 - `.qdd/instructions.md`
+- `.qdd/schema-reference.md`
+- `.qdd/examples/*`
 - `.qdd/bootstrap.yaml`
 - `.qdd/layer-policy.yaml`
 - `.qdd/skills-catalog.json`
@@ -64,6 +66,19 @@ domain-skills/
 └── README.md
 
 src/
+├── file-contracts/
+│   ├── artifact-candidates.ts
+│   ├── artifact-index.ts
+│   ├── contract.ts
+│   ├── evolution.ts
+│   ├── index.ts
+│   ├── layer-policy.ts
+│   ├── memory.ts
+│   ├── public-data-request.ts
+│   ├── resources.ts
+│   ├── shared.ts
+│   ├── study.ts
+│   └── task.ts
 ├── cli/
 │   └── index.ts
 ├── commands/
@@ -123,6 +138,32 @@ Files under [src/commands](/data/chenyz/project/qdd/src/commands)
 - validate top-level command inputs
 - delegate protocol work to runtime modules
 
+### Managed File Contract Layer
+
+Files under [src/file-contracts](/data/chenyz/project/qdd/src/file-contracts)
+
+This is the explicit managed-file source layer added to make QDD readable from first inspection.
+
+Core responsibilities:
+
+- define the field-level contract for each managed file family
+- own the default template or renderer for that file
+- own one copy-ready example for project-local `.qdd/examples/*`
+- provide shared parsing rules such as task `## Skills` normalization
+
+Important modules:
+
+- [contract.ts](/data/chenyz/project/qdd/src/file-contracts/contract.ts): `contract.yaml`
+- [evolution.ts](/data/chenyz/project/qdd/src/file-contracts/evolution.ts): `evolution.yaml`
+- [study.ts](/data/chenyz/project/qdd/src/file-contracts/study.ts): `study.md` template and example
+- [task.ts](/data/chenyz/project/qdd/src/file-contracts/task.ts): `task.md` template, example, and `## Skills` parsing rules
+- [artifact-candidates.ts](/data/chenyz/project/qdd/src/file-contracts/artifact-candidates.ts): promotion candidate schema
+- [artifact-index.ts](/data/chenyz/project/qdd/src/file-contracts/artifact-index.ts): promoted artifact registry schema
+- [resources.ts](/data/chenyz/project/qdd/src/file-contracts/resources.ts): `context/resources.md`
+- [memory.ts](/data/chenyz/project/qdd/src/file-contracts/memory.ts): `context/memory/STUDY-XXX.md`
+- [layer-policy.ts](/data/chenyz/project/qdd/src/file-contracts/layer-policy.ts): `.qdd/layer-policy.yaml`
+- [index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts): schema-reference and example projection
+
 ### Runtime Layer
 
 Files under [src/runtime](/data/chenyz/project/qdd/src/runtime)
@@ -140,7 +181,7 @@ Core responsibilities:
 Important modules:
 
 - [constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts): canonical paths
-- [defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts): default scaffold content
+- [defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts): thin default wrappers that now delegate to `src/file-contracts/*`
 - [bootstrap.ts](/data/chenyz/project/qdd/src/runtime/bootstrap.ts): installs Claude/Codex workflow assets
 - [evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts): reads and writes `evolution.yaml`, study memory, research map
 - [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): create study/task, record candidates, close study
@@ -182,6 +223,8 @@ project-root/
 │   └── skills/qdd/
 └── .qdd/
     ├── instructions.md
+    ├── schema-reference.md
+    ├── examples/
     ├── bootstrap.yaml
     ├── layer-policy.yaml
     └── skills-catalog.json
@@ -189,28 +232,37 @@ project-root/
 
 Study outputs still live under `studies/STUDY-XXX/output/`. Promotion-worthy outputs are listed in `artifact-candidates.yaml`, then promoted into `artifacts/index.yaml` and moved into canonical artifact folders at close time.
 
+The new rule is:
+
+- `src/file-contracts/*` is the source of truth
+- `.qdd/schema-reference.md` and `.qdd/examples/*` are generated references
+- validators, scaffold writers, and `qdd instructions` should all agree with those same contracts
+
 ## Practical Reading Order
 
 If you want to understand the current code quickly, read in this order:
 
 1. [src/types.ts](/data/chenyz/project/qdd/src/types.ts)
 2. [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
-3. [src/runtime/defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts)
-4. [src/runtime/evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts)
-5. [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
-6. [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
-7. [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
-8. [src/runtime/local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts)
-9. [src/cli/index.ts](/data/chenyz/project/qdd/src/cli/index.ts)
-10. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
+3. [src/file-contracts/index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts)
+4. [src/file-contracts/study.ts](/data/chenyz/project/qdd/src/file-contracts/study.ts)
+5. [src/file-contracts/task.ts](/data/chenyz/project/qdd/src/file-contracts/task.ts)
+6. [src/runtime/defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts)
+7. [src/runtime/evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts)
+8. [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
+9. [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
+10. [src/runtime/inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts)
+11. [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
+12. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
 
 That order shows:
 
 - the data model first
 - then the filesystem contract
-- then project-state semantics
-- then lifecycle behavior
-- then the CLI surface and smoke coverage
+- then the managed-file contract layer
+- then how runtime consumes that layer
+- then validation/instructions behavior
+- then smoke coverage
 
 ## Progress Map
 
@@ -220,6 +272,8 @@ That order shows:
 - `qdd init`
 - project root detection
 - default contract/evolution/context scaffold
+- explicit managed-file contract layer under `src/file-contracts/`
+- generated `.qdd/schema-reference.md` and `.qdd/examples/*`
 - workflow bootstrap for Claude and Codex
 - central domain-skill resolution from `domain-skills/`
 - skills catalog generation and `qdd skills suggest`
@@ -230,6 +284,7 @@ That order shows:
 - close-time `evolution.yaml` update
 - derived `research-map.html` rendering
 - status, instructions, validate, context, and artifacts inspection
+- task `## Skills` body parsing with optional human-readable descriptions after the skill ID
 - smoke coverage for the new evolution + memory model
 
 ### Partially Implemented

@@ -1,5 +1,11 @@
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
+import { ARTIFACT_SCOPE_VALUES, ARTIFACT_TYPE_VALUES } from '../file-contracts/artifact-index.js';
+import { QDD_MODE_VALUES, TERMINATION_TYPE_VALUES } from '../file-contracts/contract.js';
+import { QUESTION_CHANGE_VALUES } from '../file-contracts/evolution.js';
+import { listManagedFileReferencePaths } from '../file-contracts/index.js';
+import { parseTaskSkillSection, TASK_PROMOTION_VALUES, TASK_STATUS_VALUES } from '../file-contracts/task.js';
+import { STUDY_STATUS_VALUES } from '../file-contracts/study.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
@@ -37,7 +43,7 @@ function validateResearchContract(contract, issues) {
             message: 'contract.yaml is missing a non-empty initial_question.',
         });
     }
-    if (!['human', 'assist', 'auto'].includes(contract.mode)) {
+    if (!QDD_MODE_VALUES.includes(contract.mode)) {
         pushIssue(issues, {
             level: 'error',
             code: 'invalid_mode',
@@ -53,7 +59,7 @@ function validateResearchContract(contract, issues) {
             message: 'contract.yaml must define scope.in_scope and scope.out_of_scope arrays.',
         });
     }
-    if (contract.termination_type !== 'best_effort') {
+    if (!TERMINATION_TYPE_VALUES.includes(contract.termination_type)) {
         pushIssue(issues, {
             level: 'error',
             code: 'invalid_termination_type',
@@ -101,7 +107,7 @@ function validateArtifactIndex(artifactIndex, issues) {
                 });
             }
         }
-        if (!['data', 'code', 'figure', 'report'].includes(entry.type)) {
+        if (!ARTIFACT_TYPE_VALUES.includes(entry.type)) {
             pushIssue(issues, {
                 level: 'error',
                 code: 'invalid_artifact_type',
@@ -109,7 +115,7 @@ function validateArtifactIndex(artifactIndex, issues) {
                 message: `Artifact entry has invalid type '${String(entry.type)}'.`,
             });
         }
-        if (!['project', 'study', 'task'].includes(entry.scope)) {
+        if (!ARTIFACT_SCOPE_VALUES.includes(entry.scope)) {
             pushIssue(issues, {
                 level: 'error',
                 code: 'invalid_artifact_scope',
@@ -145,7 +151,7 @@ function validateStudyRecord(study, issues) {
             message: 'study.md is missing hypothesis.',
         });
     }
-    if (study.status && !['created', 'confirmed', 'running', 'blocked', 'completed', 'closed'].includes(study.status)) {
+    if (study.status && !STUDY_STATUS_VALUES.includes(study.status)) {
         pushIssue(issues, {
             level: 'error',
             code: 'invalid_study_status',
@@ -223,7 +229,7 @@ function validateTaskRecord(task, issues) {
             message: 'Task file is missing goal.',
         });
     }
-    if (task.status && !['pending', 'running', 'blocked', 'completed'].includes(task.status)) {
+    if (task.status && !TASK_STATUS_VALUES.includes(task.status)) {
         pushIssue(issues, {
             level: 'error',
             code: 'invalid_task_status',
@@ -239,7 +245,7 @@ function validateTaskRecord(task, issues) {
             message: 'Task file must store skills as an array when provided.',
         });
     }
-    if (task.promotion_status && !['pending', 'none', 'candidate-recorded', 'registered'].includes(task.promotion_status)) {
+    if (task.promotion_status && !TASK_PROMOTION_VALUES.includes(task.promotion_status)) {
         pushIssue(issues, {
             level: 'error',
             code: 'invalid_task_promotion_status',
@@ -256,25 +262,10 @@ function validateTaskRecord(task, issues) {
         });
     }
 }
-function extractBulletSection(body, heading) {
-    const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n## |$)`);
-    const match = body.match(pattern);
-    if (!match) {
-        return null;
-    }
-    const lines = match[1]
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.startsWith('- '));
-    if (lines.length === 1 && lines[0] === '- None specified.') {
-        return [];
-    }
-    return lines.map((line) => line.slice(2).trim()).filter((line) => line.length > 0);
-}
 function validateTaskSkillSection(relativePath, task, body, issues) {
     const normalizedFrontmatterSkills = normalizeTaskSkillIds(task.skills ?? []);
-    const bodySkills = extractBulletSection(body, 'Skills');
-    if (bodySkills === null) {
+    const parsedSection = parseTaskSkillSection(body);
+    if (!parsedSection.present) {
         pushIssue(issues, {
             level: 'error',
             code: 'missing_task_skills_section',
@@ -283,7 +274,16 @@ function validateTaskSkillSection(relativePath, task, body, issues) {
         });
         return;
     }
-    const normalizedBodySkills = normalizeTaskSkillIds(bodySkills);
+    if (parsedSection.skillIds === null) {
+        pushIssue(issues, {
+            level: 'error',
+            code: 'invalid_task_skill_section_entry',
+            path: relativePath,
+            message: 'Each ## Skills bullet must start with one skill ID. Optional descriptions may follow after ":" or " - ".',
+        });
+        return;
+    }
+    const normalizedBodySkills = normalizeTaskSkillIds(parsedSection.skillIds);
     if (JSON.stringify(normalizedFrontmatterSkills) !== JSON.stringify(normalizedBodySkills)) {
         pushIssue(issues, {
             level: 'error',
@@ -317,7 +317,7 @@ function validateArtifactCandidateManifest(studyId, manifest, issues) {
                 });
             }
         }
-        if (hasOwnProperty(entry, 'type') && !['data', 'code', 'figure', 'report'].includes(String(candidateRecord.type ?? ''))) {
+        if (hasOwnProperty(entry, 'type') && !ARTIFACT_TYPE_VALUES.includes(String(candidateRecord.type ?? ''))) {
             pushIssue(issues, {
                 level: 'error',
                 code: 'invalid_artifact_candidate_type',
@@ -325,7 +325,7 @@ function validateArtifactCandidateManifest(studyId, manifest, issues) {
                 message: `Artifact candidate entry has invalid type '${String(candidateRecord.type ?? '')}'.`,
             });
         }
-        if (hasOwnProperty(entry, 'scope') && candidateRecord.scope !== undefined && !['project', 'study', 'task'].includes(String(candidateRecord.scope ?? ''))) {
+        if (hasOwnProperty(entry, 'scope') && candidateRecord.scope !== undefined && !ARTIFACT_SCOPE_VALUES.includes(String(candidateRecord.scope ?? ''))) {
             pushIssue(issues, {
                 level: 'error',
                 code: 'invalid_artifact_candidate_scope',
@@ -451,7 +451,7 @@ export async function validateProject(projectRoot) {
         checked.evolution = true;
         knownBoundaryIds = new Set(evolution.boundaries.map((boundary) => boundary.id));
         for (const [index, study] of evolution.studies.entries()) {
-            if (!study.id || !study.question || !study.ts) {
+            if (!study.id || !study.question || !study.ts || !QUESTION_CHANGE_VALUES.includes(study.kind)) {
                 pushIssue(issues, {
                     level: 'error',
                     code: 'invalid_evolution_study_entry',
@@ -525,6 +525,16 @@ export async function validateProject(projectRoot) {
     }
     const contextPaths = await collectContextPaths(projectRoot);
     checked.contextFiles = contextPaths;
+    for (const relativePath of listManagedFileReferencePaths()) {
+        if (!(await FileSystemUtils.fileExists(path.join(projectRoot, relativePath)))) {
+            pushIssue(issues, {
+                level: 'warning',
+                code: 'missing_managed_file_reference',
+                path: relativePath,
+                message: 'Managed-file schema/example reference is missing. Re-run qdd init to refresh project-local references.',
+            });
+        }
+    }
     if (!contextPaths.includes(PATHS.contextResources)) {
         pushIssue(issues, {
             level: 'error',

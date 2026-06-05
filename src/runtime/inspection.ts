@@ -12,6 +12,12 @@ import type {
   ValidationIssue,
   ValidationResult,
 } from '../types.js';
+import { ARTIFACT_SCOPE_VALUES, ARTIFACT_TYPE_VALUES } from '../file-contracts/artifact-index.js';
+import { QDD_MODE_VALUES, TERMINATION_TYPE_VALUES } from '../file-contracts/contract.js';
+import { QUESTION_CHANGE_VALUES } from '../file-contracts/evolution.js';
+import { listManagedFileReferencePaths } from '../file-contracts/index.js';
+import { parseTaskSkillSection, TASK_PROMOTION_VALUES, TASK_STATUS_VALUES } from '../file-contracts/task.js';
+import { STUDY_STATUS_VALUES } from '../file-contracts/study.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
@@ -64,7 +70,7 @@ function validateResearchContract(contract: ResearchContract, issues: Validation
     });
   }
 
-  if (!['human', 'assist', 'auto'].includes(contract.mode)) {
+  if (!QDD_MODE_VALUES.includes(contract.mode)) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_mode',
@@ -82,7 +88,7 @@ function validateResearchContract(contract: ResearchContract, issues: Validation
     });
   }
 
-  if (contract.termination_type !== 'best_effort') {
+  if (!TERMINATION_TYPE_VALUES.includes(contract.termination_type)) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_termination_type',
@@ -135,7 +141,7 @@ function validateArtifactIndex(artifactIndex: ArtifactIndex, issues: ValidationI
       }
     }
 
-    if (!['data', 'code', 'figure', 'report'].includes(entry.type)) {
+    if (!ARTIFACT_TYPE_VALUES.includes(entry.type)) {
       pushIssue(issues, {
         level: 'error',
         code: 'invalid_artifact_type',
@@ -144,7 +150,7 @@ function validateArtifactIndex(artifactIndex: ArtifactIndex, issues: ValidationI
       });
     }
 
-    if (!['project', 'study', 'task'].includes(entry.scope)) {
+    if (!ARTIFACT_SCOPE_VALUES.includes(entry.scope)) {
       pushIssue(issues, {
         level: 'error',
         code: 'invalid_artifact_scope',
@@ -184,7 +190,7 @@ function validateStudyRecord(study: StudyRecord, issues: ValidationIssue[]): voi
     });
   }
 
-  if (study.status && !['created', 'confirmed', 'running', 'blocked', 'completed', 'closed'].includes(study.status)) {
+  if (study.status && !STUDY_STATUS_VALUES.includes(study.status)) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_study_status',
@@ -273,7 +279,7 @@ function validateTaskRecord(task: TaskRecord, issues: ValidationIssue[]): void {
     });
   }
 
-  if (task.status && !['pending', 'running', 'blocked', 'completed'].includes(task.status)) {
+  if (task.status && !TASK_STATUS_VALUES.includes(task.status)) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_task_status',
@@ -291,7 +297,7 @@ function validateTaskRecord(task: TaskRecord, issues: ValidationIssue[]): void {
     });
   }
 
-  if (task.promotion_status && !['pending', 'none', 'candidate-recorded', 'registered'].includes(task.promotion_status)) {
+  if (task.promotion_status && !TASK_PROMOTION_VALUES.includes(task.promotion_status)) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_task_promotion_status',
@@ -310,30 +316,11 @@ function validateTaskRecord(task: TaskRecord, issues: ValidationIssue[]): void {
   }
 }
 
-function extractBulletSection(body: string, heading: string): string[] | null {
-  const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n## |$)`);
-  const match = body.match(pattern);
-  if (!match) {
-    return null;
-  }
-
-  const lines = match[1]
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '));
-
-  if (lines.length === 1 && lines[0] === '- None specified.') {
-    return [];
-  }
-
-  return lines.map((line) => line.slice(2).trim()).filter((line) => line.length > 0);
-}
-
 function validateTaskSkillSection(relativePath: string, task: TaskRecord, body: string, issues: ValidationIssue[]): void {
   const normalizedFrontmatterSkills = normalizeTaskSkillIds(task.skills ?? []);
-  const bodySkills = extractBulletSection(body, 'Skills');
+  const parsedSection = parseTaskSkillSection(body);
 
-  if (bodySkills === null) {
+  if (!parsedSection.present) {
     pushIssue(issues, {
       level: 'error',
       code: 'missing_task_skills_section',
@@ -343,7 +330,17 @@ function validateTaskSkillSection(relativePath: string, task: TaskRecord, body: 
     return;
   }
 
-  const normalizedBodySkills = normalizeTaskSkillIds(bodySkills);
+  if (parsedSection.skillIds === null) {
+    pushIssue(issues, {
+      level: 'error',
+      code: 'invalid_task_skill_section_entry',
+      path: relativePath,
+      message: 'Each ## Skills bullet must start with one skill ID. Optional descriptions may follow after ":" or " - ".',
+    });
+    return;
+  }
+
+  const normalizedBodySkills = normalizeTaskSkillIds(parsedSection.skillIds);
   if (JSON.stringify(normalizedFrontmatterSkills) !== JSON.stringify(normalizedBodySkills)) {
     pushIssue(issues, {
       level: 'error',
@@ -380,7 +377,7 @@ function validateArtifactCandidateManifest(studyId: string, manifest: ArtifactCa
       }
     }
 
-    if (hasOwnProperty(entry, 'type') && !['data', 'code', 'figure', 'report'].includes(String(candidateRecord.type ?? ''))) {
+    if (hasOwnProperty(entry, 'type') && !ARTIFACT_TYPE_VALUES.includes(String(candidateRecord.type ?? '') as never)) {
       pushIssue(issues, {
         level: 'error',
         code: 'invalid_artifact_candidate_type',
@@ -389,7 +386,7 @@ function validateArtifactCandidateManifest(studyId: string, manifest: ArtifactCa
       });
     }
 
-    if (hasOwnProperty(entry, 'scope') && candidateRecord.scope !== undefined && !['project', 'study', 'task'].includes(String(candidateRecord.scope ?? ''))) {
+    if (hasOwnProperty(entry, 'scope') && candidateRecord.scope !== undefined && !ARTIFACT_SCOPE_VALUES.includes(String(candidateRecord.scope ?? '') as never)) {
       pushIssue(issues, {
         level: 'error',
         code: 'invalid_artifact_candidate_scope',
@@ -533,7 +530,7 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
     knownBoundaryIds = new Set(evolution.boundaries.map((boundary) => boundary.id));
 
     for (const [index, study] of evolution.studies.entries()) {
-      if (!study.id || !study.question || !study.ts) {
+      if (!study.id || !study.question || !study.ts || !QUESTION_CHANGE_VALUES.includes(study.kind)) {
         pushIssue(issues, {
           level: 'error',
           code: 'invalid_evolution_study_entry',
@@ -611,6 +608,17 @@ export async function validateProject(projectRoot: string): Promise<ValidationRe
 
   const contextPaths = await collectContextPaths(projectRoot);
   checked.contextFiles = contextPaths;
+
+  for (const relativePath of listManagedFileReferencePaths()) {
+    if (!(await FileSystemUtils.fileExists(path.join(projectRoot, relativePath)))) {
+      pushIssue(issues, {
+        level: 'warning',
+        code: 'missing_managed_file_reference',
+        path: relativePath,
+        message: 'Managed-file schema/example reference is missing. Re-run qdd init to refresh project-local references.',
+      });
+    }
+  }
 
   if (!contextPaths.includes(PATHS.contextResources)) {
     pushIssue(issues, {

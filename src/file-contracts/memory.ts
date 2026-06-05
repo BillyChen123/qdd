@@ -1,0 +1,90 @@
+import type { QuestionChangeType } from '../types.js';
+import type { ManagedFileContract } from './shared.js';
+import { renderBulletList } from './shared.js';
+
+export function buildStudyMemoryMarkdown(options: {
+  studyId: string;
+  question: string;
+  kind: QuestionChangeType;
+  changeDriver: string;
+  openBoundaryTexts: string[];
+  nextCandidates: string[];
+  resolvedBoundaryTexts: string[];
+}): string {
+  return [
+    `# ${options.studyId} Memory`,
+    '',
+    '## Question',
+    '',
+    options.question,
+    '',
+    '## Outcome',
+    '',
+    `- Kind: ${options.kind}`,
+    '',
+    '## What Happened',
+    '',
+    options.changeDriver,
+    '',
+    '## Evidence Pointers',
+    '',
+    `- Study contract: studies/${options.studyId}/study.md`,
+    `- Task contracts: studies/${options.studyId}/tasks/`,
+    `- Study outputs: studies/${options.studyId}/output/`,
+    '- Registered artifacts: artifacts/index.yaml',
+    '',
+    '## Resolved Boundaries',
+    '',
+    renderBulletList(options.resolvedBoundaryTexts, '- None'),
+    '',
+    '## Open Boundaries',
+    '',
+    renderBulletList(options.openBoundaryTexts, '- None'),
+    '',
+    '## Next Candidates',
+    '',
+    renderBulletList(options.nextCandidates, '- None'),
+    '',
+    '## Reflection',
+    '',
+    '- Keep only durable lessons here; do not turn this file into a raw execution log.',
+    '- If a stable resource, dataset, or method preference should carry across studies, also update context/resources.md explicitly.',
+    '',
+  ].join('\n');
+}
+
+export function createExampleStudyMemoryMarkdown(): string {
+  return buildStudyMemoryMarkdown({
+    studyId: 'STUDY-001',
+    question: 'Does the current h5ad support a first-pass integration check?',
+    kind: 'refinement',
+    changeDriver: 'The first-pass integration run narrowed the next question and preserved one reusable script.',
+    openBoundaryTexts: ['Need an external validation dataset for the narrowed result.'],
+    nextCandidates: ['Should the narrowed result be validated in a second dataset?'],
+    resolvedBoundaryTexts: ['Need a first-pass integration reality check.'],
+  });
+}
+
+export const memoryFileContract: ManagedFileContract = {
+  id: 'memory',
+  title: 'context/memory/STUDY-XXX.md',
+  projectPath: 'context/memory/STUDY-XXX.md',
+  exampleFileName: 'memory.example.md',
+  format: 'markdown',
+  purpose: 'Narrative per-study memory written during closure.',
+  sections: [
+    { name: 'Question', required: true, description: 'The study question that was actually executed.' },
+    { name: 'Outcome', required: true, description: 'High-level outcome kind for the study.' },
+    { name: 'What Happened', required: true, description: 'Compact explanation of the study result.' },
+    { name: 'Evidence Pointers', required: true, description: 'Pointers to study contracts, outputs, and promoted artifacts.' },
+    { name: 'Resolved Boundaries', required: true, description: 'Boundary texts resolved by this study.' },
+    { name: 'Open Boundaries', required: true, description: 'Boundary texts that remain open after closure.' },
+    { name: 'Next Candidates', required: true, description: 'Candidate next studies or questions.' },
+    { name: 'Reflection', required: true, description: 'Durable lessons worth carrying forward.' },
+  ],
+  notes: [
+    'This is the main narrative report surface for a study.',
+    'Keep it readable; do not dump raw execution logs here.',
+  ],
+  renderExample: () => `${createExampleStudyMemoryMarkdown().trim()}\n`,
+};

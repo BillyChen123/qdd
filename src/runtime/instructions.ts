@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import type { InstructionsJson, QddCommand, QddRole, StudyRecord, TaskRecord } from '../types.js';
+import { listManagedFileReferencePathsForTarget } from '../file-contracts/index.js';
 import { readMarkdownFrontmatter } from './store.js';
 import { PATHS } from './constants.js';
 import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
@@ -204,6 +205,7 @@ export async function buildInstructions(
     const rules = [
       'Do not invent project facts that are not grounded in user input or existing files.',
       'Use qdd-start to fill shared project context before the first study is proposed.',
+      'Read .qdd/schema-reference.md and the relevant .qdd/examples/* files before editing managed files by hand.',
       'Keep contract.yaml concise and machine-readable.',
       'Treat evolution.yaml as the sparse project truth source for current project question state and boundaries.',
       'Treat research-map.html as a derived report, not a truth source.',
@@ -219,6 +221,7 @@ export async function buildInstructions(
       ...buildInstructionHeader(command, role),
       target: { kind: 'project', id },
       read: uniqueSortedValues([
+        ...listManagedFileReferencePathsForTarget('project'),
         PATHS.contract,
         PATHS.evolution,
         PATHS.researchMapHtml,
@@ -266,6 +269,7 @@ export async function buildInstructions(
     const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...studyTaskSkills.matchedIds]);
     const hasPublicDataTask = studyTaskSkills.matchedIds.includes('singlecell/public-data/cellxgene-discover');
     const readPaths = [
+      ...listManagedFileReferencePathsForTarget('study'),
       PATHS.contract,
       PATHS.evolution,
       PATHS.researchMapHtml,
@@ -295,6 +299,7 @@ export async function buildInstructions(
     const rules = [
       'Do not redefine the project theme.',
       'Keep one bounded question per study.',
+      'Read .qdd/schema-reference.md and the relevant .qdd/examples/* files before editing managed files by hand.',
       'Use the current mode contract from .qdd/instructions.md before reshaping the study or task set.',
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
@@ -386,6 +391,7 @@ export async function buildInstructions(
       'Do not redefine the study question.',
       'Keep the task minimal and evidence-producing.',
       'Produce explicit outputs or blockers.',
+      'Read .qdd/schema-reference.md and the relevant .qdd/examples/* files before editing managed files by hand.',
       'You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.',
       'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
       'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
@@ -434,6 +440,7 @@ export async function buildInstructions(
       ...buildInstructionHeader(command, role),
       target: { kind: 'task', id },
       read: uniqueSortedValues([
+        ...listManagedFileReferencePathsForTarget('task'),
         PATHS.contract,
         PATHS.evolution,
         PATHS.instructions,
