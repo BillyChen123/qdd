@@ -1,5 +1,5 @@
 import { PATHS } from './constants.js';
-import { createDefaultLayerPolicy } from './defaults.js';
+import { createDefaultLayerPolicy } from '../file-contracts/layer-policy.js';
 import { readYamlFile } from './store.js';
 import { normalizeTaskSkillIds } from './local-skills.js';
 const VALID_ROLES = ['thesis-manager', 'study-brain', 'executor'];

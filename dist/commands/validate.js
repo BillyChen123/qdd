@@ -1,4 +1,4 @@
-import { validateProject } from '../runtime/inspection.js';
+import { validateProject } from '../services/inspection.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 export async function validateCommand(options = {}) {
     const projectRoot = resolveProjectRoot();

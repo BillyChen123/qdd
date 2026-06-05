@@ -1,6 +1,3 @@
-import type { InstructionsJson, QddCommand } from '../types.js';
-export interface BuildInstructionsOptions {
-    command?: QddCommand;
-}
-export declare function buildInstructions(projectRoot: string, id: string, options?: BuildInstructionsOptions): Promise<InstructionsJson>;
+export { buildInstructions } from '../services/instructions.js';
+export type { BuildInstructionsOptions } from '../services/instructions.js';
 //# sourceMappingURL=instructions.d.ts.map

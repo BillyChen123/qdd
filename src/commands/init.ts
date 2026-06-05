@@ -1,15 +1,13 @@
 import path from 'node:path';
+import { createDefaultArtifactIndex } from '../file-contracts/artifact-index.js';
+import { createDefaultResearchContract } from '../file-contracts/contract.js';
+import { createDefaultEvolutionState } from '../file-contracts/evolution.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { buildManagedFileReferenceOutputs } from '../file-contracts/index.js';
+import { createDefaultInstructionsMarkdown } from '../file-contracts/instructions.js';
+import { createDefaultLayerPolicy } from '../file-contracts/layer-policy.js';
+import { createDefaultResourcesMarkdown } from '../file-contracts/resources.js';
 import { PATHS } from '../runtime/constants.js';
-import {
-  createDefaultArtifactIndex,
-  createDefaultEvolutionTrail,
-  createDefaultInstructionsMarkdown,
-  createDefaultLayerPolicy,
-  createDefaultResourcesMarkdown,
-  createDefaultResearchContract,
-} from '../runtime/defaults.js';
 import { installBootstrap, resolveBootstrapToolsForInit } from '../runtime/bootstrap.js';
 import { renderResearchMapHtml } from '../runtime/evolution.js';
 import { refreshSkillsCatalog } from '../runtime/local-skills.js';
@@ -41,7 +39,7 @@ export async function initCommand(targetPath = '.', options: InitCommandOptions 
   }
 
   if (!(await FileSystemUtils.fileExists(evolutionPath))) {
-    await writeYamlFile(projectRoot, PATHS.evolution, createDefaultEvolutionTrail());
+    await writeYamlFile(projectRoot, PATHS.evolution, createDefaultEvolutionState());
   }
 
   if (!(await FileSystemUtils.fileExists(artifactIndexPath))) {

@@ -1,4 +1,4 @@
-import { closeStudy } from '../runtime/lifecycle.js';
+import { closeStudy } from '../services/closure.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 import type { QuestionChangeType } from '../types.js';
 

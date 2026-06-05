@@ -1,4 +1,4 @@
-import { createStudy } from '../runtime/lifecycle.js';
+import { createStudy } from '../services/studies.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 
 export interface AddStudyCommandOptions {

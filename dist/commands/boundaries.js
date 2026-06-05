@@ -1,4 +1,4 @@
-import { applyBoundaryUpdates, readBoundaryState, renderBoundaryGraphHtml, scoreBoundaryTargets, scoreStudyBoundaries, summarizeBoundaryState } from '../runtime/boundaries.js';
+import { applyBoundaryUpdates, readBoundaryState, renderBoundaryGraphHtml, scoreBoundaryTargets, scoreStudyBoundaries, summarizeBoundaryState } from '../services/boundaries.js';
 import { PATHS } from '../runtime/constants.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 export async function boundariesCommand(options = {}) {

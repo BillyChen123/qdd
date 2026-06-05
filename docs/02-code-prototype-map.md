@@ -94,6 +94,7 @@ src/
 │   ├── contract.ts
 │   ├── evolution.ts
 │   ├── index.ts
+│   ├── instructions.ts
 │   ├── layer-policy.ts
 │   ├── memory.ts
 │   ├── public-data-request.ts
@@ -116,6 +117,17 @@ src/
 │   ├── skills-suggest.ts
 │   ├── status.ts
 │   └── validate.ts
+├── render/
+│   └── research-map.ts
+├── services/
+│   ├── artifacts.ts
+│   ├── boundaries.ts
+│   ├── closure.ts
+│   ├── inspection.ts
+│   ├── instructions.ts
+│   ├── status.ts
+│   ├── studies.ts
+│   └── tasks.ts
 ├── runtime/
 │   ├── bootstrap-prompts/
 │   ├── bootstrap.ts
@@ -131,9 +143,22 @@ src/
 │   ├── lifecycle.ts
 │   ├── local-skills.ts
 │   ├── paths.ts
+│   ├── status.ts
 │   └── store.ts
 ├── test/
 │   └── smoke.test.ts
+├── types/
+│   ├── artifacts.ts
+│   ├── bootstrap.ts
+│   ├── core.ts
+│   ├── evolution.ts
+│   ├── index.ts
+│   ├── lifecycle.ts
+│   ├── policy.ts
+│   ├── protocol.ts
+│   ├── public-data.ts
+│   ├── skills.ts
+│   └── studies.ts
 ├── utils/
 │   ├── file-system.ts
 │   └── yaml.ts
@@ -158,7 +183,7 @@ Files under [src/commands](/data/chenyz/project/qdd/src/commands)
 
 - define one command surface each
 - validate top-level command inputs
-- delegate protocol work to runtime modules
+- delegate protocol work to service modules
 
 ### Managed File Contract Layer
 
@@ -184,7 +209,33 @@ Important modules:
 - [resources.ts](/data/chenyz/project/qdd/src/file-contracts/resources.ts): `context/resources.md`
 - [memory.ts](/data/chenyz/project/qdd/src/file-contracts/memory.ts): `context/memory/STUDY-XXX.md` as the only default study narrative report
 - [layer-policy.ts](/data/chenyz/project/qdd/src/file-contracts/layer-policy.ts): `.qdd/layer-policy.yaml`
+- [instructions.ts](/data/chenyz/project/qdd/src/file-contracts/instructions.ts): default `.qdd/instructions.md`
 - [index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts): schema-reference and example projection
+
+### Service Layer
+
+Files under [src/services](/data/chenyz/project/qdd/src/services)
+
+Core responsibilities:
+
+- own study/task/artifact/closure state transitions
+- assemble instruction/status/inspection views from file contracts plus runtime helpers
+- keep protocol mutations out of CLI parsing code
+
+Important modules:
+
+- [studies.ts](/data/chenyz/project/qdd/src/services/studies.ts): create/read study records and keep study-local document sync localized
+- [tasks.ts](/data/chenyz/project/qdd/src/services/tasks.ts): create/read task records, normalize skills, and update task-local markdown state
+- [artifacts.ts](/data/chenyz/project/qdd/src/services/artifacts.ts): candidate registration, canonical artifact promotion, and provenance writeback
+- [closure.ts](/data/chenyz/project/qdd/src/services/closure.ts): close preflight, close execution, memory/evolution writeback, and scratch cleanup
+- [instructions.ts](/data/chenyz/project/qdd/src/services/instructions.ts): builds `qdd instructions ... --json`
+- [status.ts](/data/chenyz/project/qdd/src/services/status.ts): builds `qdd status --json`
+- [inspection.ts](/data/chenyz/project/qdd/src/services/inspection.ts): validate/context/artifact inspection
+- [boundaries.ts](/data/chenyz/project/qdd/src/services/boundaries.ts): compatibility boundary view and score helpers
+
+### Render Layer
+
+- [research-map.ts](/data/chenyz/project/qdd/src/render/research-map.ts): HTML rendering for the derived project map
 
 ### Runtime Layer
 
@@ -192,30 +243,27 @@ Files under [src/runtime](/data/chenyz/project/qdd/src/runtime)
 
 Core responsibilities:
 
-- scaffold and refresh QDD projects
-- read and write protocol files
-- manage study and task lifecycle
-- record and promote artifact candidates
-- build role-aware instructions
-- maintain the skills catalog
-- derive `research-map.html`
+- infrastructure helpers and compatibility shims
+- canonical paths, low-level store helpers, bootstrap install, local-skill discovery
+- evolution state normalization plus derived report wiring
 
 Important modules:
 
 - [constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts): canonical paths
-- [defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts): thin default wrappers that now delegate to `src/file-contracts/*`
 - [bootstrap.ts](/data/chenyz/project/qdd/src/runtime/bootstrap.ts): installs Claude/Codex workflow assets
-- [evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts): reads and writes `evolution.yaml`, study memory, research map
-- [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): create study/task, record candidates, run close preflight, promote canonical artifacts, clean scratch outputs, and close study
-- [instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts): builds `qdd instructions ... --json`
-- [status.ts](/data/chenyz/project/qdd/src/runtime/status.ts): builds `qdd status --json`, including close-preflight visibility
-- [inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts): validate/context/artifact inspection
+- [evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts): reads/writes `evolution.yaml` and delegates HTML rendering
 - [local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts): resolves domain skills and suggests executor skills
-- [boundaries.ts](/data/chenyz/project/qdd/src/runtime/boundaries.ts): compatibility layer over the derived boundary view
+- [store.ts](/data/chenyz/project/qdd/src/runtime/store.ts): YAML/Markdown low-level IO
+- [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): thin compatibility re-export over services
+- [status.ts](/data/chenyz/project/qdd/src/runtime/status.ts): thin compatibility re-export over services
+- [instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts): thin compatibility re-export over services
+- [inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts): thin compatibility re-export over services
+- [boundaries.ts](/data/chenyz/project/qdd/src/runtime/boundaries.ts): thin compatibility re-export over services
 
 ### Shared Types And Helpers
 
-- [src/types.ts](/data/chenyz/project/qdd/src/types.ts): runtime contracts
+- [src/types.ts](/data/chenyz/project/qdd/src/types.ts): stable barrel export
+- [src/types/index.ts](/data/chenyz/project/qdd/src/types/index.ts): split type barrel
 - [src/utils/file-system.ts](/data/chenyz/project/qdd/src/utils/file-system.ts): filesystem helpers
 - [src/utils/yaml.ts](/data/chenyz/project/qdd/src/utils/yaml.ts): YAML parsing and serialization
 
@@ -274,25 +322,29 @@ The new rule is:
 If you want to understand the current code quickly, read in this order:
 
 1. [src/types.ts](/data/chenyz/project/qdd/src/types.ts)
-2. [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
-3. [src/file-contracts/index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts)
-4. [src/file-contracts/study.ts](/data/chenyz/project/qdd/src/file-contracts/study.ts)
-5. [src/file-contracts/task.ts](/data/chenyz/project/qdd/src/file-contracts/task.ts)
-6. [src/runtime/defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts)
-7. [src/runtime/evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts)
-8. [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
-9. [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
-10. [src/runtime/inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts)
-11. [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
-12. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
+2. [src/types/index.ts](/data/chenyz/project/qdd/src/types/index.ts)
+3. [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
+4. [src/file-contracts/index.ts](/data/chenyz/project/qdd/src/file-contracts/index.ts)
+5. [src/file-contracts/study.ts](/data/chenyz/project/qdd/src/file-contracts/study.ts)
+6. [src/file-contracts/task.ts](/data/chenyz/project/qdd/src/file-contracts/task.ts)
+7. [src/file-contracts/instructions.ts](/data/chenyz/project/qdd/src/file-contracts/instructions.ts)
+8. [src/services/studies.ts](/data/chenyz/project/qdd/src/services/studies.ts)
+9. [src/services/tasks.ts](/data/chenyz/project/qdd/src/services/tasks.ts)
+10. [src/services/artifacts.ts](/data/chenyz/project/qdd/src/services/artifacts.ts)
+11. [src/services/closure.ts](/data/chenyz/project/qdd/src/services/closure.ts)
+12. [src/services/instructions.ts](/data/chenyz/project/qdd/src/services/instructions.ts)
+13. [src/services/inspection.ts](/data/chenyz/project/qdd/src/services/inspection.ts)
+14. [src/services/status.ts](/data/chenyz/project/qdd/src/services/status.ts)
+15. [src/runtime/evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts)
+16. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
 
 That order shows:
 
 - the data model first
 - then the filesystem contract
 - then the managed-file contract layer
-- then how runtime consumes that layer
-- then validation/instructions behavior
+- then the service ownership boundaries
+- then the remaining runtime helpers and compatibility shims
 - then smoke coverage
 
 ## Progress Map
@@ -304,6 +356,7 @@ That order shows:
 - project root detection
 - default contract/evolution/context scaffold
 - explicit managed-file contract layer under `src/file-contracts/`
+- extracted default instructions template under `src/file-contracts/instructions.ts`
 - generated `.qdd/schema-reference.md` and `.qdd/examples/*`
 - workflow bootstrap for Claude and Codex
 - central domain-skill resolution from `domain-skills/`
@@ -320,11 +373,12 @@ That order shows:
 - status, instructions, validate, context, and artifacts inspection
 - task `## Skills` body parsing with optional human-readable descriptions after the skill ID
 - smoke coverage for the new evolution + memory model
+- thin compatibility runtime re-export layers over service entrypoints
 
 ### Partially Implemented
 
 - `qdd boundaries` remains available, but it is no longer the primary workflow contract
-- task progression still relies on direct Markdown updates; there is no dedicated `qdd close-task`
+- `runtime/evolution.ts` still owns evolution normalization and persistence rather than a dedicated evolution service
 - multi-tool bootstrap exists, but the workflow still needs more dogfooding
 
 ### Not Implemented

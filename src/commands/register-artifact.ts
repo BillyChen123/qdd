@@ -1,4 +1,4 @@
-import { registerArtifact } from '../runtime/lifecycle.js';
+import { registerArtifact } from '../services/artifacts.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 import type { ArtifactScope, ArtifactType } from '../types.js';
 

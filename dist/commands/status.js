@@ -1,4 +1,4 @@
-import { buildStatus } from '../runtime/status.js';
+import { buildStatus } from '../services/status.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 export async function statusCommand(options = {}) {
     const projectRoot = resolveProjectRoot();

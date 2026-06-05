@@ -1,4 +1,4 @@
-import { listContext } from '../runtime/inspection.js';
+import { listContext } from '../services/inspection.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 
 export async function contextCommand(options: { json?: boolean } = {}): Promise<void> {

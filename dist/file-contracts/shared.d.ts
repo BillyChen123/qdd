@@ -27,5 +27,6 @@ export declare function renderBulletList(values: string[], emptyLine: string): s
 export declare function renderMarkdownDocument(frontmatter: unknown, body: string): string;
 export declare function renderYamlDocument(value: unknown): string;
 export declare function extractBulletSection(body: string, heading: string): string[] | null;
+export declare function replaceMarkdownSection(body: string, heading: string, content: string): string;
 export declare function renderSchemaReferenceMarkdown(contracts: ManagedFileContract[]): string;
 //# sourceMappingURL=shared.d.ts.map

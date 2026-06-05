@@ -1,4 +1,4 @@
-import { buildInstructions } from '../runtime/instructions.js';
+import { buildInstructions } from '../services/instructions.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 import type { QddCommand } from '../types.js';
 

@@ -1,4 +1,4 @@
-import { createTask } from '../runtime/lifecycle.js';
+import { createTask } from '../services/tasks.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 
 export interface AddTaskCommandOptions {

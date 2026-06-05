@@ -1,4 +1,4 @@
-import { listArtifacts } from '../runtime/inspection.js';
+import { listArtifacts } from '../services/inspection.js';
 import { requireQddProjectRoot, resolveProjectRoot } from '../runtime/paths.js';
 
 export async function artifactsListCommand(options: { json?: boolean } = {}): Promise<void> {

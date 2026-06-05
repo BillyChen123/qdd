@@ -55,6 +55,25 @@ export function extractBulletSection(body: string, heading: string): string[] | 
   return lines.map((line) => line.slice(2).trim()).filter((line) => line.length > 0);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 用于就地替换 Markdown 的某个二级标题段落。
+// QDD 的做法是 frontmatter 管结构化真相，正文保留给人读，
+// 所以这里会在不重建整份文档的前提下同步某个 section。
+export function replaceMarkdownSection(body: string, heading: string, content: string): string {
+  const normalizedContent = content.trim();
+  const sectionPattern = new RegExp(`(## ${escapeRegExp(heading)}\\n\\n)([\\s\\S]*?)(?=\\n## |$)`);
+
+  if (sectionPattern.test(body)) {
+    return body.replace(sectionPattern, `$1${normalizedContent}\n`);
+  }
+
+  const suffix = body.trim().length > 0 ? '\n\n' : '';
+  return `${body.trim()}${suffix}## ${heading}\n\n${normalizedContent}`.trim();
+}
+
 function renderFieldLine(field: ManagedFieldDoc): string {
   const required = field.required ? 'required' : 'optional';
   const allowed = field.allowedValues && field.allowedValues.length > 0 ? ` Allowed: ${field.allowedValues.join(', ')}.` : '';

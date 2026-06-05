@@ -1,3 +1,2 @@
-import type { StatusJson } from '../types.js';
-export declare function buildStatus(projectRoot: string): Promise<StatusJson>;
+export { buildStatus } from '../services/status.js';
 //# sourceMappingURL=status.d.ts.map
