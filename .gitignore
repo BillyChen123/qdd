@@ -9,7 +9,6 @@ tmp/
 
 # Non-core development/vendor workspace
 OpenSpec/
-openspec/
 
 # OS/editor noise
 .DS_Store

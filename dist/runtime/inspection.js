@@ -2,9 +2,9 @@ import path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
-import { readBoundaryState, readBoundaryUpdateManifest } from './boundaries.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { getStudyArtifactCandidatesPath, getStudyBoundaryUpdatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
+import { getStudyArtifactCandidatesPath, listNonCanonicalStudyOutputEntries } from './evidence.js';
+import { listStudyMemoryPaths, readEvolutionState } from './evolution.js';
 import { deriveStudyLifecycleState } from './lifecycle.js';
 import { readLayerPolicy } from './layer-policy.js';
 import { listControlledSkillDomains, listControlledSkillStages, listControlledSkillTags, listLocalSkills, listProblemSkills, normalizeTaskSkillIds, resolveLocalSkills, } from './local-skills.js';
@@ -76,77 +76,6 @@ function validateResearchContract(contract, issues) {
             path: PATHS.contract,
             message: 'contract.yaml still uses the default placeholder initial_question. Complete qdd-start before real study work.',
         });
-    }
-}
-function validateEvolutionTrail(evolution, issues) {
-    if (!Array.isArray(evolution.evolution_trail)) {
-        pushIssue(issues, {
-            level: 'error',
-            code: 'invalid_evolution_trail',
-            path: PATHS.evolution,
-            message: 'evolution.yaml must define an evolution_trail array.',
-        });
-        return;
-    }
-    for (const [index, entry] of evolution.evolution_trail.entries()) {
-        if (!entry.study_id) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'missing_evolution_study_id',
-                path: `${PATHS.evolution}#${index}`,
-                message: 'Each evolution trail entry must include study_id.',
-            });
-        }
-        const delta = entry.question_delta;
-        if (!delta) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'missing_question_delta',
-                path: `${PATHS.evolution}#${index}`,
-                message: 'Each evolution trail entry must include question_delta.',
-            });
-            continue;
-        }
-        if (!['refinement', 'confirmation', 'pivot', 'dissolution'].includes(delta.change_type)) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'invalid_change_type',
-                path: `${PATHS.evolution}#${index}`,
-                message: `Invalid question_delta.change_type '${String(delta.change_type)}'.`,
-            });
-        }
-        if (entry.boundary_updates !== undefined) {
-            validateBoundaryUpdateSummary(entry.boundary_updates, `${PATHS.evolution}#${index}.boundary_updates`, issues);
-        }
-    }
-}
-function validateBoundaryUpdateSummary(updates, pathPrefix, issues) {
-    if (!Array.isArray(updates)) {
-        pushIssue(issues, {
-            level: 'error',
-            code: 'invalid_boundary_updates_summary',
-            path: pathPrefix,
-            message: 'boundary_updates must be an array when present.',
-        });
-        return;
-    }
-    for (const [index, entry] of updates.entries()) {
-        if (!BOUNDARY_ID_PATTERN.test(String(entry.boundary_id ?? '').trim())) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'invalid_boundary_update_summary_id',
-                path: `${pathPrefix}#${index}`,
-                message: `boundary_updates entry has invalid boundary_id '${String(entry.boundary_id ?? '')}'. Expected BXXX.`,
-            });
-        }
-        if (!['add', 'narrow', 'resolve', 'dissolve'].includes(String(entry.action ?? ''))) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'invalid_boundary_update_summary_action',
-                path: `${pathPrefix}#${index}`,
-                message: `boundary_updates entry has invalid action '${String(entry.action ?? '')}'.`,
-            });
-        }
     }
 }
 function validateArtifactIndex(artifactIndex, issues) {
@@ -237,14 +166,6 @@ function validateStudyTargetBoundaries(study, knownBoundaryIds, issues) {
         return;
     }
     const targetBoundaries = Array.isArray(study.target_boundaries) ? study.target_boundaries : [];
-    if (study.status && study.status !== 'created' && targetBoundaries.length === 0) {
-        pushIssue(issues, {
-            level: 'warning',
-            code: 'missing_target_boundaries',
-            path: studyPath,
-            message: 'Study has no declared target_boundaries. Planning should record which project boundaries this study tries to compress.',
-        });
-    }
     const seen = new Set();
     for (const boundaryId of targetBoundaries) {
         if (!BOUNDARY_ID_PATTERN.test(String(boundaryId ?? '').trim())) {
@@ -268,7 +189,7 @@ function validateStudyTargetBoundaries(study, knownBoundaryIds, issues) {
         seen.add(boundaryId);
         if (!knownBoundaryIds.has(boundaryId)) {
             pushIssue(issues, {
-                level: 'error',
+                level: 'warning',
                 code: 'unknown_target_boundary',
                 path: studyPath,
                 message: `Study target_boundaries references unknown project boundary '${boundaryId}'.`,
@@ -437,14 +358,6 @@ function validateArtifactCandidateManifest(studyId, manifest, issues) {
                 message: 'Task-scoped artifact candidates must declare task_id.',
             });
         }
-        if ((candidateRecord.reusable === undefined || candidateRecord.reusable === true) && String(candidateRecord.scope ?? 'study') !== 'project' && taskId.length === 0) {
-            pushIssue(issues, {
-                level: 'warning',
-                code: 'artifact_candidate_missing_task_provenance',
-                path: entryPath,
-                message: 'Reusable artifact candidates should include task_id whenever one task clearly produced the output.',
-            });
-        }
     }
 }
 async function validateMarkdownStructure(projectRoot, relativePath, issues) {
@@ -460,46 +373,24 @@ async function validateMarkdownStructure(projectRoot, relativePath, issues) {
         });
     }
 }
-export async function listArtifacts(projectRoot) {
-    const artifactIndex = await readYamlFile(projectRoot, PATHS.artifactIndex);
-    return {
-        artifacts: artifactIndex.artifacts,
-    };
-}
-export async function listContext(projectRoot) {
-    const contextDir = path.join(projectRoot, PATHS.contextDir);
-    if (!(await FileSystemUtils.directoryExists(contextDir))) {
-        return { context: [] };
-    }
-    const entries = await fs.readdir(contextDir, { withFileTypes: true });
-    const contextEntries = [];
-    for (const entry of entries) {
-        if (!entry.isFile() || !isContextFileName(entry.name)) {
-            continue;
-        }
-        const relativePath = `${PATHS.contextDir}/${entry.name}`;
-        const data = entry.name.endsWith('.md') ? await FileSystemUtils.readFile(path.join(projectRoot, relativePath)) : await readYamlFile(projectRoot, relativePath);
-        contextEntries.push({
-            path: relativePath,
-            name: entry.name,
-            data,
-        });
-    }
-    contextEntries.sort((left, right) => left.path.localeCompare(right.path));
-    return {
-        context: contextEntries,
-    };
-}
-async function listContextPaths(projectRoot) {
-    const contextDir = path.join(projectRoot, PATHS.contextDir);
-    if (!(await FileSystemUtils.directoryExists(contextDir))) {
+async function collectContextPaths(projectRoot, relativeDir = PATHS.contextDir) {
+    const absoluteDir = path.join(projectRoot, relativeDir);
+    if (!(await FileSystemUtils.directoryExists(absoluteDir))) {
         return [];
     }
-    const entries = await fs.readdir(contextDir, { withFileTypes: true });
-    return entries
-        .filter((entry) => entry.isFile() && isContextFileName(entry.name))
-        .map((entry) => `${PATHS.contextDir}/${entry.name}`)
-        .sort();
+    const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+    const results = [];
+    for (const entry of entries) {
+        const relativePath = `${relativeDir}/${entry.name}`;
+        if (entry.isDirectory()) {
+            results.push(...(await collectContextPaths(projectRoot, relativePath)));
+            continue;
+        }
+        if (entry.isFile() && isContextFileName(entry.name)) {
+            results.push(relativePath);
+        }
+    }
+    return results.sort((left, right) => left.localeCompare(right));
 }
 async function listSharedDataPaths(projectRoot) {
     const dataDir = path.join(projectRoot, PATHS.artifactDataDir);
@@ -509,12 +400,32 @@ async function listSharedDataPaths(projectRoot) {
     const entries = await fs.readdir(dataDir, { withFileTypes: true });
     return entries.map((entry) => `${PATHS.artifactDataDir}/${entry.name}`).sort();
 }
+export async function listArtifacts(projectRoot) {
+    const artifactIndex = await readYamlFile(projectRoot, PATHS.artifactIndex);
+    return {
+        artifacts: artifactIndex.artifacts,
+    };
+}
+export async function listContext(projectRoot) {
+    const contextPaths = await collectContextPaths(projectRoot);
+    const contextEntries = [];
+    for (const relativePath of contextPaths) {
+        const data = relativePath.endsWith('.md')
+            ? await FileSystemUtils.readFile(path.join(projectRoot, relativePath))
+            : await readYamlFile(projectRoot, relativePath);
+        contextEntries.push({
+            path: relativePath,
+            name: path.basename(relativePath),
+            data,
+        });
+    }
+    return { context: contextEntries };
+}
 export async function validateProject(projectRoot) {
     const issues = [];
     let knownBoundaryIds = new Set();
     const checked = {
         contract: false,
-        boundaries: false,
         evolution: false,
         artifactIndex: false,
         layerPolicy: false,
@@ -535,34 +446,20 @@ export async function validateProject(projectRoot) {
             message: error.message,
         });
     }
-    const boundariesPath = path.join(projectRoot, PATHS.boundaries);
-    if (!(await FileSystemUtils.fileExists(boundariesPath))) {
-        pushIssue(issues, {
-            level: 'error',
-            code: 'missing_boundaries_yaml',
-            path: PATHS.boundaries,
-            message: 'boundaries.yaml is required as the current project boundary-state truth source.',
-        });
-    }
-    else {
-        try {
-            const boundaryState = await readBoundaryState(projectRoot);
-            checked.boundaries = true;
-            knownBoundaryIds = new Set(boundaryState.boundaries.map((boundary) => boundary.id));
-        }
-        catch (error) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'invalid_boundaries_yaml',
-                path: PATHS.boundaries,
-                message: error.message,
-            });
-        }
-    }
     try {
-        const evolution = await readYamlFile(projectRoot, PATHS.evolution);
+        const evolution = await readEvolutionState(projectRoot);
         checked.evolution = true;
-        validateEvolutionTrail(evolution, issues);
+        knownBoundaryIds = new Set(evolution.boundaries.map((boundary) => boundary.id));
+        for (const [index, study] of evolution.studies.entries()) {
+            if (!study.id || !study.question || !study.ts) {
+                pushIssue(issues, {
+                    level: 'error',
+                    code: 'invalid_evolution_study_entry',
+                    path: `${PATHS.evolution}#studies.${index}`,
+                    message: 'Each evolution study entry must include id, question, kind, and ts.',
+                });
+            }
+        }
     }
     catch (error) {
         pushIssue(issues, {
@@ -595,16 +492,16 @@ export async function validateProject(projectRoot) {
                     level: 'error',
                     code: 'workflow_skill_not_allowed_in_layer_policy',
                     path: PATHS.layerPolicy,
-                    message: `Role policy for '${roleName}' references workflow skill '${workflowSkillId}'. Role defaults must use local planning or domain skills instead.`,
+                    message: `Role policy for '${roleName}' references workflow skill '${workflowSkillId}'.`,
                 });
             }
             if (roleName !== 'study-brain') {
                 for (const planningSkillId of defaultSkills.planningOnly) {
                     pushIssue(issues, {
                         level: 'error',
-                        code: 'planning_skill_not_allowed_in_task_layer_policy',
+                        code: 'planning_skill_not_allowed_in_role_policy',
                         path: PATHS.layerPolicy,
-                        message: `Role policy for '${roleName}' references planning-only brain skill '${planningSkillId}'. Only study-brain defaults may load planning-only brain skills.`,
+                        message: `Role policy for '${roleName}' references planning-only brain skill '${planningSkillId}'.`,
                     });
                 }
             }
@@ -626,7 +523,7 @@ export async function validateProject(projectRoot) {
             message: error.message,
         });
     }
-    const contextPaths = await listContextPaths(projectRoot);
+    const contextPaths = await collectContextPaths(projectRoot);
     checked.contextFiles = contextPaths;
     if (!contextPaths.includes(PATHS.contextResources)) {
         pushIssue(issues, {
@@ -648,35 +545,9 @@ export async function validateProject(projectRoot) {
                         message: 'Context markdown file is empty.',
                     });
                 }
-                if (relativePath === PATHS.contextResources) {
-                    const placeholderMarkers = [
-                        'Theme statement: unspecified',
-                        'Current biological focus: unspecified',
-                        'Biological system: unspecified',
-                        'Primary datasets: unspecified',
-                        'Python: unspecified',
-                        'Stable methodological preferences: unspecified',
-                    ];
-                    if (placeholderMarkers.some((marker) => data.includes(marker))) {
-                        pushIssue(issues, {
-                            level: 'warning',
-                            code: 'placeholder_project_resources',
-                            path: relativePath,
-                            message: 'context/resources.md still contains scaffold placeholders. Complete qdd-start before real study work.',
-                        });
-                    }
-                }
             }
             else {
-                const data = await readYamlFile(projectRoot, relativePath);
-                if (data === null || data === undefined) {
-                    pushIssue(issues, {
-                        level: 'warning',
-                        code: 'empty_context_file',
-                        path: relativePath,
-                        message: 'Context file parsed successfully but is empty.',
-                    });
-                }
+                await readYamlFile(projectRoot, relativePath);
             }
         }
         catch (error) {
@@ -746,7 +617,7 @@ export async function validateProject(projectRoot) {
                     level: 'warning',
                     code: 'non_symlink_data_entry',
                     path: relativePath,
-                    message: 'Shared data entry is not a symlink and is not registered as an artifact. Prefer symlinks for raw resources under artifacts/data/.',
+                    message: 'Shared data entry is not a symlink and is not registered as an artifact.',
                 });
             }
         }
@@ -763,10 +634,9 @@ export async function validateProject(projectRoot) {
     if (await FileSystemUtils.directoryExists(studiesDir)) {
         const studyEntries = await fs.readdir(studiesDir, { withFileTypes: true });
         for (const studyEntry of studyEntries) {
-            if (!studyEntry.isDirectory()) {
-                continue;
+            if (studyEntry.isDirectory()) {
+                await validateMarkdownStructure(projectRoot, `${PATHS.studiesDir}/${studyEntry.name}/study.md`, issues);
             }
-            await validateMarkdownStructure(projectRoot, `${PATHS.studiesDir}/${studyEntry.name}/study.md`, issues);
         }
     }
     const studies = await discoverStudies(projectRoot);
@@ -789,7 +659,7 @@ export async function validateProject(projectRoot) {
                 level: 'error',
                 code: 'workflow_skill_not_allowed_in_task',
                 path: taskRelativePath,
-                message: `Task references workflow skill '${workflowSkillId}'. Task skills must be concrete domain dependencies, not qdd/* workflow surfaces.`,
+                message: `Task references workflow skill '${workflowSkillId}'.`,
             });
         }
         for (const planningSkillId of resolvedSkills.planningOnly) {
@@ -797,7 +667,7 @@ export async function validateProject(projectRoot) {
                 level: 'error',
                 code: 'planning_skill_not_allowed_in_task',
                 path: taskRelativePath,
-                message: `Task references planning-only brain skill '${planningSkillId}'. Move it to study planning and keep task skills executor-facing.`,
+                message: `Task references planning-only brain skill '${planningSkillId}'.`,
             });
         }
         for (const missingSkillId of resolvedSkills.missing) {
@@ -841,24 +711,8 @@ export async function validateProject(projectRoot) {
             });
         }
     }
-    for (const study of studies) {
-        const updatesPath = getStudyBoundaryUpdatesPath(study.study_id);
-        const absolutePath = path.join(projectRoot, updatesPath);
-        if (!(await FileSystemUtils.fileExists(absolutePath))) {
-            continue;
-        }
-        try {
-            await readBoundaryUpdateManifest(projectRoot, updatesPath);
-        }
-        catch (error) {
-            pushIssue(issues, {
-                level: 'error',
-                code: 'invalid_boundary_updates_yaml',
-                path: updatesPath,
-                message: error.message,
-            });
-        }
-    }
+    const memoryPaths = await listStudyMemoryPaths(projectRoot);
+    const memorySet = new Set(memoryPaths);
     for (const study of studies) {
         const studyTasks = tasks.filter((task) => task.study_id === study.study_id || (study.task_ids ?? []).includes(task.task_id));
         const inferredState = deriveStudyLifecycleState(study, studyTasks);
@@ -887,6 +741,26 @@ export async function validateProject(projectRoot) {
                 message: `Study output contains unpackaged non-canonical entries: ${unpackagedEntries.join(', ')}.`,
             });
         }
+        if (study.status === 'closed') {
+            const expectedMemoryPath = `${PATHS.contextMemoryDir}/${study.study_id}.md`;
+            if (!memorySet.has(expectedMemoryPath)) {
+                pushIssue(issues, {
+                    level: 'error',
+                    code: 'missing_study_memory',
+                    path: expectedMemoryPath,
+                    message: `Closed study '${study.study_id}' must have a matching memory file under context/memory/.`,
+                });
+            }
+        }
+    }
+    const researchMapPath = path.join(projectRoot, PATHS.researchMapHtml);
+    if (!(await FileSystemUtils.fileExists(researchMapPath))) {
+        pushIssue(issues, {
+            level: 'warning',
+            code: 'missing_research_map',
+            path: PATHS.researchMapHtml,
+            message: 'research-map.html is missing. Re-render the derived project map.',
+        });
     }
     return {
         valid: !issues.some((issue) => issue.level === 'error'),

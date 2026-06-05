@@ -1,0 +1,39 @@
+schema: qdd-bootstrap
+
+context: |
+  Project: QDD (Question-Driven Discovery)
+  Positioning: QDD is a research-first orchestration framework, not a renamed OpenSpec workflow.
+  Core goal: track question evolution, evidence production, and reusable artifacts across studies.
+  Reuse boundary from OpenSpec: prefer reusing agent/tooling infrastructure such as Codex and Claude Code bootstrap, command/skill projection, config injection, and schema/template customization.
+  Do not inherit by default: OpenSpec's software change lifecycle, archive semantics, or proposal/spec/design/tasks as QDD's primary domain objects.
+  Desired product qualities: indirect, lightweight, efficient, extensible.
+  Primary object model: project -> study -> task -> run -> artifact -> evolution event + memory.
+
+rules:
+  proposal:
+    - State clearly which OpenSpec parts are reused as infrastructure and which are rejected as product workflow.
+    - Keep QDD framed as the higher-level research operating model.
+    - Prefer conservative bootstrap scope over broad platform claims.
+  design:
+    - Separate reusable agent foundation from QDD research semantics.
+    - Record non-goals to prevent QDD from collapsing into a renamed OpenSpec workflow.
+  tasks:
+    - Keep early implementation tasks small and boundary-first.
+    - Defer plugins, automation, and TUI work unless they are required for the first research loop.
+  project:
+    - Keep the research contract stable and explicit.
+    - State authority boundaries for human, assist, or auto mode.
+  protocol:
+    - Prefer explicit filesystem and machine interface contracts over prose-only guidance.
+    - Keep the first slice minimal and implementation-ready.
+  study:
+    - Define one bounded question per study.
+    - Separate blockers from evidence goals.
+  task:
+    - Make expected outputs and run provenance explicit.
+    - Keep tasks evidence-producing rather than exploratory catch-alls.
+  closure:
+    - Require explicit close-time evolution semantics.
+    - Record remaining open boundaries without reintroducing a second governance truth source.
+  checklist:
+    - Keep checklist items concrete, ordered, and small enough for one implementation step.

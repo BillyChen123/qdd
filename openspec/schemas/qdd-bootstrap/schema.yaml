@@ -1,0 +1,128 @@
+name: qdd-bootstrap
+version: 1
+description: Research-first QDD bootstrap workflow for project, protocol, study, task, and closure planning
+artifacts:
+  - id: project
+    generates: project.md
+    description: Research contract and project-level context for a QDD effort
+    template: project.md
+    instruction: |
+      Create the QDD project artifact that defines the research contract.
+
+      Sections:
+      - **Theme**: The stable research theme or problem space.
+      - **Initial Question**: The starting research question in plain language.
+      - **Mode**: Human, assist, or auto, with a short explanation of authority boundaries.
+      - **Scope**: What is explicitly in-scope and out-of-scope.
+      - **Evidence Standard**: What counts as acceptable support, refutation, or boundary description.
+      - **Shared Context**: Known datasets, environment constraints, and reusable assets.
+
+      This artifact is the stable top-level contract. Keep it concise and durable.
+    requires: []
+
+  - id: protocol
+    generates: protocol.md
+    description: QDD filesystem protocol and machine-facing interfaces
+    template: protocol.md
+    instruction: |
+      Create the QDD protocol artifact that defines the minimum filesystem and interface contract.
+
+      Cover:
+      - project/study/task/run/artifact/closure storage layout
+      - required metadata fields and identifiers
+      - status and instructions JSON outputs
+      - how agents should use protocol state without inventing extra lifecycle phases
+
+      Keep the protocol explicit enough to implement a thin CLI around it.
+    requires:
+      - project
+
+  - id: study
+    generates: study.md
+    description: Bounded study definition for one research question
+    template: study.md
+    instruction: |
+      Create the QDD study artifact for one bounded research question.
+
+      Sections:
+      - **Question**: The exact question this study addresses.
+      - **Hypothesis / Expectation**: What the study expects to learn or test.
+      - **Inputs**: Datasets, prior artifacts, and environment assumptions.
+      - **Evidence Plan**: What outputs must be produced.
+      - **Blockers**: Known uncertainties, missing inputs, or approvals.
+      - **Exit Signal**: What would allow the study to move into closure.
+
+      This artifact defines one bounded unit of inquiry, not a software feature.
+    requires:
+      - project
+
+  - id: task
+    generates: task.md
+    description: Evidence-producing task definition within a study
+    template: task.md
+    instruction: |
+      Create the QDD task artifact for one evidence-producing unit of work.
+
+      Sections:
+      - **Task Goal**: The concrete evidence objective.
+      - **Study Link**: Which study question this task supports.
+      - **Method**: The execution approach at a high level.
+      - **Expected Outputs**: Data, code, figures, tables, or reports to produce.
+      - **Run Contract**: What a run must record to be auditable.
+      - **Failure / Blocker Conditions**: What stops progress or invalidates a run.
+
+      Keep tasks deterministic enough that an agent can execute and report cleanly.
+    requires:
+      - study
+      - protocol
+
+  - id: closure
+    generates: closure.md
+    description: Study closure record with question_delta and remaining boundaries
+    template: closure.md
+    instruction: |
+      Create the QDD closure artifact that records how the question changed after study execution.
+
+      Sections:
+      - **Question Before**
+      - **Question After**
+      - **Change Type**: refinement, confirmation, pivot, or dissolution
+      - **Change Driver**
+      - **Open Boundaries**
+      - **Evidence Summary**
+      - **Recommended Next Step**
+
+      This artifact is the explicit bridge between one study and the next project judgment.
+    requires:
+      - study
+      - task
+      - protocol
+
+  - id: checklist
+    generates: checklist.md
+    description: Implementation checklist for a QDD bootstrap change
+    template: checklist.md
+    instruction: |
+      Create the implementation checklist for this QDD change.
+
+      Guidelines:
+      - Group tasks under numbered `##` headings
+      - Every actionable item must use checkbox form: `- [ ] X.Y Description`
+      - Prefer boundary-first tasks before wider automation
+      - Include schema, protocol, and validation work where relevant
+
+      This is the tracking file for apply.
+    requires:
+      - project
+      - protocol
+      - study
+      - task
+      - closure
+
+apply:
+  requires: [checklist]
+  tracks: checklist.md
+  instruction: |
+    Read the QDD project, protocol, study, task, and closure artifacts before applying.
+    Execute only the work tracked in checklist.md and mark progress with checkboxes.
+    Preserve QDD's research-native object model and avoid introducing OpenSpec software lifecycle assumptions.

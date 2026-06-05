@@ -1,65 +1,55 @@
 # QDD Code Prototype Map
 
-> This document is the live code-facing map for the current QDD prototype.
-> It should track the real `src/` layout rather than the aspirational full product architecture.
+> This is the live code-facing map for the current QDD prototype.
+> It tracks the real `src/` layout and the current runtime protocol, not the full long-term product plan.
 
 ## Current Status
 
-The repository now has a **minimal executable CLI runtime** for Question-Driven Discovery plus a first installed bootstrap layer.
-
-It is now strong enough for a **first human-mode end-to-end demo loop** with a real project-level boundary protocol:
+QDD now has a working TypeScript CLI plus bootstrap prompts and workflow skills for the first bounded research loop:
 
 `qdd init -> qdd-start -> qdd-propose -> qdd-explore -> qdd-apply -> qdd-close`
 
-Under the hood, the current bootstrap still drives the existing CLI protocol:
+The current project-state model is centered on four files:
 
-`qdd init -> qdd add-study -> qdd add-task -> write outputs + maintain artifact-candidates -> qdd register-artifact/qdd close-study`
+- `contract.yaml`: stable project contract
+- `evolution.yaml`: sparse study history plus current open/resolved boundaries
+- `context/resources.md`: durable shared context
+- `context/memory/STUDY-XXX.md`: per-study memory written at close time
 
-It is **not** yet at the point of smooth daily use across repeated projects or assist-mode planning.
+`research-map.html` is derived from `evolution.yaml`. It is useful for review, but it is not a truth source.
 
-Implemented commands:
+`qdd boundaries` still exists, but it is only a compatibility surface derived from `evolution.yaml`. It is no longer the core governance path.
+
+## Commands Implemented
 
 - `qdd init`
 - `qdd status --json`
-- `qdd boundaries --json`
-- `qdd boundaries apply --file <updates.yaml>`
-- `qdd boundaries render --output <path>`
-- `qdd instructions <id> [--command qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close] --json`
+- `qdd instructions <id> --command <qdd-start|qdd-propose|qdd-explore|qdd-apply|qdd-close> --json`
+- `qdd validate`
+- `qdd context --json`
+- `qdd artifacts:list --json`
 - `qdd skills suggest --domain <domain> --stage <stage> [--tag <tag>...] --json`
 - `qdd add-study`
 - `qdd add-task STUDY-XXX`
 - `qdd register-artifact <path>`
 - `qdd close-study STUDY-XXX`
-- `qdd validate`
-- `qdd artifacts:list --json`
-- `qdd context --json`
+- `qdd boundaries --json`
+- `qdd boundaries apply --file <updates.yaml>`
+- `qdd boundaries render --output <path>`
+- `qdd boundaries score --targets <ids> --json`
 
-Installed by `qdd init` today:
+## Bootstrap Installed By `qdd init`
 
 - `.qdd/instructions.md`
 - `.qdd/bootstrap.yaml`
+- `.qdd/layer-policy.yaml`
 - `.qdd/skills-catalog.json`
-- QDD workflow skills under `.codex/skills/qdd/`
-- mirrored QDD workflow surface under `.claude/skills/qdd/`
-- central domain skill source recorded from repository-root `domain-skills/`
-- Claude command surfaces: `qdd-start`, `qdd-propose`, `qdd-explore`, `qdd-apply`, `qdd-close`
-- Optional Codex global prompts via `qdd init --tool codex`
+- `.claude/commands/qdd-*.md`
+- `.claude/skills/qdd/*`
+- `.codex/skills/qdd/*`
+- optional Codex global prompts under `$CODEX_HOME/prompts/`
 
-Not implemented yet:
-
-- `qdd close-task`
-- plugin loading
-- TUI / auto mode
-- assist-mode next-study planner
-
-Current shared domain branches in the repo root:
-
-- `domain-skills/brain/singlecell/scrna-planning`
-- `domain-skills/brain/singlecell/scatac-planning`
-- `domain-skills/brain/singlecell/public-data-planning`
-- `domain-skills/singlecell/scrna/*`
-- `domain-skills/singlecell/scatac/*`
-- `domain-skills/singlecell/public-data/*`
+The repository-root `domain-skills/` tree remains the source of truth for domain skills. Projects do not own local copies of those skills.
 
 ## Source Tree
 
@@ -67,13 +57,10 @@ Current shared domain branches in the repo root:
 domain-skills/
 ├── brain/
 │   └── singlecell/
-│       ├── scrna-planning/
-│       ├── scatac-planning/
-│       └── public-data-planning/
 ├── singlecell/
-│   ├── scrna/
+│   ├── public-data/
 │   ├── scatac/
-│   └── public-data/
+│   └── scrna/
 └── README.md
 
 src/
@@ -90,20 +77,23 @@ src/
 │   ├── instructions.ts
 │   ├── register-artifact.ts
 │   ├── skills-suggest.ts
-│   └── status.ts
+│   ├── status.ts
+│   └── validate.ts
 ├── runtime/
+│   ├── bootstrap-prompts/
 │   ├── bootstrap.ts
 │   ├── boundaries.ts
 │   ├── constants.ts
 │   ├── defaults.ts
 │   ├── discovery.ts
 │   ├── evidence.ts
+│   ├── evolution.ts
 │   ├── inspection.ts
 │   ├── instructions.ts
+│   ├── layer-policy.ts
 │   ├── lifecycle.ts
 │   ├── local-skills.ts
 │   ├── paths.ts
-│   ├── status.ts
 │   └── store.ts
 ├── test/
 │   └── smoke.test.ts
@@ -113,504 +103,156 @@ src/
 └── types.ts
 ```
 
-## Module Topology
-
-```text
-CLI
-  src/cli/index.ts
-    -> commands/add-study.ts
-    -> commands/add-task.ts
-    -> commands/artifacts-list.ts
-    -> commands/boundaries.ts
-    -> commands/register-artifact.ts
-    -> commands/close-study.ts
-    -> commands/context.ts
-    -> commands/init.ts
-    -> commands/status.ts
-    -> commands/instructions.ts
-    -> commands/skills-suggest.ts
-    -> commands/validate.ts
-
-Commands
-  add-study.ts
-    -> runtime/lifecycle.ts
-    -> runtime/paths.ts
-
-  add-task.ts
-    -> runtime/lifecycle.ts
-    -> runtime/paths.ts
-
-  artifacts-list.ts
-    -> runtime/inspection.ts
-    -> runtime/paths.ts
-
-  boundaries.ts
-    -> runtime/boundaries.ts
-    -> runtime/constants.ts
-    -> runtime/paths.ts
-
-  register-artifact.ts
-    -> runtime/lifecycle.ts
-    -> runtime/paths.ts
-
-  close-study.ts
-    -> runtime/lifecycle.ts
-    -> runtime/paths.ts
-
-  context.ts
-    -> runtime/inspection.ts
-    -> runtime/paths.ts
-
-  init.ts
-    -> runtime/bootstrap.ts
-    -> runtime/constants.ts
-    -> runtime/defaults.ts
-    -> runtime/local-skills.ts
-    -> runtime/store.ts
-    -> utils/file-system.ts
-
-  status.ts
-    -> runtime/paths.ts
-    -> runtime/status.ts
-
-  instructions.ts
-    -> runtime/paths.ts
-    -> runtime/instructions.ts
-
-  skills-suggest.ts
-    -> runtime/local-skills.ts
-    -> runtime/paths.ts
-
-  validate.ts
-    -> runtime/inspection.ts
-    -> runtime/paths.ts
-
-Runtime
-  boundaries.ts
-    -> runtime/constants.ts
-    -> runtime/defaults.ts
-    -> runtime/discovery.ts
-    -> runtime/evidence.ts
-    -> runtime/store.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  bootstrap.ts
-    -> runtime/constants.ts
-    -> runtime/store.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  local-skills.ts
-    -> runtime/constants.ts
-    -> runtime/store.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  status.ts
-    -> runtime/boundaries.ts
-    -> runtime/discovery.ts
-    -> runtime/store.ts
-    -> runtime/constants.ts
-    -> types.ts
-
-  instructions.ts
-    -> runtime/evidence.ts
-    -> runtime/local-skills.ts
-    -> runtime/store.ts
-    -> runtime/constants.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  inspection.ts
-    -> runtime/boundaries.ts
-    -> runtime/discovery.ts
-    -> runtime/lifecycle.ts
-    -> runtime/local-skills.ts
-    -> runtime/store.ts
-    -> runtime/constants.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  lifecycle.ts
-    -> runtime/evidence.ts
-    -> runtime/discovery.ts
-    -> runtime/store.ts
-    -> runtime/constants.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  evidence.ts
-    -> runtime/constants.ts
-    -> runtime/defaults.ts
-    -> runtime/store.ts
-    -> utils/file-system.ts
-    -> types.ts
-
-  discovery.ts
-    -> utils/yaml.ts
-    -> types.ts
-
-Shared
-  store.ts
-    -> utils/file-system.ts
-    -> utils/yaml.ts
-
-  defaults.ts
-    -> types.ts
-```
-
 ## What Each Layer Does
 
-### 1. CLI Layer
+### CLI Layer
 
 File: [src/cli/index.ts](/data/chenyz/project/qdd/src/cli/index.ts)
 
-Responsibility:
+- parses CLI input
+- keeps command names stable
+- routes to command handlers
 
-- parse command-line input
-- route to command handlers
-- keep user-facing command names stable
+This layer should stay thin.
 
-This layer should stay thin. It should not contain filesystem protocol logic.
+### Command Layer
 
-### 2. Command Layer
+Files under [src/commands](/data/chenyz/project/qdd/src/commands)
 
-Files:
+- define one command surface each
+- validate top-level command inputs
+- delegate protocol work to runtime modules
 
-- [src/commands/add-study.ts](/data/chenyz/project/qdd/src/commands/add-study.ts)
-- [src/commands/add-task.ts](/data/chenyz/project/qdd/src/commands/add-task.ts)
-- [src/commands/artifacts-list.ts](/data/chenyz/project/qdd/src/commands/artifacts-list.ts)
-- [src/commands/close-study.ts](/data/chenyz/project/qdd/src/commands/close-study.ts)
-- [src/commands/context.ts](/data/chenyz/project/qdd/src/commands/context.ts)
-- [src/commands/init.ts](/data/chenyz/project/qdd/src/commands/init.ts)
-- [src/commands/status.ts](/data/chenyz/project/qdd/src/commands/status.ts)
-- [src/commands/instructions.ts](/data/chenyz/project/qdd/src/commands/instructions.ts)
-- [src/commands/register-artifact.ts](/data/chenyz/project/qdd/src/commands/register-artifact.ts)
-- [src/commands/validate.ts](/data/chenyz/project/qdd/src/commands/validate.ts)
+### Runtime Layer
 
-Responsibility:
+Files under [src/runtime](/data/chenyz/project/qdd/src/runtime)
 
-- implement one user-visible command each
-- validate high-level command preconditions
-- delegate read/write work to the runtime layer
+Core responsibilities:
 
-### 3. Runtime Layer
+- scaffold and refresh QDD projects
+- read and write protocol files
+- manage study and task lifecycle
+- record and promote artifact candidates
+- build role-aware instructions
+- maintain the skills catalog
+- derive `research-map.html`
 
-Files:
+Important modules:
 
-- [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
-- [src/runtime/bootstrap.ts](/data/chenyz/project/qdd/src/runtime/bootstrap.ts)
-- [src/runtime/defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts)
-- [src/runtime/discovery.ts](/data/chenyz/project/qdd/src/runtime/discovery.ts)
-- [src/runtime/evidence.ts](/data/chenyz/project/qdd/src/runtime/evidence.ts)
-- [src/runtime/inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts)
-- [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
-- [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
-- [src/runtime/local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts)
-- [src/runtime/paths.ts](/data/chenyz/project/qdd/src/runtime/paths.ts)
-- [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
-- [src/runtime/store.ts](/data/chenyz/project/qdd/src/runtime/store.ts)
+- [constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts): canonical paths
+- [defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts): default scaffold content
+- [bootstrap.ts](/data/chenyz/project/qdd/src/runtime/bootstrap.ts): installs Claude/Codex workflow assets
+- [evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts): reads and writes `evolution.yaml`, study memory, research map
+- [lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts): create study/task, record candidates, close study
+- [instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts): builds `qdd instructions ... --json`
+- [status.ts](/data/chenyz/project/qdd/src/runtime/status.ts): builds `qdd status --json`
+- [inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts): validate/context/artifact inspection
+- [local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts): resolves domain skills and suggests executor skills
+- [boundaries.ts](/data/chenyz/project/qdd/src/runtime/boundaries.ts): compatibility layer over the derived boundary view
 
-Responsibility:
+### Shared Types And Helpers
 
-- define the filesystem protocol
-- install and refresh tool-facing bootstrap assets
-- distinguish `brain/*` planning skills from executor problem-level skills
-- derive `.qdd/skills-catalog.json`
-- provide bounded problem-skill suggestion for planning
-- maintain the project-local QDD workflow skill surface under `.codex/skills/qdd/` and `.claude/skills/qdd/`
-- resolve executor / brain skills from the central `domain-skills/` source tree
-- read and write core YAML state plus open `context/` resources
-- expose project-level onboarding instructions through `PROJECT`
-- read study/task Markdown frontmatter
-- scaffold study/task Markdown templates
-- maintain study-local evidence packaging rules and promotion candidates
-- allocate IDs and append artifact/question-delta state
-- aggregate protocol state into JSON surfaces
-- validate and inspect existing state without mutating it
+- [src/types.ts](/data/chenyz/project/qdd/src/types.ts): runtime contracts
+- [src/utils/file-system.ts](/data/chenyz/project/qdd/src/utils/file-system.ts): filesystem helpers
+- [src/utils/yaml.ts](/data/chenyz/project/qdd/src/utils/yaml.ts): YAML parsing and serialization
 
-Important current rule:
+## Runtime Project Layout
 
-- project-level control state = YAML (`contract.yaml`, `evolution.yaml`, `artifacts/index.yaml`)
-- project-level reusable context = Markdown-first `context/` resources, with optional YAML sidecars
-- study/task truth source = Markdown frontmatter
-
-### 4. Shared Utilities And Types
-
-Files:
-
-- [src/types.ts](/data/chenyz/project/qdd/src/types.ts)
-- [src/utils/file-system.ts](/data/chenyz/project/qdd/src/utils/file-system.ts)
-- [src/utils/yaml.ts](/data/chenyz/project/qdd/src/utils/yaml.ts)
-
-Responsibility:
-
-- keep type contracts explicit
-- isolate filesystem helpers
-- isolate YAML serialization/parsing
-
-## Runtime Project Layout Implemented Today
-
-`qdd init` now bootstraps this minimal structure plus bootstrap metadata:
+`qdd init` creates this minimal scaffold:
 
 ```text
 project-root/
-├── domain-skills/                  # central source tree in this repository
-│   └── <category>/<skill>/SKILL.md
-│       ...
-│
-├── [target project created by qdd init]
-│   ├── contract.yaml
-│   ├── evolution.yaml
-│   ├── context/
-│   │   └── resources.md
-│   ├── studies/
-│   ├── artifacts/
-│   │   ├── index.yaml
-│   │   ├── data/
-│   │   ├── code/
-│   │   ├── figures/
-│   │   └── reports/
-│   ├── .codex/
-│   │   └── skills/
-│   │       └── qdd/
-│   ├── .claude/
-│   │   ├── commands/
-│   │   └── skills/
-│   │       └── qdd/
-│   └── .qdd/
-│       ├── instructions.md
-│       ├── bootstrap.yaml
-│       └── layer-policy.yaml    # command -> role, role -> default_skills
+├── contract.yaml
+├── evolution.yaml
+├── research-map.html
+├── context/
+│   ├── resources.md
+│   └── memory/
+├── studies/
+├── artifacts/
+│   ├── index.yaml
+│   ├── data/
+│   ├── code/
+│   ├── figures/
+│   └── reports/
+├── .claude/
+│   ├── commands/
+│   └── skills/qdd/
+├── .codex/
+│   └── skills/qdd/
+└── .qdd/
+    ├── instructions.md
+    ├── bootstrap.yaml
+    ├── layer-policy.yaml
+    └── skills-catalog.json
 ```
 
-Depending on selected tools, `qdd init` also writes bootstrap assets to locations such as:
+Study outputs still live under `studies/STUDY-XXX/output/`. Promotion-worthy outputs are listed in `artifact-candidates.yaml`, then promoted into `artifacts/index.yaml` and moved into canonical artifact folders at close time.
 
-```text
-.claude/commands/qdd-start.md
-.claude/commands/qdd-propose.md
-.claude/commands/qdd-explore.md
-.claude/commands/qdd-apply.md
-.claude/commands/qdd-close.md
-<CODEX_HOME>/prompts/qdd-propose.md
-...
-```
+## Practical Reading Order
 
-Future study/task records are expected to look like:
+If you want to understand the current code quickly, read in this order:
 
-```text
-studies/
-└── STUDY-001/
-    ├── study.md
-    ├── tasks/
-    │   └── TASK-001.md
-    └── output/
-        ├── artifact-candidates.yaml
-        ├── code/
-        ├── figures/
-        ├── reports/
-        └── tables/
-```
+1. [src/types.ts](/data/chenyz/project/qdd/src/types.ts)
+2. [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
+3. [src/runtime/defaults.ts](/data/chenyz/project/qdd/src/runtime/defaults.ts)
+4. [src/runtime/evolution.ts](/data/chenyz/project/qdd/src/runtime/evolution.ts)
+5. [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
+6. [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
+7. [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
+8. [src/runtime/local-skills.ts](/data/chenyz/project/qdd/src/runtime/local-skills.ts)
+9. [src/cli/index.ts](/data/chenyz/project/qdd/src/cli/index.ts)
+10. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
 
-`artifact-candidates.yaml` is now the explicit promotion boundary between study-local outputs and reusable artifacts. `artifacts/index.yaml` should contain only promoted evidence, not every file in `output/`.
+That order shows:
+
+- the data model first
+- then the filesystem contract
+- then project-state semantics
+- then lifecycle behavior
+- then the CLI surface and smoke coverage
 
 ## Progress Map
 
 ### Implemented
 
-- root package/runtime scaffold
-- CLI entrypoint
-- project initialization
+- CLI scaffold and package wiring
+- `qdd init`
 - project root detection
-- YAML store helpers
-- Markdown-first context bootstrap (`context/resources.md`)
-- central `domain-skills/` source tree for reusable domain skills
-- project-local QDD workflow skills under `.codex/skills/qdd/`
-- mirrored Claude QDD workflow surface under `.claude/skills/qdd/`
-- central domain-skill resolution without project-local mirroring
-- Markdown document read/write helpers
-- study/task frontmatter discovery
-- study creation command
-- task creation command
-- artifact registration command
-- study closure/question_delta writing command
-- validation command
-- artifact inspection command
-- context inspection command
-- status JSON aggregation
-- instructions JSON for `PROJECT`, study, and task records
-- validation and inspection runtime helpers
-- bootstrap installation/runtime helpers
-- lifecycle smoke test covering init -> study -> task -> artifact -> closure
-- study output packaging scaffold (`code/`, `figures/`, `tables/`, `reports/`)
-- explicit artifact-candidate manifest under each study output directory
-- closure-time promotion from `artifact-candidates.yaml` into `artifacts/index.yaml`
-- smoke tests for validation and inspection behavior
-- smoke tests for init/status/instructions
-- smoke tests for installed bootstrap assets and refresh behavior
+- default contract/evolution/context scaffold
+- workflow bootstrap for Claude and Codex
+- central domain-skill resolution from `domain-skills/`
+- skills catalog generation and `qdd skills suggest`
+- study creation and task creation
+- study-local artifact candidate recording
+- artifact promotion and registration
+- close-time study memory writing
+- close-time `evolution.yaml` update
+- derived `research-map.html` rendering
+- status, instructions, validate, context, and artifacts inspection
+- smoke coverage for the new evolution + memory model
 
 ### Partially Implemented
 
-- task progression still happens by direct Markdown updates; there is no dedicated `qdd close-task`
-- the bootstrap layer currently targets Claude by default and Codex optionally; richer multi-tool support is still narrow
-- `artifacts:list` and `context` currently expose whole-file inspection surfaces; there is no richer filtering yet
-- canonical promoted artifacts now move into `artifacts/{data,code,figures,reports}/`, but higher-level artifact browsing is still intentionally simple
+- `qdd boundaries` remains available, but it is no longer the primary workflow contract
+- task progression still relies on direct Markdown updates; there is no dedicated `qdd close-task`
+- multi-tool bootstrap exists, but the workflow still needs more dogfooding
 
 ### Not Implemented
 
 - dedicated task close command
 - plugin system
+- richer TUI or auto-runner layer
+- project-level multi-study stop-gate automation
 
-## Milestone Fit
+## Current Interpretation
 
-If you compare the current code to [docs/01-development-prototype.md](/data/chenyz/project/qdd/docs/01-development-prototype.md), the prototype is roughly here:
+QDD is now usable for a bounded prototype workflow. The key thing to understand is that the project no longer revolves around a separate `boundaries.yaml` governance file. The main truth is:
 
-- **M1: Core Filesystem Protocol** - done for the current prototype slice
-  - done: `qdd init`, root layout, control-YAML + context-resources split, `qdd validate`
-- **M2: Study Workflow** - largely done for human-mode manual use
-  - done: `qdd add-study`, `qdd add-task`, `qdd instructions`, study/task Markdown scaffolds
-  - missing: more ergonomic inspection and task-resolution workflow
-- **M3: Artifact System** - partially done
-  - done: `qdd register-artifact`, `artifacts/index.yaml`, `qdd artifacts:list --json`, `qdd close-study`, `evolution.yaml`, explicit `artifact-candidates.yaml` promotion path
-  - missing: stronger provenance tooling, optional artifact filtering, quality-check logic from the prototype notes
+- stable contract
+- sparse evolution
+- durable shared resources
+- per-study memory
+- promoted artifacts
 
-In short: the core loop exists, but the usability and hardening layer is still thin.
-
-## Practical Readiness
-
-### What You Can Already Do Today
-
-You can already run one bounded study manually:
-
-1. `qdd init`
-2. run `qdd-start`, or manually fill `contract.yaml`, `context/resources.md`, `artifacts/data/`, and `.qdd/layer-policy.yaml`
-
-Current `layer-policy.yaml` is intentionally light:
-
-- `commands` maps each workflow command onto one role
-- `roles` provides `default_skills` for that role
-- executor behavior still comes primarily from `task.md` skill declarations, not from policy-owned execution bundles
-3. `qdd add-study --question ... --hypothesis ...`
-4. `qdd add-task STUDY-001 --goal ...`
-5. let the agent read `qdd instructions PROJECT --command qdd-start --json` and `qdd instructions STUDY-001 --command qdd-apply --json`
-6. update `TASK-XXX.md` and write outputs into `studies/STUDY-001/output/{code,figures,tables,reports}/` as appropriate
-7. keep promotion-worthy outputs in `studies/STUDY-001/output/artifact-candidates.yaml`
-8. optionally `qdd register-artifact ...` immediately for outputs that should be registered now
-9. `qdd close-study STUDY-001 --question-after ... --change-type ... --change-driver ...`
-
-That is enough for a controlled prototype demo and for testing whether the filesystem protocol feels right.
-
-You can now also:
-
-10. `qdd validate`
-11. `qdd artifacts:list --json`
-12. `qdd context --json`
-
-### What Still Makes Real Practice Frictional
-
-- no dedicated `qdd close-task`, so task progression depends on direct Markdown edits
-- the installed bootstrap still needs real dogfooding before its workflow wording should be treated as stable
-- promoted outputs still rely on explicit candidate maintenance rather than richer provenance capture
-- no plugin layer yet, so domain-specific help still lives outside the CLI core
-
-## Gap To Real Use
-
-Before this becomes comfortable for repeated real-world research work, the remaining gaps are roughly:
-
-1. **Inspection ergonomics**
-   - optionally add filtering to `qdd artifacts:list` and `qdd context`
-   - reduce the need to open low-level control files by hand even further
-
-2. **Task lifecycle decision**
-   - either keep direct Markdown task updates as the official model
-   - or add a thin `qdd close-task` later
-   - this is still the main unresolved workflow choice
-
-3. **Bootstrap hardening**
-   - dogfood the generated `qdd-propose / qdd-explore / qdd-apply / qdd-close` loop
-   - refine tool targeting and refresh semantics if real use shows drift
-
-4. **Dogfooding on one real project**
-   - run one real small study from start to close
-   - verify that study-local scripts/figures are preserved and promoted artifacts stay selective
-   - use that run to trim any command or file-shape problems
-
-## Recommended Next Direction
-
-The best next direction is **not** plugins or auto mode.
-
-The best next direction is:
-
-1. run one real small QDD study through the installed bootstrap loop
-2. use `qdd validate`, `qdd artifacts:list --json`, and `qdd context --json` during that run
-3. then decide whether `qdd close-task` should exist
-4. then decide whether assist-mode planning should become a first-class surface
-
-Why this order:
-
-- the core loop now exists
-- the biggest remaining risk is no longer missing bootstrap installation, but unresolved real-world workflow friction
-- one real dogfood run will tell you whether the installed loop is actually usable before you widen the planner layer around it
-
-## Fast Reading Guide
-
-If you want to understand the current code quickly, read in this order:
-
-1. [src/types.ts](/data/chenyz/project/qdd/src/types.ts)
-   Why: this tells you what data the runtime believes exists.
-
-2. [src/runtime/constants.ts](/data/chenyz/project/qdd/src/runtime/constants.ts)
-   Why: this tells you where the runtime expects that data to live on disk.
-
-3. [src/commands/init.ts](/data/chenyz/project/qdd/src/commands/init.ts)
-   Why: this shows the minimum project layout the CLI actually creates.
-
-4. [src/runtime/discovery.ts](/data/chenyz/project/qdd/src/runtime/discovery.ts)
-   Why: this shows how study/task records are discovered from Markdown frontmatter.
-
-5. [src/runtime/store.ts](/data/chenyz/project/qdd/src/runtime/store.ts)
-   Why: this shows how Markdown frontmatter, core YAML state, and optional context sidecars are read and written.
-
-6. [src/runtime/lifecycle.ts](/data/chenyz/project/qdd/src/runtime/lifecycle.ts)
-   Why: this is the write-side runtime for study/task scaffolding, artifact registration, and study closure.
-
-7. [src/runtime/evidence.ts](/data/chenyz/project/qdd/src/runtime/evidence.ts)
-   Why: this is the thin helper layer for output packaging and artifact-candidate normalization.
-
-8. [src/runtime/inspection.ts](/data/chenyz/project/qdd/src/runtime/inspection.ts)
-   Why: this is the non-core guard/query runtime for validation, artifact inspection, and context inspection.
-
-9. [src/runtime/status.ts](/data/chenyz/project/qdd/src/runtime/status.ts)
-   Why: this is the main read-model aggregator.
-
-10. [src/runtime/instructions.ts](/data/chenyz/project/qdd/src/runtime/instructions.ts)
-   Why: this is the current agent-facing contract generator.
-
-11. [src/cli/index.ts](/data/chenyz/project/qdd/src/cli/index.ts)
-   Why: this is just the routing layer once you understand the runtime.
-
-12. [src/test/smoke.test.ts](/data/chenyz/project/qdd/src/test/smoke.test.ts)
-   Why: this shows the smallest end-to-end examples of expected behavior.
-
-## Review Checklist
-
-When reviewing future code in `src/`, ask these questions in order:
-
-1. Does this change preserve the agreed project layout?
-2. Does it keep control state in YAML, context defaulting to readable Markdown, and study/task truth in frontmatter?
-3. Is the command layer still thin, or is runtime logic leaking upward?
-4. Are new domain assumptions being added to core runtime by mistake?
-5. Does the JSON output remain stable for agents?
-6. Is the boundary between local study outputs and promoted artifacts still explicit?
-7. Is this adding bootstrap/runtime behavior, or should it live in a later plugin/bootstrap layer?
-
-## Maintenance Note
-
-Keep this file updated whenever:
-
-- a new command is added
-- the project layout changes
-- study/task truth-source rules change
-- a new runtime module is introduced
-- agent bootstrap moves from deferred to implemented
+Everything else is derived or auxiliary.

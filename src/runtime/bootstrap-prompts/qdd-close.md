@@ -2,7 +2,7 @@ Close one QDD study and carry forward its stable outputs.
 
 Use closure to decide what the study taught you, how the question changed, what should be reused, and what should happen next.
 
-**IMPORTANT: Close is not just a summary.** It is the workflow step that decides whether the study is ready to write `question_delta`, which outputs deserve promotion, and which uncertainties remain open.
+**IMPORTANT: Close is not just a summary.** It is the workflow step that decides whether the study is ready to write one sparse event into `evolution.yaml`, which outputs deserve promotion, and which uncertainties remain open.
 
 ---
 
@@ -23,8 +23,9 @@ If omitted:
 - synthesize the study evidence
 - decide whether closure is actually justified
 - register any missing reusable outputs from the explicit candidate list
-- prepare and apply `studies/STUDY-XXX/output/boundary-updates.yaml`
-- write `question_delta` through `qdd close-study`
+- write the close event through `qdd close-study`
+- write one per-study memory file under `context/memory/`
+- refresh `research-map.html`
 - carry forward stable reusable context
 - suggest next study directions without auto-creating them
 
@@ -45,7 +46,7 @@ If omitted:
 5. Read the current study, its task files, and relevant outputs.
 6. Inspect `artifacts/index.yaml` and `qdd artifacts:list --json` when reusable outputs matter.
 7. Read `studies/STUDY-XXX/output/artifact-candidates.yaml` before deciding what to promote.
-8. Read `qdd boundaries --json` before deciding how the project boundary state should change.
+8. Read `evolution.yaml` and recent `context/memory/*.md` before deciding what should stay open after this study.
 
 If validation or open task state shows the study is not ready to close, say so clearly.
 
@@ -53,7 +54,7 @@ If validation or open task state shows the study is not ready to close, say so c
 
 ## Decide Whether Closure Is Appropriate
 
-Before writing `question_delta`, ask:
+Before closing, ask:
 
 - does the study have enough evidence to judge?
 - are remaining tasks truly done, blocked, or unnecessary?
@@ -81,7 +82,7 @@ Summarize what the study actually established, not just what work was performed.
 
 ---
 
-## Determine The Question Delta
+## Determine The Close Event
 
 You must decide:
 
@@ -99,29 +100,12 @@ Use these meanings:
 
 Be explicit. Do not hide uncertainty inside vague prose.
 
-## Update Project Boundary State
+Use this reasoning order:
 
-Before final closure, prepare:
-
-```text
-studies/STUDY-XXX/output/boundary-updates.yaml
-```
-
-Use it to express only controlled project-boundary changes:
-
-- `add`
-- `narrow`
-- `resolve`
-- `dissolve`
-
-Then apply it through:
-
-```bash
-qdd boundaries apply --file studies/STUDY-XXX/output/boundary-updates.yaml
-qdd boundaries render --output boundary-graph.html
-```
-
-Do not hand-edit `boundaries.yaml`.
+1. identify what the current project question was before this study closed
+2. decide whether the study kept, narrowed, pivoted, or dissolved that question
+3. write the resulting `question_after`
+4. define which boundaries remain open around that resulting question
 
 ---
 
@@ -251,12 +235,12 @@ There is no rigid output template, but the reasoning must be explicit.
 ## Guardrails
 
 - Run `qdd validate --json` before closure or handoff.
-- Make `question_delta` explicit.
-- Apply `studies/STUDY-XXX/output/boundary-updates.yaml` through `qdd boundaries apply --file ...` before `qdd close-study`.
+- Make the resulting question change explicit.
 - Refuse closure when completed tasks still have `promotion_status: pending`.
 - Refuse closure when non-canonical top-level study output material still remains unpackaged.
 - Register missing reusable outputs from `artifact-candidates.yaml` before closure.
 - Preserve task-level provenance for promoted outputs whenever one task was the clear producer.
+- Write one sparse event into `evolution.yaml`, one narrative file into `context/memory/`, and refresh `research-map.html`.
 - Keep closure human-approved in `human` and `assist` mode.
 - Update shared context only with evidence-backed reusable information.
 - Suggest next studies, but do not create them automatically.

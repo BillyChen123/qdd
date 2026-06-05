@@ -2,11 +2,11 @@ import path from 'node:path';
 import * as nodeFs from 'node:fs/promises';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
-import { readBoundaryUpdateManifest } from './boundaries.js';
 import { discoverStudies, discoverTasks } from './discovery.js';
-import { buildCanonicalArtifactPath, ensureStudyOutputLayout, getStudyArtifactCandidatesPath, getStudyBoundaryUpdatesPath, getStudyOutputDir, listNonCanonicalStudyOutputEntries, relocateArtifactToCanonicalPath, readArtifactCandidateManifest, readNormalizedArtifactCandidatesForPromotion, resolveProjectRelativeFilePath, } from './evidence.js';
+import { buildCanonicalArtifactPath, ensureStudyOutputLayout, getStudyArtifactCandidatesPath, getStudyOutputDir, listNonCanonicalStudyOutputEntries, relocateArtifactToCanonicalPath, readArtifactCandidateManifest, readNormalizedArtifactCandidatesForPromotion, resolveProjectRelativeFilePath, } from './evidence.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile, } from './store.js';
 import { normalizeTaskSkillIds, resolveLocalSkills } from './local-skills.js';
+import { applyOpenBoundaryTexts, buildStudyMemoryMarkdown, readEvolutionState, renderResearchMapHtml, writeEvolutionState, } from './evolution.js';
 const STUDY_ID_PATTERN = /^STUDY-(\d{3})$/;
 const TASK_ID_PATTERN = /^TASK-(\d{3})$/;
 const ARTIFACT_ID_PATTERN = /^ART-(\d{3})$/;
@@ -50,7 +50,7 @@ function buildStudyBody(record) {
         : '- Define the minimum evidence needed to judge this study.';
     const targetBoundaries = record.target_boundaries && record.target_boundaries.length > 0
         ? record.target_boundaries.map((value) => `- ${value}`).join('\n')
-        : '- None declared yet. Read `qdd boundaries --json` and declare the project boundaries this study will try to compress.';
+        : '- None declared yet. Read `evolution.yaml` and declare only the current open boundaries this study will actually clarify.';
     return [
         '## Question',
         '',
@@ -419,9 +419,6 @@ export async function registerArtifact(projectRoot, targetPath, options) {
         entry,
     };
 }
-function findCurrentQuestion(study, evolution) {
-    return study.question || evolution.evolution_trail[evolution.evolution_trail.length - 1]?.question_delta.question_after || study.question;
-}
 // 根据 task 状态推断一个 study 目前的生命周期位置。
 // 这里是 runtime 的统一判定口，status / instructions / close 都复用它。
 function inferStudyState(study, tasks) {
@@ -445,13 +442,13 @@ function inferStudyState(study, tasks) {
 // closeStudy 做三件事：
 // 1. 检查 study 是否真的已经走到可关闭状态；
 // 2. 先把 artifact-candidates 里可提升的输出正式登记；
-// 3. 最后再写入 question_delta，并把 study 标记为 closed。
+// 3. 最后再写入简化后的 evolution study event、memory，并把 study 标记为 closed。
 //
 // 顺序不能反，否则一旦 promotion 失败，evolution.yaml 就会留下“已经关闭”
 // 但 artifact registry 还没同步的坏状态。
 export async function closeStudy(projectRoot, studyId, options) {
     const studyDocument = await readStudyDocument(projectRoot, studyId);
-    const evolution = await readYamlFile(projectRoot, PATHS.evolution);
+    const evolution = await readEvolutionState(projectRoot);
     const allTasks = await discoverTasks(projectRoot);
     const studyTasks = allTasks.filter((task) => task.study_id === studyId || (studyDocument.record.task_ids ?? []).includes(task.task_id));
     if (studyTasks.some((task) => (task.status ?? 'pending') === 'pending' || task.status === 'running')) {
@@ -488,38 +485,28 @@ export async function closeStudy(projectRoot, studyId, options) {
             taskId: targetTask?.task_id,
             scope: candidate.scope,
             schema: candidate.schema,
-            updateTaskPromotionStatus: false,
+            updateTaskPromotionStatus: true,
         });
         registeredPaths.add(result.entry.path);
     }
-    const currentQuestion = findCurrentQuestion(studyDocument.record, evolution);
-    let boundaryUpdatesSummary;
-    const boundaryUpdatesPath = getStudyBoundaryUpdatesPath(studyId);
-    if (await FileSystemUtils.fileExists(path.join(projectRoot, boundaryUpdatesPath))) {
-        const manifest = await readBoundaryUpdateManifest(projectRoot, boundaryUpdatesPath);
-        boundaryUpdatesSummary = manifest.updates.map((update) => ({
-            boundary_id: update.action === 'add' ? update.boundary.id : update.id,
-            action: update.action,
-        }));
-    }
-    const nextEvolution = {
-        evolution_trail: [
-            ...evolution.evolution_trail,
-            {
-                study_id: studyId,
-                question_delta: {
-                    question_before: currentQuestion,
-                    question_after: options.questionAfter,
-                    change_type: options.changeType,
-                    change_driver: options.changeDriver,
-                    open_boundaries: options.openBoundaries,
-                },
-                ...(boundaryUpdatesSummary && boundaryUpdatesSummary.length > 0 ? { boundary_updates: boundaryUpdatesSummary } : {}),
-                timestamp: new Date().toISOString(),
-            },
-        ],
-    };
-    await writeYamlFile(projectRoot, PATHS.evolution, nextEvolution);
+    const studyQuestion = studyDocument.record.question;
+    const nextCandidates = [options.questionAfter].map((value) => value.trim()).filter((value) => value.length > 0);
+    const nextEvolution = applyOpenBoundaryTexts(evolution, studyId, studyQuestion, options.changeType, options.openBoundaries, nextCandidates);
+    await writeEvolutionState(projectRoot, nextEvolution);
+    const lastEvent = nextEvolution.studies.at(-1);
+    const boundaryTextById = new Map(nextEvolution.boundaries.map((boundary) => [boundary.id, boundary.text]));
+    const resolvedBoundaryTexts = (lastEvent?.resolves ?? []).map((boundaryId) => boundaryTextById.get(boundaryId) ?? boundaryId);
+    const memoryMarkdown = buildStudyMemoryMarkdown({
+        studyId,
+        question: studyQuestion,
+        kind: options.changeType,
+        changeDriver: options.changeDriver,
+        openBoundaryTexts: options.openBoundaries,
+        nextCandidates,
+        resolvedBoundaryTexts,
+    });
+    await FileSystemUtils.writeFile(path.join(projectRoot, PATHS.contextMemoryDir, `${studyId}.md`), memoryMarkdown);
+    await renderResearchMapHtml(projectRoot, PATHS.researchMapHtml);
     const updatedStudyRecord = {
         ...studyDocument.record,
         status: 'closed',

@@ -19,7 +19,7 @@ export interface ResearchContract {
     };
     termination_type: 'best_effort';
 }
-export interface QuestionDelta {
+export interface LegacyQuestionDelta {
     question_before: string;
     question_after: string;
     change_type: QuestionChangeType;
@@ -59,14 +59,37 @@ export type BoundaryUpdateEntry = BoundaryAddUpdate | BoundaryNarrowUpdate | Bou
 export interface BoundaryUpdateManifest {
     updates: BoundaryUpdateEntry[];
 }
-export interface EvolutionTrail {
+export interface LegacyEvolutionTrail {
     evolution_trail: Array<{
         study_id: string;
-        question_delta: QuestionDelta;
+        question_delta: LegacyQuestionDelta;
         boundary_updates?: BoundaryUpdateSummaryEntry[];
         timestamp: string;
     }>;
 }
+export type EvolutionBoundaryState = 'open' | 'resolved';
+export interface EvolutionBoundary {
+    id: string;
+    text: string;
+    state: EvolutionBoundaryState;
+    deps?: string[];
+    weight?: number;
+}
+export interface EvolutionStudyEvent {
+    id: string;
+    question: string;
+    kind: QuestionChangeType;
+    resolves: string[];
+    opens: string[];
+    candidates: string[];
+    ts: string;
+}
+export interface EvolutionState {
+    studies: EvolutionStudyEvent[];
+    boundaries: EvolutionBoundary[];
+}
+export type EvolutionTrail = EvolutionState;
+export type QuestionDelta = LegacyQuestionDelta;
 export interface ArtifactIndexEntry {
     id: string;
     type: ArtifactType;
@@ -166,17 +189,19 @@ export interface StatusJson {
         count: number;
         latest: string[];
     };
+    memory: {
+        recent: string[];
+    };
     boundaries: {
         total: number;
         open: number;
-        narrowed: number;
         resolved: number;
-        dissolved: number;
         active: string[];
     };
     question_state: {
-        last_change_type: QuestionChangeType | null;
-        open_boundaries: string[];
+        last_kind: QuestionChangeType | null;
+        next_candidates: string[];
+        open_boundary_ids: string[];
     };
 }
 export interface BoundaryScoreJson {
@@ -221,7 +246,6 @@ export interface ValidationResult {
     issues: ValidationIssue[];
     checked: {
         contract: boolean;
-        boundaries: boolean;
         evolution: boolean;
         artifactIndex: boolean;
         layerPolicy: boolean;

@@ -5,7 +5,7 @@
 在安装之前，先记住 QDD 对外只保留的最小工作流：
 
 1. `qdd-start`：完成项目 onboarding，把生物背景、数据资源、运行环境注入共享上下文
-2. `qdd-proposal`：人给模糊研究计划，Agent 创建 `study.md` 和 `task.md`
+2. `qdd-propose`：人给模糊研究计划，Agent 创建 `study.md` 和 `task.md`
 3. `qdd-explore`：人和 Agent 讨论并完善 `study.md` / `task.md`
 4. `qdd-apply`：Agent 读取假设和任务要求，写代码、跑结果、产出证据
 5. `qdd-close`：Agent 评判假设，把可复用内容写回 `context` / `artifacts`，并给出 follow-up 方向
@@ -13,7 +13,7 @@
 当前代码中的实际入口分别是：
 
 - `qdd-start` -> 安装后的 `qdd-start`
-- `qdd-proposal` -> 安装后的 `qdd-propose`
+- `qdd-propose` -> 安装后的 `qdd-propose`
 - `qdd-explore` -> 安装后的 `qdd-explore`
 - `qdd-apply` -> 安装后的 `qdd-apply`
 - `qdd-close` -> 安装后的 `qdd-close`

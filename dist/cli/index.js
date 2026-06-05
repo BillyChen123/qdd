@@ -90,7 +90,7 @@ program
 });
 const boundaries = program
     .command('boundaries')
-    .description('Inspect, update, or render the project boundary state');
+    .description('Inspect, update, or render the compatibility boundary view derived from evolution.yaml');
 boundaries
     .option('--json', 'Output as JSON')
     .action(async (options) => {
@@ -118,8 +118,8 @@ boundaries
 });
 boundaries
     .command('render')
-    .description('Render a project-local HTML boundary graph report')
-    .option('--output <path>', 'Output path within the current project', 'boundary-graph.html')
+    .description('Render a project-local HTML research map from evolution.yaml')
+    .option('--output <path>', 'Output path within the current project', 'research-map.html')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
     try {
@@ -229,9 +229,9 @@ program
 });
 program
     .command('close-study <studyId>')
-    .description('Close a study and append a question_delta to evolution.yaml')
+    .description('Close a study and append one sparse study event to evolution.yaml')
     .requiredOption('--question-after <text>', 'Resulting question after study execution')
-    .requiredOption('--change-type <type>', 'Question delta type: refinement|confirmation|pivot|dissolution')
+    .requiredOption('--change-type <type>', 'Study change type: refinement|confirmation|pivot|dissolution')
     .requiredOption('--change-driver <text>', 'Primary reason for the question change')
     .option('--open-boundary <text...>', 'Remaining open boundaries')
     .action(async (studyId, options) => {

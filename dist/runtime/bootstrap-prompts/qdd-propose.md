@@ -32,7 +32,7 @@ Examples:
 
 - extended discussion of whether the study should be reframed after the first pass exists
 - implementation of analysis code or execution of the task
-- closing the study or deciding `question_delta`
+- closing the study or deciding the final study event recorded at close time
 - building a large task tree up front
 
 ---
@@ -44,13 +44,11 @@ Examples:
 3. Run `qdd status --json`.
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
-6. Read `qdd boundaries --json` before planning so the study targets the current project question state.
-7. Use `qdd boundaries score --targets <B001,B002> --json` before finalizing the study target set.
-8. If the score says active ancestors are missing, keep the user's original question as the long-range target but shrink the current study to the suggested frontier.
-9. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
-10. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
-11. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
-12. If the study may need external public data, decide that here instead of leaving it for apply to improvise later.
+6. Read `evolution.yaml` and recent `context/memory/*.md` before planning so the next study stays grounded in prior evidence.
+7. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
+8. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
+9. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.
+10. If the study may need external public data, decide that here instead of leaving it for apply to improvise later.
 
 ---
 
@@ -59,6 +57,12 @@ Examples:
 ### 1. Crystallize one bounded question
 
 Convert the user's direction into one study-sized question.
+
+Use this order explicitly:
+
+1. read the current working question from project state
+2. read recent evolution and memory to understand what changed recently
+3. only then define the current study slice
 
 Keep two layers distinct when needed:
 
@@ -79,7 +83,7 @@ Bad propose questions are:
 - vague aspirations with no evidence path
 - mixtures of multiple unrelated hypotheses
 
-If the user's requested target still depends on unresolved active ancestors, it is not yet the current study even if it is the right long-range target.
+If the user asks for something too large, keep that as the long-range target and write a smaller current study that produces the next honest judgment.
 
 ### 2. Create the study scaffold
 
@@ -91,7 +95,7 @@ At minimum, fill in:
 
 - the bounded question
 - the working hypothesis or expectation
-- the `target_boundaries` this study will try to compress
+- the `target_boundaries` this study will clarify when that link is already legible from current open boundaries
 - the long-range target when it differs from the current study question
 - why this study matters now
 - resource fit
@@ -112,13 +116,6 @@ Only add a dependency edge when one task truly cannot start before another task 
 
 Only fall back to a single initial task when the study is genuinely atomic and splitting it would be artificial.
 
-Do not respond to a multi-layer boundary problem by merely adding more tasks.
-
-If the score says the requested target is too large for one current study:
-
-- first shrink the study to the suggested frontier
-- then write the small first-pass task graph for that frontier study
-
 ### 4. Keep the study and task set aligned
 
 The initial tasks should together cover the small complete first pass needed to judge, refine, or block the study honestly.
@@ -129,8 +126,6 @@ Examples:
 - if the study question is already feasible, split the first-pass work into separate evidence units such as data preparation, primary comparison, and figure-ready summarization
 - if the main uncertainty is annotation validity, create a focused validation task beside, not inside, a broader downstream analysis task when they can be inspected independently
 - if the study needs preparation work to make the main hypothesis testable, keep that preparatory task inside the same study instead of pretending it is a separate study
-
-But if the study still depends on unresolved upstream boundaries outside the current target set, fix that at the study-boundary level first rather than inflating the task graph.
 
 ### 4.5 Choose executor skills at the problem level
 
@@ -207,7 +202,7 @@ Write them concretely:
 - `## Question`: one bounded question only
 - if needed, explain in prose that this question is the current executable slice of a larger long-range target
 - `## Hypothesis`: a falsifiable expectation, not a slogan
-- `## Target Boundaries`: explicit `BXXX` identifiers from `qdd boundaries --json`
+- `## Target Boundaries`: optional explicit `BXXX` identifiers when this study clearly addresses current open boundaries from `evolution.yaml`
 - `## Why Now`: why this belongs in the current loop
 - `## Resource Fit`: what data, runtime, biology, or prior artifacts matter
 - `## Evidence Plan`: what outputs would make the study judgeable
@@ -215,7 +210,7 @@ Write them concretely:
 - `## Tasks`: list the initial tasks you just created
 
 Do not leave these as generic filler if you already know the answer.
-Do not leave `target_boundaries` empty once the study direction is clear enough to propose.
+Do not force `target_boundaries` just to satisfy a template when the study can already be described cleanly without them.
 
 ---
 
@@ -330,6 +325,7 @@ When propose work is done, report succinctly:
 - study id
 - task ids
 - bounded question
+- why this slice is the right current study
 - task goals
 - main blocker or key uncertainty, if any
 - whether the next best step is `qdd-explore` or `qdd-apply`

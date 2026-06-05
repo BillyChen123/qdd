@@ -1,10 +1,11 @@
 export declare const PATHS: {
     readonly contract: "contract.yaml";
-    readonly boundaries: "boundaries.yaml";
     readonly evolution: "evolution.yaml";
-    readonly boundaryGraphHtml: "boundary-graph.html";
+    readonly researchMapHtml: "research-map.html";
+    readonly boundaryGraphHtml: "research-map.html";
     readonly contextDir: "context";
     readonly contextResources: "context/resources.md";
+    readonly contextMemoryDir: "context/memory";
     readonly studiesDir: "studies";
     readonly artifactsDir: "artifacts";
     readonly artifactIndex: "artifacts/index.yaml";
@@ -13,7 +14,6 @@ export declare const PATHS: {
     readonly artifactFiguresDir: "artifacts/figures";
     readonly artifactReportsDir: "artifacts/reports";
     readonly artifactCandidatesFileName: "artifact-candidates.yaml";
-    readonly boundaryUpdatesFileName: "boundary-updates.yaml";
     readonly publicDataRequestFileName: "public_data_request.yaml";
     readonly claudeDir: ".claude";
     readonly claudeCommandsDir: ".claude/commands";

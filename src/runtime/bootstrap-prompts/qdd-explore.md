@@ -34,7 +34,7 @@ Think deeply. Stay anchored to the current study and task set. Pressure-test the
 
 - creating the very first study from scratch when none exists; that belongs to `qdd-propose`
 - executing code or analysis; that belongs to `qdd-apply`
-- declaring a study closed and writing `question_delta`; that belongs to `qdd-close`
+- declaring a study closed and writing the final study event; that belongs to `qdd-close`
 
 ---
 
@@ -52,12 +52,6 @@ Then read the active study bounds:
 
 ```bash
 qdd instructions STUDY-XXX --command qdd-explore --json
-```
-
-And score the current study:
-
-```bash
-qdd boundaries score --study STUDY-XXX --json
 ```
 
 When resource fit or reuse matters, also inspect:
@@ -126,8 +120,8 @@ Depending on what the user brings, you might:
 - Is the study question actually bounded?
 - Is it too broad for one study?
 - Is it already partially answered by an existing artifact?
-- Does boundary scoring say it still depends on unresolved active ancestors?
-- Is the frontier already too wide even if the study is technically legal?
+- Does it still depend on unresolved upstream assumptions that belong in a different study slice?
+- Are we trying to force too many evidence moves into one study?
 
 **Test feasibility**
 
@@ -166,6 +160,13 @@ Use diagrams when they clarify tradeoffs.
 
 Say what the study is trying to answer right now.
 
+Keep this order explicit:
+
+1. current working question
+2. current study slice
+3. current open boundaries or unresolved assumptions around that question
+4. which evidence would change judgment next
+
 If the written question and the implied task disagree, call that out.
 
 If the user originally wanted something larger, distinguish:
@@ -194,15 +195,6 @@ Ask:
 - do any current task skills point outside the installed QDD root `domain-skills/` inventory?
 - do current task skills point to the wrong problem class because propose skipped a planning check?
 
-Also inspect the score output:
-
-- `legal`
-- `missing_active_ancestors`
-- `suggested_frontier`
-- `quality_score`
-- `priority_score`
-- `frontier_size`
-
 ### 4. Pressure-test the evidence plan
 
 Ask what evidence would make the study judgeable.
@@ -214,7 +206,7 @@ If the current plan does not lead to a judgment, say so directly.
 Offer changes such as:
 
 - narrow the question
-- downshift the study to the suggested frontier
+- shrink the study to the smallest slice that can still produce a real judgment
 - split a task
 - delete a weak task
 - replace the first task with a reality check
@@ -228,8 +220,6 @@ Offer changes such as:
 When the recommended changes are clear, ask whether to update the current `study/task` artifacts.
 
 Do not silently write them first.
-
-If the score shows a multi-layer scope problem, say so directly. Do not solve that problem by merely multiplying tasks inside the same oversized study.
 
 ---
 

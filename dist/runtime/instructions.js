@@ -2,8 +2,9 @@ import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { readMarkdownFrontmatter } from './store.js';
 import { PATHS } from './constants.js';
-import { getStudyArtifactCandidatesPath, getStudyBoundaryUpdatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
+import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRequestPath } from './evidence.js';
 import { listLocalSkills, resolveLocalSkills } from './local-skills.js';
+import { listRecentStudyMemoryPaths } from './evolution.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from './layer-policy.js';
 const PROJECT_TARGET_ID = 'PROJECT';
 const STUDY_ID_PATTERN = /^STUDY-\d{3}$/;
@@ -40,16 +41,24 @@ async function findTaskRecord(projectRoot, taskId) {
     }
     throw new Error(`Task '${taskId}' not found.`);
 }
-async function collectContextReadPaths(projectRoot) {
-    const contextDir = path.join(projectRoot, PATHS.contextDir);
-    if (!(await FileSystemUtils.directoryExists(contextDir))) {
+async function collectContextReadPaths(projectRoot, relativeDir = PATHS.contextDir) {
+    const absoluteDir = path.join(projectRoot, relativeDir);
+    if (!(await FileSystemUtils.directoryExists(absoluteDir))) {
         return [];
     }
-    const entries = await (await import('node:fs/promises')).readdir(contextDir, { withFileTypes: true });
-    return entries
-        .filter((entry) => entry.isFile() && (entry.name.endsWith('.yaml') || entry.name.endsWith('.md')))
-        .map((entry) => `${PATHS.contextDir}/${entry.name}`)
-        .sort();
+    const entries = await (await import('node:fs/promises')).readdir(absoluteDir, { withFileTypes: true });
+    const results = [];
+    for (const entry of entries) {
+        const relativePath = `${relativeDir}/${entry.name}`;
+        if (entry.isDirectory()) {
+            results.push(...(await collectContextReadPaths(projectRoot, relativePath)));
+            continue;
+        }
+        if (entry.isFile() && (entry.name.endsWith('.yaml') || entry.name.endsWith('.md'))) {
+            results.push(relativePath);
+        }
+    }
+    return results.sort((left, right) => left.localeCompare(right));
 }
 async function collectSharedDataReadPaths(projectRoot) {
     const dataDir = path.join(projectRoot, PATHS.artifactDataDir);
@@ -75,18 +84,16 @@ async function collectTaskSkillIds(projectRoot, taskPaths) {
     for (const relativePath of taskPaths) {
         const task = await readMarkdownFrontmatter(projectRoot, relativePath);
         for (const skillId of task.skills ?? []) {
-            if (skillId.trim().length > 0) {
+            if (skillId.trim().length > 0)
                 skillIds.add(skillId);
-            }
         }
     }
     return [...skillIds].sort();
 }
 async function resolveSkillSet(projectRoot, skillIds, allowPlanningOnly = false) {
     const localSkills = await resolveLocalSkills(projectRoot, skillIds, { allowPlanningOnly });
-    const matchedPaths = [...localSkills.matched.map((entry) => entry.path)];
     return {
-        matchedPaths: uniqueSortedValues(matchedPaths),
+        matchedPaths: uniqueSortedValues(localSkills.matched.map((entry) => entry.path)),
         missing: uniqueSortedValues(localSkills.missing),
         disallowedWorkflow: uniqueSortedValues(localSkills.disallowedWorkflow),
         matchedIds: uniqueSortedValues(localSkills.matched.map((entry) => entry.id)),
@@ -98,9 +105,8 @@ async function collectAvailableSkillReadPaths(projectRoot) {
     return uniqueSortedValues(availableSkills.map((entry) => entry.path));
 }
 function validateCommandForTarget(targetKind, command) {
-    if (!command) {
+    if (!command)
         return;
-    }
     if (targetKind === 'project' && command !== 'qdd-start') {
         throw new Error(`Command '${command}' is not valid for PROJECT instructions.`);
     }
@@ -126,17 +132,11 @@ function appendRoleSkillIssues(rules, subject, roleSkills) {
     }
 }
 function buildInstructionHeader(command, role) {
-    return {
-        command,
-        role,
-    };
+    return { command, role };
 }
 async function resolveRoleSkillSet(projectRoot, role, policy) {
     return resolveSkillSet(projectRoot, getDefaultSkillsForRole(policy, role), role === 'study-brain');
 }
-// 生成某个 target 的 instructions JSON。
-// 这里除了 target 本身，还会把命令上下文映射到 role / skill defaults，
-// 让 agent 不再只看到“读写哪些文件”，而是也知道“当前是谁在行动”。
 export async function buildInstructions(projectRoot, id, options = {}) {
     const command = options.command ?? null;
     if (command !== null && !isQddCommand(command)) {
@@ -147,6 +147,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const policy = await readLayerPolicy(projectRoot);
         const contextReadPaths = await collectContextReadPaths(projectRoot);
         const dataReadPaths = await collectSharedDataReadPaths(projectRoot);
+        const recentMemoryPaths = await listRecentStudyMemoryPaths(projectRoot);
         const localSkillReadPaths = await collectAvailableSkillReadPaths(projectRoot);
         const role = resolveCommandRole(policy, command, 'thesis-manager');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
@@ -154,10 +155,9 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Do not invent project facts that are not grounded in user input or existing files.',
             'Use qdd-start to fill shared project context before the first study is proposed.',
             'Keep contract.yaml concise and machine-readable.',
-            'Treat boundaries.yaml as the current project question-state truth source.',
-            'Seed or update project boundary state only through qdd boundaries apply --file <updates.yaml>; do not edit boundaries.yaml directly.',
-            'Treat boundary-graph.html as a derived report, not a truth source.',
-            'Keep richer project context in context/resources.md and optional context sidecars; use resources.md for project facts plus durable analyst preferences, not as a task-by-task memory log.',
+            'Treat evolution.yaml as the sparse project truth source for current project question state and boundaries.',
+            'Treat research-map.html as a derived report, not a truth source.',
+            'Keep durable shared context in context/resources.md and optional context sidecars; keep narrative study history in context/memory/*.md.',
             'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
             'Treat .qdd/layer-policy.yaml as the editable source for command roles and role-level default skills.',
             'Treat domain skills as read from the QDD root domain-skills/ library, while local workflow skills remain bootstrapped under .codex/skills/qdd/ and .claude/skills/qdd/.',
@@ -165,15 +165,11 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         appendRoleSkillIssues(rules, 'Project', roleSkillSet);
         return {
             ...buildInstructionHeader(command, role),
-            target: {
-                kind: 'project',
-                id,
-            },
+            target: { kind: 'project', id },
             read: uniqueSortedValues([
                 PATHS.contract,
-                PATHS.boundaries,
                 PATHS.evolution,
-                PATHS.boundaryGraphHtml,
+                PATHS.researchMapHtml,
                 PATHS.instructions,
                 PATHS.bootstrapConfig,
                 PATHS.layerPolicy,
@@ -183,21 +179,19 @@ export async function buildInstructions(projectRoot, id, options = {}) {
                 `${PATHS.claudeSkillsDir}/qdd/`,
                 'domain-skills/',
                 ...contextReadPaths,
+                ...recentMemoryPaths,
                 ...dataReadPaths,
                 ...localSkillReadPaths,
                 ...roleSkillSet.matchedPaths,
             ]),
-            write: [
+            write: uniqueSortedValues([
                 PATHS.contract,
-                PATHS.boundaries,
-                PATHS.boundaryGraphHtml,
                 PATHS.contextResources,
                 `${PATHS.contextDir}/`,
                 `${PATHS.artifactDataDir}/`,
                 PATHS.layerPolicy,
-                `${PATHS.codexSkillsDir}/qdd/`,
-                `${PATHS.claudeSkillsDir}/qdd/`,
-            ],
+                PATHS.researchMapHtml,
+            ]),
             required_skills: roleSkillSet.matchedIds,
             optional_skills: [],
             rules,
@@ -209,6 +203,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const policy = await readLayerPolicy(projectRoot);
         const contextReadPaths = await collectContextReadPaths(projectRoot);
         const dataReadPaths = await collectSharedDataReadPaths(projectRoot);
+        const recentMemoryPaths = await listRecentStudyMemoryPaths(projectRoot);
         const taskPaths = await collectStudyTaskPaths(projectRoot, id);
         const studyTaskSkillIds = await collectTaskSkillIds(projectRoot, taskPaths);
         const studyTaskSkills = await resolveSkillSet(projectRoot, studyTaskSkillIds);
@@ -218,15 +213,16 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const hasPublicDataTask = studyTaskSkills.matchedIds.includes('singlecell/public-data/cellxgene-discover');
         const readPaths = [
             PATHS.contract,
-            PATHS.boundaries,
             PATHS.evolution,
+            PATHS.researchMapHtml,
             PATHS.instructions,
             PATHS.layerPolicy,
+            PATHS.artifactIndex,
             ...contextReadPaths,
+            ...recentMemoryPaths,
             ...dataReadPaths,
             `${PATHS.studiesDir}/${id}/study.md`,
             ...taskPaths,
-            PATHS.artifactIndex,
             ...studyTaskSkills.matchedPaths,
             ...roleSkillSet.matchedPaths,
         ];
@@ -238,8 +234,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             PATHS.artifactIndex,
         ];
         if (command === 'qdd-close') {
-            readPaths.push(getStudyBoundaryUpdatesPath(id));
-            writePaths.push(PATHS.evolution, PATHS.contextResources, `${PATHS.contextDir}/`, PATHS.boundaries, PATHS.boundaryGraphHtml, getStudyBoundaryUpdatesPath(id));
+            writePaths.push(PATHS.evolution, PATHS.contextResources, `${PATHS.contextDir}/`, `${PATHS.contextMemoryDir}/`, PATHS.researchMapHtml);
         }
         const rules = [
             'Do not redefine the project theme.',
@@ -248,7 +243,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
             'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
             'Treat brain/* as planning-only domain-prior skills. They may guide study planning, but must not be written into task skills or treated as executor skills.',
-            'Read current project boundary state before making study-level decisions that depend on unresolved question constraints.',
+            'Read evolution.yaml and recent context/memory/*.md before making study-level decisions that depend on prior project state.',
             'qdd-propose owns the first-pass study and task-graph creation.',
             'In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.',
             'Record blockers explicitly.',
@@ -266,23 +261,18 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         ];
         if (command === 'qdd-propose' || command === 'qdd-explore') {
             readPaths.push(PATHS.skillsCatalog);
-            rules.push('Read qdd boundaries --json or boundaries.yaml before planning and keep the study aligned to current project question state.');
-            rules.push('Use qdd boundaries score --targets <B001,B002> --json or qdd boundaries score --study <id> --json to test legality, readiness, and frontier breadth before finalizing or reshaping a study.');
-            rules.push('Record explicit target_boundaries in study.md frontmatter and in the ## Target Boundaries section.');
-            rules.push('qdd-propose and qdd-explore may refine which boundaries the study targets, but they must not mutate project boundary state.');
-            rules.push('Distinguish the user\'s long-range scientific target from the current executable study; if active ancestors remain, preserve the long-range target in explanation but downshift the current study to the suggested frontier.');
-            rules.push('Do not hide cross-layer study scope by merely adding more tasks; use boundary decomposition first, then write the small first-pass task graph for the resulting current study.');
+            rules.push('Keep human propose as the highest semantic authority; treat prior candidates in evolution.yaml only as suggestions.');
+            rules.push('Planning should stay grounded in contract.yaml, context/resources.md, evolution.yaml, recent context/memory/*.md, and available artifacts/resources.');
             rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
             rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
             rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
             rules.push('When a study genuinely needs external public data, planning may search and narrow candidates, but it should persist only the final selected targets in studies/STUDY-XXX/output/public_data_request.yaml.');
-            rules.push('If no acceptable public dataset is found, either skip the public-data task because local resources are sufficient or record a bounded study/task blocker; do not leak that failure into unrelated execution.');
+            rules.push('Do not make boundary score output a required planning gate. Boundary-compatible CLI views are optional diagnostics, not core protocol requirements.');
         }
         if (command === 'qdd-close') {
             rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.');
-            rules.push(`Prepare ${getStudyBoundaryUpdatesPath(id)} as the explicit study-local boundary handoff before final closure.`);
-            rules.push(`Apply ${getStudyBoundaryUpdatesPath(id)} through qdd boundaries apply --file ${getStudyBoundaryUpdatesPath(id)} before running qdd close-study.`);
-            rules.push(`Refresh ${PATHS.boundaryGraphHtml} with qdd boundaries render --output ${PATHS.boundaryGraphHtml} after boundary state changes.`);
+            rules.push('qdd-close must register missing reusable outputs from artifact-candidates.yaml before final closure.');
+            rules.push('qdd-close must write one sparse study event into evolution.yaml, one narrative memory file into context/memory/, and refresh research-map.html.');
             rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
             rules.push('Refuse closure when any completed task still has promotion_status pending.');
             rules.push('Refuse closure when non-canonical top-level study output material still remains unpackaged.');
@@ -290,13 +280,13 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         }
         appendRoleSkillIssues(rules, 'Study', roleSkillSet);
         if (studyTaskSkills.disallowedWorkflow.length > 0) {
-            rules.push(`Task skill lists must not include workflow skills: ${studyTaskSkills.disallowedWorkflow.join(', ')}. Replace them with concrete domain skills or remove them.`);
+            rules.push(`Task skill lists must not include workflow skills: ${studyTaskSkills.disallowedWorkflow.join(', ')}.`);
         }
         if (studyTaskSkills.planningOnly.length > 0) {
-            rules.push(`Task skill lists must not include planning-only brain skills: ${studyTaskSkills.planningOnly.join(', ')}. Replace them with executor problem-level skills.`);
+            rules.push(`Task skill lists must not include planning-only brain skills: ${studyTaskSkills.planningOnly.join(', ')}.`);
         }
         if (studyTaskSkills.missing.length > 0) {
-            rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}. Treat this as a blocker until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);
+            rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}.`);
         }
         if (hasPublicDataTask) {
             readPaths.push(getStudyPublicDataRequestPath(id));
@@ -306,10 +296,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         }
         return {
             ...buildInstructionHeader(command, role),
-            target: {
-                kind: 'study',
-                id,
-            },
+            target: { kind: 'study', id },
             read: uniqueSortedValues(readPaths),
             write: uniqueSortedValues(writePaths),
             required_skills: requiredSkillIds,
@@ -323,6 +310,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const policy = await readLayerPolicy(projectRoot);
         const contextReadPaths = await collectContextReadPaths(projectRoot);
         const dataReadPaths = await collectSharedDataReadPaths(projectRoot);
+        const recentMemoryPaths = await listRecentStudyMemoryPaths(projectRoot);
         const taskSkillSet = await resolveSkillSet(projectRoot, task.skills ?? []);
         const role = resolveCommandRole(policy, command, 'executor');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
@@ -332,7 +320,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Do not redefine the study question.',
             'Keep the task minimal and evidence-producing.',
             'Produce explicit outputs or blockers.',
-            'You may read current project boundary state for alignment, but you must not mutate it from task-level apply.',
+            'You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.',
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
             'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
             'Do not add qdd/* workflow skills or brain/* planning skills to task skill lists.',
@@ -362,31 +350,28 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         }
         appendRoleSkillIssues(rules, 'Task', roleSkillSet);
         if (taskSkillSet.disallowedWorkflow.length > 0) {
-            rules.push(`Task skill lists must not include workflow skills: ${taskSkillSet.disallowedWorkflow.join(', ')}. Replace them with concrete domain skills or remove them.`);
+            rules.push(`Task skill lists must not include workflow skills: ${taskSkillSet.disallowedWorkflow.join(', ')}.`);
         }
         if (taskSkillSet.planningOnly.length > 0) {
-            rules.push(`Task skill lists must not include planning-only brain skills: ${taskSkillSet.planningOnly.join(', ')}. Replace them with executor problem-level skills or move them to study planning.`);
+            rules.push(`Task skill lists must not include planning-only brain skills: ${taskSkillSet.planningOnly.join(', ')}.`);
         }
         if (taskSkillSet.missing.length > 0) {
             rules.push(`Missing domain skills referenced by this task: ${taskSkillSet.missing.join(', ')}. qdd-apply must hard-block until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);
         }
         return {
             ...buildInstructionHeader(command, role),
-            target: {
-                kind: 'task',
-                id,
-            },
+            target: { kind: 'task', id },
             read: uniqueSortedValues([
                 PATHS.contract,
-                PATHS.boundaries,
                 PATHS.evolution,
                 PATHS.instructions,
                 PATHS.layerPolicy,
+                PATHS.artifactIndex,
                 ...contextReadPaths,
+                ...recentMemoryPaths,
                 ...dataReadPaths,
                 `${PATHS.studiesDir}/${studyId}/study.md`,
                 `${PATHS.studiesDir}/${studyId}/tasks/${id}.md`,
-                PATHS.artifactIndex,
                 ...taskSkillSet.matchedPaths,
                 ...roleSkillSet.matchedPaths,
             ]),

@@ -21,10 +21,7 @@ export type BootstrapTool = 'claude' | 'codex';
 export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
 
 // project-level boundary 当前所处的状态。
-// - open: 仍然开放，尚未被有效压缩
-// - narrowed: 仍然开放，但边界已经变窄
-// - resolved: 已被当前项目内证据充分解决
-// - dissolved: 这个问题边界不再构成有效问题
+// 这组状态主要服务于旧版 boundary 兼容层。
 export type BoundaryStatus = 'open' | 'narrowed' | 'resolved' | 'dissolved';
 
 // 受控的 boundary 更新动作。
@@ -65,9 +62,10 @@ export interface ResearchContract {
   termination_type: 'best_effort';
 }
 
-// 一次问题更新记录。
-// 通常由 close 阶段写入，用来说明本轮 study 之后问题如何演化。
-export interface QuestionDelta {
+// 旧版 question_delta 结构。
+// 新版 evolution.yaml 不再把 before / after 作为主状态，
+// 但兼容读取旧项目时仍然需要支持它。
+export interface LegacyQuestionDelta {
   // 本轮 study 之前的问题表述。
   question_before: string;
 
@@ -144,15 +142,14 @@ export interface BoundaryUpdateManifest {
   updates: BoundaryUpdateEntry[];
 }
 
-// 项目级问题演化历史。
-// evolution.yaml 会用这个结构记录每一轮 study 对问题空间造成的变化。
-export interface EvolutionTrail {
+// 旧版 evolution.yaml 结构。
+export interface LegacyEvolutionTrail {
   evolution_trail: Array<{
     // 对应的 study 编号。
     study_id: string;
 
     // 本轮对问题的更新内容。
-    question_delta: QuestionDelta;
+    question_delta: LegacyQuestionDelta;
 
     // 本轮对 project-level boundary state 做了哪些受控更新。
     boundary_updates?: BoundaryUpdateSummaryEntry[];
@@ -161,6 +158,43 @@ export interface EvolutionTrail {
     timestamp: string;
   }>;
 }
+
+// 新版 evolution.yaml 里的 boundary 状态。
+// 这里故意收得很小：只区分仍需推进 vs 已经收口。
+export type EvolutionBoundaryState = 'open' | 'resolved';
+
+// 新版 evolution.yaml 的 boundary 节点。
+// 它是项目地图的一部分，不再承担独立治理语义。
+export interface EvolutionBoundary {
+  id: string;
+  text: string;
+  state: EvolutionBoundaryState;
+  deps?: string[];
+  weight?: number;
+}
+
+// 新版 evolution.yaml 的单轮 study 事件。
+// 只记录 project 级别真正需要保留的稀疏变化。
+export interface EvolutionStudyEvent {
+  id: string;
+  question: string;
+  kind: QuestionChangeType;
+  resolves: string[];
+  opens: string[];
+  candidates: string[];
+  ts: string;
+}
+
+// 新版 evolution.yaml 真相源。
+export interface EvolutionState {
+  studies: EvolutionStudyEvent[];
+  boundaries: EvolutionBoundary[];
+}
+
+// 兼容旧代码里的类型命名。
+// 迁移完成前，runtime 会逐步从旧语义切到新版 EvolutionState。
+export type EvolutionTrail = EvolutionState;
+export type QuestionDelta = LegacyQuestionDelta;
 
 // 已正式登记的 artifact 条目。
 // 这些条目通常写入 artifacts/index.yaml，表示已经被提升为可管理、可复用证据。
@@ -270,7 +304,8 @@ export interface StudyRecord {
   // 当前 study 的核心假设。
   hypothesis: string;
 
-  // 这轮 study 试图压缩哪些 project-level boundaries。
+  // 可选：这轮 study 主要关联哪些当前 project-level boundary。
+  // 它不再是强制治理字段，只是帮助人和 Agent 理解 study scope。
   target_boundaries?: string[];
 
   // study 当前状态。
@@ -363,17 +398,19 @@ export interface StatusJson {
     count: number;
     latest: string[];
   };
+  memory: {
+    recent: string[];
+  };
   boundaries: {
     total: number;
     open: number;
-    narrowed: number;
     resolved: number;
-    dissolved: number;
     active: string[];
   };
   question_state: {
-    last_change_type: QuestionChangeType | null;
-    open_boundaries: string[];
+    last_kind: QuestionChangeType | null;
+    next_candidates: string[];
+    open_boundary_ids: string[];
   };
 }
 
@@ -432,7 +469,6 @@ export interface ValidationResult {
   issues: ValidationIssue[];
   checked: {
     contract: boolean;
-    boundaries: boolean;
     evolution: boolean;
     artifactIndex: boolean;
     layerPolicy: boolean;

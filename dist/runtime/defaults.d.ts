@@ -1,6 +1,6 @@
-import type { ArtifactCandidateManifest, ArtifactIndex, BoundaryState, EvolutionTrail, LayerPolicy, ResearchContract } from '../types.js';
+import type { ArtifactCandidateManifest, ArtifactIndex, BoundaryState, EvolutionState, LayerPolicy, ResearchContract } from '../types.js';
 export declare function createDefaultResearchContract(): ResearchContract;
-export declare function createDefaultEvolutionTrail(): EvolutionTrail;
+export declare function createDefaultEvolutionTrail(): EvolutionState;
 export declare function createDefaultBoundaryState(): BoundaryState;
 export declare function createDefaultArtifactIndex(): ArtifactIndex;
 export declare function createDefaultArtifactCandidateManifest(): ArtifactCandidateManifest;
