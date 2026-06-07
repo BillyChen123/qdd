@@ -8,40 +8,30 @@ const SKILL_FILE_NAME = 'SKILL.md';
 const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}/`;
 const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
 const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
-const CONTROLLED_DOMAINS = ['singlecell', 'spatial', 'bulk', 'general'];
-const CONTROLLED_STAGES = ['preprocess', 'integration', 'clustering', 'annotation', 'acquisition', 'de', 'visualization', 'other'];
+const CONTROLLED_DOMAINS = ['singlecell', 'spatial', 'public-data', 'bulk', 'general'];
+const CONTROLLED_STAGES = [
+    'preprocess',
+    'integration',
+    'clustering',
+    'acquisition',
+    'downstream',
+];
 const CONTROLLED_TAGS = [
-    'scanpy',
-    'anndata',
-    'h5ad',
-    'public-data',
-    'dataset-search',
-    'dataset-download',
+    'scrna',
+    'scatac',
     'cellxgene',
-    'citation',
-    'title-match',
-    'raw-counts',
     'qc',
-    'normalization',
-    'peaks',
-    'peak-matrix',
-    'multiome',
-    'tfidf',
-    'lsi',
-    'multi-sample',
-    'batch-correction',
-    'batch-diagnosis',
-    'neighbors',
-    'leiden',
-    'umap',
+    'batch',
     'markers',
-    'marker-based',
-    'gene-activity',
-    'cell-type',
-    'cell-state',
-    'differential-expression',
-    'differential-accessibility',
-    'condition-comparison',
+    'de',
+    'group-stats',
+    'enrichment',
+    'module-score',
+    'trajectory',
+    'neighborhood',
+    'niche',
+    'structure',
+    'communication',
 ];
 // skill id 在 runtime 内统一用 category/name 形式。
 // 这里顺手清理多余斜杠，避免 task frontmatter 里出现路径风格不一致的问题。
@@ -268,7 +258,7 @@ export async function suggestProblemSkills(projectRoot, query) {
             tags: normalizedTags,
         },
         candidates: ranked,
-        low_confidence: ranked.length === 0 || (ranked[0]?.score ?? 0) === 0,
+        low_confidence: ranked.length === 0 || (normalizedTags.length > 0 && (ranked[0]?.score ?? 0) === 0),
     };
 }
 // 解析某个 task 请求的 skills：

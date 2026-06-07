@@ -1,5 +1,5 @@
 entry_script: scripts/scatac_annotation_geneactivity.py
-python_env: CellFM_torch
+python_env: qdd-skill-core
 summary: Rank cluster-level ATAC features and convert them into auditable labels from gene-linked markers, marker peaks, or trusted paired labels.
 methods:
   marker_file:

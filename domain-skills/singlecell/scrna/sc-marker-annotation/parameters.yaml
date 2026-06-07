@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_marker_annotation.py
-python_env: CellFM_torch
+python_env: qdd-skill-core
 summary: Compute cluster markers and perform lightweight marker-based annotation using a user-supplied marker table.
 methods:
   rank_genes_groups:

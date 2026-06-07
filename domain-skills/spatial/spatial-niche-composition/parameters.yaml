@@ -1,0 +1,35 @@
+entry_script: scripts/spatial_niche_composition.py
+python_env: qdd-skill-core
+summary: Compare spatial niche or region label composition against matched background composition.
+methods:
+  composition:
+    description: Compute label fractions within each niche and matched background.
+  enrichment:
+    description: Compute relative enrichment and log2 enrichment for labels within each niche.
+defaults:
+  background_scope: same-group
+  pseudocount: 1e-9
+cli:
+  required:
+    - --input
+    - --output
+    - --niche-key <obs-column>
+    - --label-key <obs-column>
+  optional:
+    - --niche-values <comma-separated-values>
+    - --label-values <comma-separated-values>
+    - --group-key <obs-column>
+    - --subset-key <obs-column>
+    - --subset-values <comma-separated-values>
+    - --background-scope <same-group|all>
+    - --pseudocount <float>
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/niche_composition.csv
+    - tables/niche_enrichment.csv
+    - tables/niche_summary.csv
+  figures:
+    - figures/niche_composition_barplot.png
+    - figures/niche_enrichment_barplot.png

@@ -1,0 +1,54 @@
+entry_script: scripts/spatial_clustering.py
+python_env: qdd-skill-core
+summary: Build expression, spatial, or combined graphs for spatial AnnData clustering with explicit backend provenance.
+methods:
+  expression:
+    description: Standard Scanpy neighbors -> Leiden -> UMAP workflow using PCA or an existing embedding.
+  spatial:
+    description: Coordinate kNN graph using Squidpy when available and scikit-learn fallback otherwise.
+  combined:
+    description: Weighted average of expression and spatial connectivities before Leiden clustering.
+defaults:
+  graph_source: expression
+  use_rep: auto
+  spatial_obsm_key: auto
+  n_pcs: 50
+  n_neighbors: 15
+  spatial_neighbors: 15
+  spatial_weight: 0.5
+  resolution: 0.5
+  umap_min_dist: 0.3
+  random_state: 0
+  cluster_key: spatial_leiden
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --graph-source <expression|spatial|combined>
+    - --use-rep <auto|X_pca|X_pca_harmony|X_scanorama|...>
+    - --spatial-obsm-key <obsm-key|auto>
+    - --section-key <obs-column>
+    - --n-pcs <int>
+    - --n-neighbors <int>
+    - --spatial-neighbors <int>
+    - --spatial-weight <float>
+    - --resolution <float>
+    - --cluster-key <obs-column>
+    - --umap-min-dist <float>
+    - --random-state <int>
+    - --color-key <obs-column>
+    - --skip-umap
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/cluster_assignments.csv
+    - tables/cluster_counts.csv
+    - tables/section_cluster_counts.csv
+  figures:
+    - figures/umap_by_cluster.png
+    - figures/umap_by_color.png
+    - figures/spatial_by_cluster.png
+    - figures/spatial_by_color.png

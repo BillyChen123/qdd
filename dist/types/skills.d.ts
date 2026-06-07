@@ -2,9 +2,9 @@ export interface LocalSkillEntry {
     id: string;
     path: string;
 }
-export type SkillDomain = 'singlecell' | 'spatial' | 'bulk' | 'general';
-export type SkillStage = 'preprocess' | 'integration' | 'clustering' | 'annotation' | 'acquisition' | 'de' | 'visualization' | 'other';
-export type SkillTag = 'scanpy' | 'anndata' | 'h5ad' | 'public-data' | 'dataset-search' | 'dataset-download' | 'cellxgene' | 'citation' | 'title-match' | 'raw-counts' | 'qc' | 'normalization' | 'peaks' | 'peak-matrix' | 'multiome' | 'tfidf' | 'lsi' | 'multi-sample' | 'batch-correction' | 'batch-diagnosis' | 'neighbors' | 'leiden' | 'umap' | 'markers' | 'marker-based' | 'gene-activity' | 'cell-type' | 'cell-state' | 'differential-expression' | 'differential-accessibility' | 'condition-comparison';
+export type SkillDomain = 'singlecell' | 'spatial' | 'public-data' | 'bulk' | 'general';
+export type SkillStage = 'preprocess' | 'integration' | 'clustering' | 'acquisition' | 'downstream';
+export type SkillTag = 'scrna' | 'scatac' | 'cellxgene' | 'qc' | 'batch' | 'markers' | 'de' | 'group-stats' | 'enrichment' | 'module-score' | 'trajectory' | 'neighborhood' | 'niche' | 'structure' | 'communication';
 export interface ProblemSkillMetadata {
     id: string;
     domain: SkillDomain;

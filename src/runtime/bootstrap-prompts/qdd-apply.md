@@ -106,6 +106,15 @@ Only fall back to general code generation when:
 
 Even in fallback mode, keep the task aligned with the declared problem class and study boundary.
 
+If the task checklist includes plain if-then reaction bullets, execute them as local task guidance:
+
+- run the default path first
+- evaluate the stated diagnostic before trying the correction
+- apply only the stated small correction, such as rerunning a PCA handoff with scaling
+- keep mutually exclusive method choices serial unless the task explicitly says otherwise
+- do not expand one reaction bullet into a broad candidate search
+- if the stated reaction is exhausted and the task is still not judgeable, report that blocker instead of inventing new branches
+
 ---
 
 ## Execution Loop
@@ -132,7 +141,7 @@ When a task has declared local executor skills:
 
 Treat local skills as execution guidance, not optional decoration.
 
-If one of the declared skills is `singlecell/public-data/cellxgene-discover`:
+If one of the declared skills is `public-data/cellxgene-discover`:
 
 1. read `studies/STUDY-XXX/output/public_data_request.yaml`
 2. confirm that the selected target set is explicit

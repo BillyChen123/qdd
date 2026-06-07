@@ -66,16 +66,41 @@ def write_markdown(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def normalize_constraints(payload: dict[str, Any]) -> dict[str, Any]:
+    constraints = payload.get("constraints")
+    if isinstance(constraints, dict):
+        return dict(constraints)
+
+    legacy_query = payload.get("query")
+    if isinstance(legacy_query, dict):
+        return {key: value for key, value in legacy_query.items() if key != "max_results"}
+
+    raise ValueError("public_data_request.yaml must define constraints or legacy query.")
+
+
+def normalize_source_query(payload: dict[str, Any]) -> dict[str, Any]:
+    source_query = payload.get("source_query")
+    if isinstance(source_query, dict):
+        return dict(source_query)
+
+    legacy_query = payload.get("query")
+    if isinstance(legacy_query, dict):
+        max_results = legacy_query.get("max_results")
+        return {"max_results": max_results} if max_results is not None else {}
+
+    return {}
+
+
 def load_request(path: Path) -> dict[str, Any]:
     payload = load_yaml(path)
     if normalize_text(payload.get("source")).lower() != "cellxgene":
         raise ValueError("public_data_request.yaml source must be 'cellxgene'.")
-    if normalize_text(payload.get("modality")).lower() != "scrna":
-        raise ValueError("public_data_request.yaml modality must be 'scrna' for the first slice.")
-    if not isinstance(payload.get("query"), dict):
-        raise ValueError("public_data_request.yaml must define a query object.")
+    modality = normalize_text(payload.get("modality")).lower()
+    if modality not in {"scrna", "spatial"}:
+        raise ValueError("public_data_request.yaml modality must be 'scrna' or 'spatial' for cellxgene_discover.")
     if not isinstance(payload.get("selected", []), list):
         raise ValueError("public_data_request.yaml selected must be a list.")
+    normalize_constraints(payload)
     return payload
 
 
@@ -90,18 +115,18 @@ def optional_import_cellxgene() -> tuple[Any, Any]:
     return cellxgene_census, pd
 
 
-def build_candidate_from_row(row: dict[str, Any], query: dict[str, Any]) -> Candidate:
+def build_candidate_from_row(row: dict[str, Any], constraints: dict[str, Any]) -> Candidate:
     matched_fields: list[str] = []
     score = 0
 
     for field_name in ["organism", "tissue", "disease", "cell_type"]:
-        query_value = normalize_text(query.get(field_name)).lower()
+        query_value = normalize_text(constraints.get(field_name)).lower()
         row_value = normalize_text(row.get(field_name)).lower()
         if query_value and row_value and query_value == row_value:
             matched_fields.append(field_name)
             score += 3
 
-    state_value = normalize_text(query.get("state")).lower()
+    state_value = normalize_text(constraints.get("state")).lower()
     title_value = normalize_text(row.get("dataset_title")).lower()
     citation_value = normalize_text(row.get("citation")).lower()
     collection_value = normalize_text(row.get("collection_name")).lower()
@@ -140,8 +165,9 @@ def build_candidate_from_row(row: dict[str, Any], query: dict[str, Any]) -> Cand
 def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path) -> None:
     cellxgene_census, _ = optional_import_cellxgene()
     request = load_request(request_path)
-    query = request["query"]
-    max_results = args.max_results or int(query.get("max_results") or 5)
+    constraints = normalize_constraints(request)
+    source_query = normalize_source_query(request)
+    max_results = args.max_results or int(source_query.get("max_results") or 5)
     if max_results < 1:
         raise ValueError("--max-results must be >= 1.")
 
@@ -153,10 +179,10 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
     census = cellxgene_census.open_soma()
     try:
         datasets_df = cellxgene_census.get_census_info(census)["datasets"].read().concat().to_pandas()
-        organism = normalize_text(query.get("organism")) or "Homo sapiens"
+        organism = normalize_text(constraints.get("organism")) or "Homo sapiens"
         value_filters: list[str] = []
         for field_name in ["tissue", "disease", "cell_type"]:
-            value = normalize_text(query.get(field_name))
+            value = normalize_text(constraints.get(field_name))
             if value:
                 escaped_value = value.replace("'", "\\'")
                 value_filters.append(f"{field_name} == '{escaped_value}'")
@@ -186,7 +212,7 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
             how="left",
         )
 
-        candidates = [build_candidate_from_row(row, query) for row in merged.to_dict(orient="records")]
+        candidates = [build_candidate_from_row(row, constraints) for row in merged.to_dict(orient="records")]
         candidates.sort(key=lambda item: (-item.score, -item.cell_count, item.dataset_title.lower()))
         candidates = candidates[:max_results]
 
@@ -223,7 +249,8 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
     result_payload = {
         "action": "search",
         "request": str(request_path),
-        "query": query,
+        "constraints": constraints,
+        "source_query": source_query,
         "max_results": max_results,
         "candidate_count": len(candidates),
         "candidates": [
@@ -245,7 +272,7 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
     report_lines = [
         "# cellxgene search report",
         "",
-        "## Query",
+        "## Request",
         "",
         "```yaml",
         yaml.safe_dump(request, sort_keys=False, allow_unicode=True).rstrip(),

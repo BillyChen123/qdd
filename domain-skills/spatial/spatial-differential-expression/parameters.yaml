@@ -1,0 +1,50 @@
+entry_script: scripts/spatial_differential_expression.py
+python_env: qdd-skill-core
+summary: Run spatial differential expression using Scanpy cell-level Wilcoxon or PyDESeq2-backed sample-aware pseudobulk DE when raw counts are available.
+methods:
+  cell-level:
+    description: Run Scanpy rank_genes_groups on observation-level feature values between two groups.
+  pseudobulk:
+    description: Aggregate observations by sample and group, then run PyDESeq2 when the aggregated matrix is a valid raw-count contrast.
+defaults:
+  method: cell-level
+  test: wilcoxon
+  p_threshold: 0.05
+  min_pct: 0
+  pseudocount: 1e-9
+  pseudobulk_agg: sum
+  pseudobulk_normalize: log1p-cpm
+cli:
+  required:
+    - --input
+    - --output
+    - --group-key <obs-column>
+    - --group-a <value>
+    - --group-b <value>
+  optional:
+    - --method <cell-level|pseudobulk>
+    - --sample-key <obs-column>
+    - --features <comma-separated-features>
+    - --feature-file <txt-or-csv>
+    - --subset-key <obs-column>
+    - --subset-values <comma-separated-values>
+    - --test <wilcoxon>
+    - --p-threshold <float>
+    - --min-pct <float>
+    - --pseudocount <float>
+    - --pseudobulk-agg <sum>
+    - --pseudobulk-normalize <log1p-cpm|log1p|none>
+    - --pseudobulk-backend <auto|export-only|pydeseq2>
+    - --use-raw
+    - --layer <layer-name>
+    - --case-insensitive
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/de_results.csv
+    - tables/pseudobulk_counts.csv
+    - tables/pseudobulk_design.csv
+    - tables/pseudobulk_normalized.csv
+  figures:
+    - figures/volcano.png

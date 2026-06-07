@@ -4,11 +4,7 @@ description: Problem-level single-cell graph construction, clustering, and embed
 domain: singlecell
 stage: clustering
 tags:
-  - scanpy
-  - anndata
-  - neighbors
-  - leiden
-  - umap
+  - scrna
 ---
 
 # singlecell/scrna/sc-clustering
@@ -17,7 +13,7 @@ tags:
 
 - script: `scripts/scrna_clustering.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -45,7 +41,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scrna/sc-clustering/scripts/scrna_clustering.py \
   --input outputs/integration/processed.h5ad \
   --output outputs/clustering \

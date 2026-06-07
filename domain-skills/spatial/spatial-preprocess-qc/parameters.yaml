@@ -1,0 +1,57 @@
+entry_script: scripts/spatial_preprocess_qc.py
+python_env: qdd-skill-core
+summary: Inspect spatial AnnData state, coordinates, metadata, and run conservative preprocessing when raw counts are available.
+methods:
+  inspect:
+    description: Audit matrix, coordinate, metadata, and QC state without mutating the matrix.
+  auto:
+    description: Detect whether the selected matrix looks like raw counts and only run count-based preprocessing when justified.
+  force:
+    description: Treat the selected layer or X matrix as counts and rerun requested preprocessing steps.
+defaults:
+  mode: auto
+  counts_layer: auto
+  assay: auto
+  target_sum: 10000
+  run_hvg: false
+  hvg_flavor: seurat
+  n_top_genes: 2000
+  run_pca: false
+  n_pcs: 50
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --mode <inspect|auto|force>
+    - --counts-layer <layer-name|X|auto>
+    - --assay <auto|targeted|genome-wide|feature-activity>
+    - --sample-key <obs-column>
+    - --section-key <obs-column>
+    - --time-key <obs-column>
+    - --condition-key <obs-column>
+    - --batch-key <obs-column>
+    - --spatial-obsm-key <obsm-key|auto>
+    - --x-key <obs-column>
+    - --y-key <obs-column>
+    - --target-sum <float>
+    - --run-hvg
+    - --hvg-flavor <seurat|seurat_v3|cell_ranger>
+    - --n-top-genes <int>
+    - --run-pca
+    - --n-pcs <int>
+    - --skip-normalize
+    - --skip-log1p
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/qc_metrics_obs.csv
+    - tables/qc_metrics_var.csv
+    - tables/matrix_state.csv
+    - tables/coordinate_summary.csv
+    - tables/metadata_summary.csv
+  figures:
+    - figures/qc_histograms.png
+    - figures/spatial_overview.png

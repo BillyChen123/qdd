@@ -1,9 +1,9 @@
 entry_script: scripts/cellxgene_discover.py
-python_env: CellFM_torch
-summary: Search CELLxGENE from a thin structured request and download only the final selected h5ad targets.
+python_env: qdd-skill-core
+summary: Search CELLxGENE from a thin public-data request and download only the final selected h5ad targets.
 actions:
   search:
-    description: Read the structured query from public_data_request.yaml, query CELLxGENE metadata, and write a small candidate table plus reports.
+    description: Read constraints/source_query from public_data_request.yaml, query CELLxGENE metadata, and write a small candidate table plus reports.
   download:
     description: Read the selected dataset IDs from public_data_request.yaml and download the corresponding source h5ad files into artifacts/data.
 defaults:

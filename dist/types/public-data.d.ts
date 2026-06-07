@@ -2,20 +2,29 @@ export interface PublicDataSelectionEntry {
     dataset_id: string;
     alias: string;
 }
-export interface PublicDataQuery {
+export interface PublicDataConstraints {
     organism?: string;
     tissue?: string;
     disease?: string;
     state?: string;
     cell_type?: string | null;
+    assay?: string | null;
+}
+export interface PublicDataSourceQuery {
+    max_results?: number;
+    [key: string]: unknown;
+}
+export interface LegacyPublicDataQuery extends PublicDataConstraints {
     max_results?: number;
 }
 export interface PublicDataRequest {
-    source: 'cellxgene';
-    modality: 'scrna';
+    source: string;
+    modality: 'scrna' | 'spatial' | 'scatac' | 'bulk' | 'other';
     goal: string;
-    query: PublicDataQuery;
+    constraints: PublicDataConstraints;
+    source_query?: PublicDataSourceQuery;
     selected: PublicDataSelectionEntry[];
     selection_note?: string;
+    query?: LegacyPublicDataQuery;
 }
 //# sourceMappingURL=public-data.d.ts.map

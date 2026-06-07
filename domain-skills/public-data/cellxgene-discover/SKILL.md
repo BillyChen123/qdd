@@ -1,28 +1,24 @@
 ---
-name: singlecell/public-data/cellxgene-discover
-description: Problem-level external public dataset search and download skill for CELLxGENE. Use when a task must search CELLxGENE from a structured request, show a small candidate set, and download the final selected h5ad targets.
-domain: singlecell
+name: public-data/cellxgene-discover
+description: Source-specific public dataset search and download skill for CELLxGENE. Use when a task must search or download selected CELLxGENE datasets from a thin public_data_request handoff.
+domain: public-data
 stage: acquisition
 tags:
-  - public-data
-  - dataset-search
-  - dataset-download
   - cellxgene
-  - citation
-  - title-match
 ---
 
-# singlecell/public-data/cellxgene-discover
+# public-data/cellxgene-discover
 
 ## 入口
 
 - script: `scripts/cellxgene_discover.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
-- 研究规划已经确认需要外部 public scRNA 数据
+- 研究规划已经确认需要外部 public dataset
+- source 已明确为 `cellxgene`
 - 输入已经被整理成 `public_data_request.yaml`
 - 需要执行两类动作之一：
   - `search`
@@ -34,19 +30,22 @@ tags:
 
 - `studies/STUDY-XXX/output/public_data_request.yaml`
 
-最小结构：
+推荐最小结构：
 
 ```yaml
 source: cellxgene
 modality: scrna
 goal: validation
 
-query:
+constraints:
   organism: Homo sapiens
   tissue: ovary
   disease: ovarian cancer
   state: TRM
   cell_type:
+  assay:
+
+source_query:
   max_results: 5
 
 selected:
@@ -56,11 +55,31 @@ selected:
 selection_note: matched ovary cancer validation cohort
 ```
 
+兼容迁移期旧格式：
+
+```yaml
+query:
+  organism: Homo sapiens
+  tissue: ovary
+  disease: ovarian cancer
+  state: TRM
+  cell_type:
+  max_results: 5
+```
+
+但新规划应优先写 `constraints + source_query`。
+
+## 模态说明
+
+- 当前允许的研究意图：`scrna`、`spatial`
+- 这个 skill 是 source skill，不是单细胞专属 skill
+- 它不负责 spatial image、segmentation、morphology 等额外对象；它只处理 CELLxGENE 可交付的结构化数据对象
+
 ## 支持动作
 
 ### 1. search
 
-读取 `query`，调用 CELLxGENE 元数据接口，输出一个小候选表。
+读取 `constraints` 与 `source_query`，调用 CELLxGENE 元数据接口，输出一个小候选表。
 
 第一版至少返回这些字段：
 
@@ -99,14 +118,14 @@ selection_note: matched ovary cancer validation cohort
 - `--request <public_data_request.yaml>`
 - `--output <study-output-dir>`
 - `--artifact-data-dir <artifacts/data>`
-- `--max-results <int>`：可覆盖 request 里的 `query.max_results`
-- `--primary-only`：默认只保留 primary data
+- `--max-results <int>`：可覆盖 request 里的 `source_query.max_results`
+- `--allow-non-primary`：默认只保留 primary data；加这个开关才放宽
 
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
-  domain-skills/singlecell/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
+conda run -n qdd-skill-core python \
+  domain-skills/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
   --action search \
   --request studies/STUDY-001/output/public_data_request.yaml \
   --output studies/STUDY-001/output \
@@ -114,8 +133,8 @@ conda run -n CellFM_torch python \
 ```
 
 ```bash
-conda run -n CellFM_torch python \
-  domain-skills/singlecell/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
+conda run -n qdd-skill-core python \
+  domain-skills/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
   --action download \
   --request studies/STUDY-001/output/public_data_request.yaml \
   --output studies/STUDY-001/output \
@@ -138,7 +157,7 @@ conda run -n CellFM_torch python \
 
 ## 注意事项
 
-- 这个 skill 不负责决定“是否需要 public data”，那是 `brain/singlecell/public-data-planning` 的职责
+- 这个 skill 不负责决定“是否需要 public data”，那是 `brain/public-data/public-data-planning` 的职责
 - 这个 skill 不负责自由文本研究规划
 - `download` 只消费 `selected`，不重新做 broad search
 - 第一版相关性判断主要依赖结构化字段、标题、citation、collection 信息，不要求必须有论文摘要

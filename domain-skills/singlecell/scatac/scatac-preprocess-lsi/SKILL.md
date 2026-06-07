@@ -4,15 +4,8 @@ description: Problem-level scATAC preprocessing, mixed-feature repair, and TF-ID
 domain: singlecell
 stage: preprocess
 tags:
-  - scanpy
-  - anndata
-  - h5ad
+  - scatac
   - qc
-  - peaks
-  - peak-matrix
-  - multiome
-  - tfidf
-  - lsi
 ---
 
 # singlecell/scatac/scatac-preprocess-lsi
@@ -21,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_preprocess_lsi.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -52,7 +45,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scatac/scatac-preprocess-lsi/scripts/scatac_preprocess_lsi.py \
   --input data/input_atac.h5ad \
   --output outputs/scatac_preprocess \

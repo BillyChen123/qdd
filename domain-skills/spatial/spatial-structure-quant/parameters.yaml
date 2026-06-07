@@ -1,0 +1,45 @@
+entry_script: scripts/spatial_structure_quant.py
+python_env: qdd-skill-core
+summary: Identify and count section-aware coordinate-connected structures from existing spatial annotations, preferring Squidpy graph construction when available.
+methods:
+  knn:
+    description: Build a graph by connecting selected observations to selected nearest neighbors.
+  radius:
+    description: Build a graph by connecting selected observations within a coordinate radius.
+defaults:
+  backend: auto
+  graph_method: knn
+  n_neighbors: 8
+  min_size: 1
+  min_seed_count: 1
+  min_required_count: 1
+cli:
+  required:
+    - --input
+    - --output
+    - --label-key <obs-column>
+    - --component-labels <comma-separated-labels>
+  optional:
+    - --seed-labels <comma-separated-labels>
+    - --required-labels <comma-separated-labels>
+    - --group-key <obs-column>
+    - --section-key <obs-column>
+    - --spatial-obsm-key <obsm-key|auto>
+    - --x-key <obs-column>
+    - --y-key <obs-column>
+    - --backend <auto|squidpy|scipy-graph>
+    - --graph-method <knn|radius>
+    - --n-neighbors <int>
+    - --radius <float>
+    - --min-size <int>
+    - --min-seed-count <int>
+    - --min-required-count <int>
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/component_summary.csv
+    - tables/component_assignments.csv
+    - tables/group_summary.csv
+  figures:
+    - figures/spatial_components.png

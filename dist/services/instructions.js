@@ -213,7 +213,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'study-brain');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...studyTaskSkills.matchedIds]);
-        const hasPublicDataTask = studyTaskSkills.matchedIds.includes('singlecell/public-data/cellxgene-discover');
+        const hasPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => skillId.startsWith('public-data/'));
         const readPaths = [
             ...listManagedFileReferencePathsForTarget('study'),
             PATHS.contract,
@@ -325,7 +325,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'executor');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...taskSkillSet.matchedIds]);
-        const hasPublicDataTask = taskSkillSet.matchedIds.includes('singlecell/public-data/cellxgene-discover');
+        const hasPublicDataTask = taskSkillSet.matchedIds.some((skillId) => skillId.startsWith('public-data/'));
         const rules = [
             'Do not redefine the study question.',
             'Keep the task minimal and evidence-producing.',

@@ -144,7 +144,7 @@ This object is a valid candidate for reuse in later integration, clustering, or 
 If preprocess work is needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage preprocess --tag h5ad --tag qc --json
+qdd skills suggest --domain singlecell --stage preprocess --tag scrna --tag qc --json
 ```
 
 Expected executor skill candidate:
@@ -166,8 +166,10 @@ Bad:
 ### Method Note
 
 - do not treat QC as blindly applying default thresholds; inspect the current object first
+- if proposed QC filters remove an unusually large or biologically imbalanced fraction of cells, relax or justify the thresholds before carrying the object forward
 - if downstream relies on PCA-based neighborhoods, check whether the first-pass PCA still carries obvious technical signal
-- if technical signal remains, return to preprocess and adjust the pipeline; do not assume `scale` or `regress_out` as default steps for every object
+- if technical signal remains, prefer one small task-local reaction such as rerunning the PCA handoff with scaling before broadening into unrelated preprocessing, integration, or annotation changes
+- keep these reactions lightweight: planning should write only the few if-then checks that are needed for the current task, not a full rollback contract
 
 ---
 
@@ -222,7 +224,7 @@ This is still part of the canonical downstream base.
 If integration work is needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage integration --tag multi-sample --tag batch-diagnosis --json
+qdd skills suggest --domain singlecell --stage integration --tag scrna --tag batch --json
 ```
 
 Expected executor skill candidate:
@@ -296,7 +298,7 @@ This is the preferred downstream starting object.
 If clustering work is needed:
 
 ```bash
-qdd skills suggest --domain singlecell --stage clustering --tag leiden --tag umap --json
+qdd skills suggest --domain singlecell --stage clustering --tag scrna --json
 ```
 
 Expected executor skill candidate:
@@ -306,7 +308,7 @@ Expected executor skill candidate:
 If annotation work is needed:
 
 ```bash
-qdd skills suggest --domain singlecell --stage annotation --tag markers --tag cell-type --json
+qdd skills suggest --domain singlecell --stage clustering --tag scrna --tag markers --json
 ```
 
 Expected executor skill candidate:
@@ -319,11 +321,13 @@ Good:
 
 - reuse existing clusters, but re-annotate because the prior annotation is too coarse for the current study
 - rerun clustering when the old clustering was built for a different biological question
+- revise annotation granularity or leave a cluster unresolved when marker evidence is weak or conflicting
 
 Bad:
 
 - trust old labels without checking whether they serve the current study
 - move into downstream comparison before clusters or annotations are interpretable
+- force a confident label when the marker evidence only supports a broader or unresolved category
 
 ---
 
@@ -354,16 +358,94 @@ Downstream planning is allowed only after a usable canonical h5ad exists.
 - If the canonical h5ad is ready:
   - downstream planning may proceed
 
+### Downstream Families
+
+Use these as planning families, not as benchmark-specific categories:
+
+- differential expression:
+  - condition or cluster contrasts
+  - cell-type-specific DE
+  - sample-aware pseudobulk when biological replicates exist
+  - ranked output for pathway enrichment
+- group statistics:
+  - detection rate
+  - fold change without inferential claims
+  - grouped abundance
+  - descriptive summaries by sample, condition, cluster, or annotation
+- pathway or gene-set analysis:
+  - ORA
+  - GSEA
+  - module or signature scoring
+- trajectory:
+  - pseudotime
+  - graph-level progression
+  - trajectory-associated genes
+- cell communication:
+  - ligand-receptor scoring
+  - sender-receiver summaries
+  - condition-aware interaction comparison
+
 ### Reusable Output
 
-Downstream executor skills are not defined yet in this slice.
+A downstream task should preserve:
 
-For now, downstream planning should leave an explicit placeholder describing:
+- the canonical input `h5ad` path and annotation keys used
+- contrast, grouping, and sample keys
+- result tables
+- method notes sufficient to distinguish descriptive summaries from statistical inference
 
-- target question
-- required biological grouping
-- expected outputs
-- missing downstream skill gap, if any
+### QDD Skill Hook
+
+For differential expression:
+
+```bash
+qdd skills suggest --domain singlecell --stage downstream --tag scrna --tag de --json
+```
+
+Expected executor skill candidate:
+
+- `singlecell/scrna/sc-differential-expression`
+
+For descriptive group statistics:
+
+```bash
+qdd skills suggest --domain singlecell --stage downstream --tag group-stats --json
+```
+
+Expected executor skill candidate:
+
+- `singlecell/scrna/sc-group-stats`
+
+For pathway or gene-set analysis:
+
+```bash
+qdd skills suggest --domain singlecell --stage downstream --tag scrna --tag enrichment --json
+```
+
+Expected executor skill candidates:
+
+- `singlecell/scrna/sc-pathway-enrichment`
+- `singlecell/scrna/sc-module-score`
+
+For trajectory:
+
+```bash
+qdd skills suggest --domain singlecell --stage downstream --tag trajectory --json
+```
+
+Expected executor skill candidate:
+
+- `singlecell/scrna/sc-trajectory`
+
+For cell communication:
+
+```bash
+qdd skills suggest --domain singlecell --stage downstream --tag communication --json
+```
+
+Expected executor skill candidate:
+
+- `singlecell/scrna/sc-cell-communication`
 
 ---
 

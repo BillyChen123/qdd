@@ -2,13 +2,10 @@
 name: singlecell/scrna/sc-marker-annotation
 description: Problem-level marker-based annotation skill for single-cell clusters. Use when a task must turn marker results into defensible cell-type or cell-state labels with explicit evidence.
 domain: singlecell
-stage: annotation
+stage: clustering
 tags:
-  - scanpy
+  - scrna
   - markers
-  - marker-based
-  - cell-type
-  - cell-state
 ---
 
 # singlecell/scrna/sc-marker-annotation
@@ -17,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_marker_annotation.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -53,7 +50,7 @@ Myeloid\tLYZ,S100A8,CTSS
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scrna/sc-marker-annotation/scripts/scrna_marker_annotation.py \
   --input outputs/clustering/processed.h5ad \
   --output outputs/annotation \

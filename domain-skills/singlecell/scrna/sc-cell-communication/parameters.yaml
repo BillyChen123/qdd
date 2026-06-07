@@ -1,0 +1,39 @@
+entry_script: scripts/scrna_cell_communication.py
+python_env: qdd-skill-core
+summary: Score sender-receiver ligand-receptor interactions from an annotated AnnData object and a user-provided ligand-receptor table.
+methods:
+  geometric_mean:
+    description: Score each interaction as the geometric mean of sender ligand and receiver receptor expression.
+  product:
+    description: Score each interaction as the product of sender ligand and receiver receptor expression.
+  min:
+    description: Score each interaction as the smaller of sender ligand and receiver receptor expression.
+defaults:
+  score_method: geometric_mean
+  min_detect_fraction: 0.05
+  min_cells_per_group: 10
+  top_n: 25
+cli:
+  required:
+    - --input
+    - --output
+    - --group-key
+    - --lr-file
+  optional:
+    - --sample-key <obs-column>
+    - --score-method <geometric_mean|product|min>
+    - --use-raw
+    - --layer <layer-name>
+    - --min-detect-fraction <float>
+    - --min-cells-per-group <int>
+    - --top-n <int>
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/group_abundance.csv
+    - tables/lr_panel_coverage.csv
+    - tables/interaction_scores.csv
+    - tables/sender_receiver_summary.csv
+  figures:
+    - figures/sender_receiver_heatmap.png

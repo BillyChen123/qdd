@@ -1,0 +1,52 @@
+entry_script: scripts/spatial_marker_annotation.py
+python_env: qdd-skill-core
+summary: Define reusable spatial annotation or population labels from marker sets, existing labels, or cluster marker evidence.
+methods:
+  inspect:
+    description: Audit marker coverage and existing annotation columns without changing labels.
+  auto:
+    description: Assign labels using existing, observation-level, or cluster-level evidence.
+  assisted:
+    description: Produce candidate labels and review artifacts for human adjudication.
+defaults:
+  mode: auto
+  assignment_unit: auto
+  annotation_key: spatial_annotation
+  unknown_label: unknown
+  min_score: 0
+  min_margin: 0
+  n_genes: 25
+  rank_method: wilcoxon
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --mode <inspect|auto|assisted>
+    - --assignment-unit <auto|existing|obs|cluster>
+    - --marker-file <tsv-or-csv>
+    - --existing-label-key <obs-column>
+    - --cluster-key <obs-column>
+    - --annotation-key <obs-column>
+    - --unknown-label <label>
+    - --min-score <float>
+    - --min-margin <float>
+    - --n-genes <int>
+    - --rank-method <wilcoxon|t-test|logreg>
+    - --use-raw
+    - --layer <layer-name>
+    - --case-insensitive
+    - --embedding-key <obsm-key>
+    - --spatial-obsm-key <obsm-key|auto>
+output_contract:
+  main_h5ad: annotated.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/panel_coverage.csv
+    - tables/observation_annotations.csv
+    - tables/cluster_annotation_summary.csv
+    - tables/label_score_summary.csv
+  figures:
+    - figures/annotation_on_embedding.png
+    - figures/annotation_on_spatial.png
