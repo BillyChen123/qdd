@@ -163,6 +163,12 @@ Bad:
 - rerun normalize/log1p without checking whether the object was already processed
 - carry an object forward when gene symbols or required study metadata are missing
 
+### Method Note
+
+- do not treat QC as blindly applying default thresholds; inspect the current object first
+- if downstream relies on PCA-based neighborhoods, check whether the first-pass PCA still carries obvious technical signal
+- if technical signal remains, return to preprocess and adjust the pipeline; do not assume `scale` or `regress_out` as default steps for every object
+
 ---
 
 ## Stage 2: Integration

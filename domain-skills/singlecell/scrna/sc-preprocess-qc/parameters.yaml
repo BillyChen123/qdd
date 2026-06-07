@@ -34,6 +34,7 @@ cli:
     - --hvg-flavor <seurat|seurat_v3|cell_ranger>
     - --n-top-genes <int>
     - --batch-key <obs-column>
+    - --run-scale
     - --scale-max-value <float>
     - --n-pcs <int>
     - --skip-filter

@@ -229,6 +229,17 @@ If the study is not yet judgeable and the next planned task is still clear, keep
 
 If the study became judgeable, blocked, or truly needs study-level replanning, stop execution and move to the right next workflow.
 
+### 6.5 Final Output Alignment
+
+Before finalizing a benchmark-facing or otherwise structured answer, distinguish:
+
+- what the analysis most strongly suggests
+- what the current task explicitly asks you to return
+
+Do not suppress valid exploratory findings just to fit a rigid return surface.
+
+But when the task is a structured benchmark or fixed-answer evaluation, make sure the final returned answer is aligned with the required output format, quantity, or interpretation target.
+
 ---
 
 ## Mode Handling
