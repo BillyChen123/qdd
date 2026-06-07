@@ -42,6 +42,7 @@ tags:
 - `--hvg-flavor`
 - `--n-top-genes`
 - `--batch-key`
+- `--run-scale`
 - `--scale-max-value`
 - `--n-pcs`
 
@@ -72,5 +73,6 @@ conda run -n CellFM_torch python \
 - 不看对象状态就重复预处理是错误的
 - 如果对象已经 log-normalized，`auto` 模式通常不会重跑 counts-based preprocessing
 - 如果执行了 `log1p`，脚本会在 HVG 截断和 scaling 之前保留 `.raw`，方便后续 marker 分析
-- 如果没有详细说明，默认是不进行`scale`的
+- 默认不进行 `scale`，只有在后续 PCA 检查提示存在明显 technical signal 时，才考虑回到 preprocess 再补这一步
+- `regress_out` 不是默认步骤；只有在具体对象和分析目标都明确支持时才考虑
 - 这个脚本默认不做 neighbors / clustering；它的职责是把对象预处理到可下游分析的状态

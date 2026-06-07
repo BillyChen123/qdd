@@ -40,13 +40,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hvg-flavor", choices=["seurat", "seurat_v3", "cell_ranger"], default="seurat")
     parser.add_argument("--n-top-genes", type=int, default=2000)
     parser.add_argument("--batch-key", default=None, help="Optional obs column for batch-aware HVG.")
+    parser.add_argument("--run-scale", action="store_true", help="Apply sc.pp.scale before PCA. Off by default.")
     parser.add_argument("--scale-max-value", type=float, default=10.0)
     parser.add_argument("--n-pcs", type=int, default=50)
     parser.add_argument("--skip-filter", action="store_true")
     parser.add_argument("--skip-normalize", action="store_true")
     parser.add_argument("--skip-log1p", action="store_true")
     parser.add_argument("--skip-hvg", action="store_true")
-    parser.add_argument("--skip-scale", action="store_true")
+    parser.add_argument("--skip-scale", action="store_true", help="Compatibility flag. Scaling is off by default unless --run-scale is set.")
     parser.add_argument("--skip-pca", action="store_true")
     return parser.parse_args()
 
@@ -230,7 +231,7 @@ def main() -> None:
                 working = working[:, working.var["highly_variable"]].copy()
             operations.append(f"highly_variable_genes(flavor={args.hvg_flavor}, n_top_genes={args.n_top_genes})")
 
-        if not args.skip_scale:
+        if args.run_scale and not args.skip_scale:
             sc.pp.scale(working, max_value=args.scale_max_value)
             operations.append(f"scale(max_value={args.scale_max_value})")
 
