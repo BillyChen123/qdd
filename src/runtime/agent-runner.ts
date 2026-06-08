@@ -182,20 +182,29 @@ interface ClaudeSettings {
   ANTHROPIC_MODEL?: string;
 }
 
+interface ClaudeSettingsFile extends ClaudeSettings {
+  env?: ClaudeSettings;
+}
+
 let _claudeSettingsCache: ClaudeSettings | null = null;
+
+export function parseClaudeSettings(raw: string): ClaudeSettings {
+  const parsed = JSON.parse(raw) as ClaudeSettingsFile;
+  const env = parsed.env ?? {};
+  return {
+    ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_AUTH_TOKEN,
+    ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY ?? env.ANTHROPIC_API_KEY,
+    ANTHROPIC_BASE_URL: parsed.ANTHROPIC_BASE_URL ?? env.ANTHROPIC_BASE_URL,
+    ANTHROPIC_MODEL: parsed.ANTHROPIC_MODEL ?? env.ANTHROPIC_MODEL,
+  };
+}
 
 export function getClaudeSettings(): ClaudeSettings {
   if (_claudeSettingsCache) return _claudeSettingsCache;
   try {
     const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
     const raw = fsSync.readFileSync(settingsPath, 'utf-8');
-    const parsed = JSON.parse(raw) as ClaudeSettings;
-    _claudeSettingsCache = {
-      ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN,
-      ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY,
-      ANTHROPIC_BASE_URL: parsed.ANTHROPIC_BASE_URL,
-      ANTHROPIC_MODEL: parsed.ANTHROPIC_MODEL,
-    };
+    _claudeSettingsCache = parseClaudeSettings(raw);
   } catch {
     _claudeSettingsCache = {};
   }

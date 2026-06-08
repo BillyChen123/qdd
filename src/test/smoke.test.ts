@@ -5,6 +5,7 @@ import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
+import { parseClaudeSettings } from '../runtime/agent-runner.js';
 import { checkTermination, computeInitialPhase, runAuto } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
@@ -187,6 +188,20 @@ test('auto orchestrator termination conditions are explicit', () => {
     })).shouldTerminate,
     true
   );
+});
+
+test('Claude settings parser reads Claude Code env block', () => {
+  const settings = parseClaudeSettings(JSON.stringify({
+    env: {
+      ANTHROPIC_AUTH_TOKEN: 'test-token',
+      ANTHROPIC_BASE_URL: 'https://example.test/anthropic',
+      ANTHROPIC_MODEL: 'test-model',
+    },
+  }));
+
+  assert.equal(settings.ANTHROPIC_AUTH_TOKEN, 'test-token');
+  assert.equal(settings.ANTHROPIC_BASE_URL, 'https://example.test/anthropic');
+  assert.equal(settings.ANTHROPIC_MODEL, 'test-model');
 });
 
 test('qdd auto dry-run sequences two cycles without mutating project state', async () => {

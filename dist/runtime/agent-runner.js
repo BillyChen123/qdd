@@ -137,19 +137,23 @@ async function executeToolCall(cwd, tool) {
     }
 }
 let _claudeSettingsCache = null;
+export function parseClaudeSettings(raw) {
+    const parsed = JSON.parse(raw);
+    const env = parsed.env ?? {};
+    return {
+        ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_AUTH_TOKEN,
+        ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY ?? env.ANTHROPIC_API_KEY,
+        ANTHROPIC_BASE_URL: parsed.ANTHROPIC_BASE_URL ?? env.ANTHROPIC_BASE_URL,
+        ANTHROPIC_MODEL: parsed.ANTHROPIC_MODEL ?? env.ANTHROPIC_MODEL,
+    };
+}
 export function getClaudeSettings() {
     if (_claudeSettingsCache)
         return _claudeSettingsCache;
     try {
         const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
         const raw = fsSync.readFileSync(settingsPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        _claudeSettingsCache = {
-            ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN,
-            ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY,
-            ANTHROPIC_BASE_URL: parsed.ANTHROPIC_BASE_URL,
-            ANTHROPIC_MODEL: parsed.ANTHROPIC_MODEL,
-        };
+        _claudeSettingsCache = parseClaudeSettings(raw);
     }
     catch {
         _claudeSettingsCache = {};

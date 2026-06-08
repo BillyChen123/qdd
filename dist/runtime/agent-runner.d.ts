@@ -21,6 +21,7 @@ interface ClaudeSettings {
     ANTHROPIC_BASE_URL?: string;
     ANTHROPIC_MODEL?: string;
 }
+export declare function parseClaudeSettings(raw: string): ClaudeSettings;
 export declare function getClaudeSettings(): ClaudeSettings;
 export declare function resolveClaudeApiKey(): string | undefined;
 export declare function hasClaudeCredentials(): boolean;
