@@ -21,11 +21,15 @@ interface ClaudeSettings {
     ANTHROPIC_BASE_URL?: string;
     ANTHROPIC_MODEL?: string;
 }
+interface ModelResolutionSources {
+    env?: NodeJS.ProcessEnv;
+    settings?: ClaudeSettings;
+}
 export declare function parseClaudeSettings(raw: string): ClaudeSettings;
 export declare function getClaudeSettings(): ClaudeSettings;
 export declare function resolveClaudeApiKey(): string | undefined;
 export declare function hasClaudeCredentials(): boolean;
-export declare function resolveClaudeModel(cliModel?: string): string;
+export declare function resolveClaudeModel(cliModel?: string, sources?: ModelResolutionSources): string;
 export declare function runAgent(options: AgentRunnerOptions): Promise<AgentRunResult>;
 export {};
 //# sourceMappingURL=agent-runner.d.ts.map

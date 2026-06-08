@@ -368,6 +368,12 @@ function formatSummary(iterations: number, studiesCompleted: number, terminalRea
   return `Auto mode completed: ${iterations} iterations, ${studiesCompleted} studies closed. Stop reason: ${terminalReason}`;
 }
 
+function formatLogExcerpt(message: string, maxLength = 1000): string {
+  const compact = message.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength)}...`;
+}
+
 export async function runAuto(
   projectRoot: string,
   options: AutoOptions
@@ -470,6 +476,9 @@ export async function runAuto(
     log(`  Turns: ${result.turns}, Tool calls: ${result.toolCalls}`);
     log(`  Status: ${result.status}`);
     if (result.failureReason) log(`  Failure: ${result.failureReason}`);
+    if (!result.terminatedNormally && result.finalMessage.trim()) {
+      log(`  Final message: ${formatLogExcerpt(result.finalMessage)}`);
+    }
     log('');
 
     if (!result.terminatedNormally) {

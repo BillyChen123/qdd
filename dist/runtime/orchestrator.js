@@ -265,6 +265,12 @@ async function ensureProposeTargetExists(projectRoot, current, log) {
 function formatSummary(iterations, studiesCompleted, terminalReason) {
     return `Auto mode completed: ${iterations} iterations, ${studiesCompleted} studies closed. Stop reason: ${terminalReason}`;
 }
+function formatLogExcerpt(message, maxLength = 1000) {
+    const compact = message.replace(/\s+/g, ' ').trim();
+    if (compact.length <= maxLength)
+        return compact;
+    return `${compact.slice(0, maxLength)}...`;
+}
 export async function runAuto(projectRoot, options) {
     const phases = [];
     const log = options.logger ?? console.log;
@@ -353,6 +359,9 @@ export async function runAuto(projectRoot, options) {
         log(`  Status: ${result.status}`);
         if (result.failureReason)
             log(`  Failure: ${result.failureReason}`);
+        if (!result.terminatedNormally && result.finalMessage.trim()) {
+            log(`  Final message: ${formatLogExcerpt(result.finalMessage)}`);
+        }
         log('');
         if (!result.terminatedNormally) {
             terminalCode = 'agent_failed';

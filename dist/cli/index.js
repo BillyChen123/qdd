@@ -266,7 +266,7 @@ program
 program
     .command('auto')
     .description('Start autonomous QDD research loop using the Anthropic SDK to orchestrate agent sessions')
-    .option('--model <model>', 'Claude model to use', 'claude-sonnet-4-6')
+    .option('--model <model>', 'Anthropic-compatible model to use')
     .option('--max-iterations <n>', 'Maximum loop iterations', '20')
     .option('--max-turns <n>', 'Maximum turns per agent session', '50')
     .option('--dry-run', 'Show what would happen without executing')

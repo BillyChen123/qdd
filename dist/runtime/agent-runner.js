@@ -43,6 +43,8 @@ const WRITE_TOOL = {
     },
 };
 const TOOLS = [BASH_TOOL, READ_TOOL, WRITE_TOOL];
+const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
+const MAX_COMPLETION_MARKER_RETRIES = 2;
 function normalizeRoot(root) {
     return path.resolve(root);
 }
@@ -136,6 +138,9 @@ async function executeToolCall(cwd, tool) {
         return `Error executing tool '${tool.name}': ${error.message}`;
     }
 }
+function hasCompletionMarker(text) {
+    return text.toUpperCase().includes(COMPLETION_MARKER);
+}
 let _claudeSettingsCache = null;
 export function parseClaudeSettings(raw) {
     const parsed = JSON.parse(raw);
@@ -170,9 +175,10 @@ export function resolveClaudeApiKey() {
 export function hasClaudeCredentials() {
     return Boolean(resolveClaudeApiKey());
 }
-export function resolveClaudeModel(cliModel) {
-    const settings = getClaudeSettings();
-    return cliModel ?? process.env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+export function resolveClaudeModel(cliModel, sources = {}) {
+    const settings = sources.settings ?? getClaudeSettings();
+    const env = sources.env ?? process.env;
+    return cliModel ?? env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
 }
 export async function runAgent(options) {
     const apiKey = resolveClaudeApiKey();
@@ -195,7 +201,7 @@ export async function runAgent(options) {
     const messages = [
         {
             role: 'user',
-            content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. When you have completed all the work described in the instructions, respond with a summary of what you accomplished and the text "WORKFLOW_COMPLETE".`,
+            content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. If the workflow step is not complete, continue using tools. When you have completed all the work described in the instructions, respond with a concise summary and end your final response with a standalone line containing exactly "${COMPLETION_MARKER}".`,
         },
     ];
     let turns = 0;
@@ -203,6 +209,7 @@ export async function runAgent(options) {
     let finalMessage = '';
     let status = 'max_turns';
     let failureReason;
+    let completionMarkerRetries = 0;
     while (turns < maxTurns) {
         if (signal?.aborted) {
             finalMessage = 'Aborted by user.';
@@ -240,10 +247,25 @@ export async function runAgent(options) {
         const text = textParts.join('\n').trim();
         if (toolUses.length === 0) {
             finalMessage = text;
-            status = text.includes('WORKFLOW_COMPLETE') ? 'completed' : 'sdk_error';
-            failureReason = status === 'completed' ? undefined : 'Agent stopped without WORKFLOW_COMPLETE.';
+            if (hasCompletionMarker(text)) {
+                status = 'completed';
+                failureReason = undefined;
+                break;
+            }
+            if (completionMarkerRetries < MAX_COMPLETION_MARKER_RETRIES && turns < maxTurns) {
+                completionMarkerRetries++;
+                messages.push({ role: 'assistant', content: response.content });
+                messages.push({
+                    role: 'user',
+                    content: `Your previous response did not include the required completion marker. If the workflow step is complete, reply with a concise summary and end with a standalone line containing exactly "${COMPLETION_MARKER}". If the workflow step is not complete, continue using tools instead of giving a final answer.`,
+                });
+                continue;
+            }
+            status = 'sdk_error';
+            failureReason = `Agent stopped without ${COMPLETION_MARKER}.`;
             break;
         }
+        completionMarkerRetries = 0;
         messages.push({ role: 'assistant', content: response.content });
         const toolResults = [];
         for (const toolUse of toolUses) {

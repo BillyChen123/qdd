@@ -75,6 +75,8 @@ const WRITE_TOOL: Tool = {
 };
 
 const TOOLS: Tool[] = [BASH_TOOL, READ_TOOL, WRITE_TOOL];
+const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
+const MAX_COMPLETION_MARKER_RETRIES = 2;
 
 function normalizeRoot(root: string): string {
   return path.resolve(root);
@@ -175,6 +177,10 @@ async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
   }
 }
 
+function hasCompletionMarker(text: string): boolean {
+  return text.toUpperCase().includes(COMPLETION_MARKER);
+}
+
 interface ClaudeSettings {
   ANTHROPIC_AUTH_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
@@ -184,6 +190,11 @@ interface ClaudeSettings {
 
 interface ClaudeSettingsFile extends ClaudeSettings {
   env?: ClaudeSettings;
+}
+
+interface ModelResolutionSources {
+  env?: NodeJS.ProcessEnv;
+  settings?: ClaudeSettings;
 }
 
 let _claudeSettingsCache: ClaudeSettings | null = null;
@@ -223,9 +234,10 @@ export function hasClaudeCredentials(): boolean {
   return Boolean(resolveClaudeApiKey());
 }
 
-export function resolveClaudeModel(cliModel?: string): string {
-  const settings = getClaudeSettings();
-  return cliModel ?? process.env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+export function resolveClaudeModel(cliModel?: string, sources: ModelResolutionSources = {}): string {
+  const settings = sources.settings ?? getClaudeSettings();
+  const env = sources.env ?? process.env;
+  return cliModel ?? env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
 }
 
 export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunResult> {
@@ -251,7 +263,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
   const messages: MessageParam[] = [
     {
       role: 'user',
-      content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. When you have completed all the work described in the instructions, respond with a summary of what you accomplished and the text "WORKFLOW_COMPLETE".`,
+      content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. If the workflow step is not complete, continue using tools. When you have completed all the work described in the instructions, respond with a concise summary and end your final response with a standalone line containing exactly "${COMPLETION_MARKER}".`,
     },
   ];
 
@@ -260,6 +272,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
   let finalMessage = '';
   let status: AgentRunStatus = 'max_turns';
   let failureReason: string | undefined;
+  let completionMarkerRetries = 0;
 
   while (turns < maxTurns) {
     if (signal?.aborted) {
@@ -301,11 +314,28 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
 
     if (toolUses.length === 0) {
       finalMessage = text;
-      status = text.includes('WORKFLOW_COMPLETE') ? 'completed' : 'sdk_error';
-      failureReason = status === 'completed' ? undefined : 'Agent stopped without WORKFLOW_COMPLETE.';
+      if (hasCompletionMarker(text)) {
+        status = 'completed';
+        failureReason = undefined;
+        break;
+      }
+
+      if (completionMarkerRetries < MAX_COMPLETION_MARKER_RETRIES && turns < maxTurns) {
+        completionMarkerRetries++;
+        messages.push({ role: 'assistant', content: response.content });
+        messages.push({
+          role: 'user',
+          content: `Your previous response did not include the required completion marker. If the workflow step is complete, reply with a concise summary and end with a standalone line containing exactly "${COMPLETION_MARKER}". If the workflow step is not complete, continue using tools instead of giving a final answer.`,
+        });
+        continue;
+      }
+
+      status = 'sdk_error';
+      failureReason = `Agent stopped without ${COMPLETION_MARKER}.`;
       break;
     }
 
+    completionMarkerRetries = 0;
     messages.push({ role: 'assistant', content: response.content });
 
     const toolResults: MessageParam['content'] = [];
