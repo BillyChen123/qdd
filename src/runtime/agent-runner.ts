@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Tool, MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { spawn } from 'node:child_process';
 
 export interface AgentRunnerOptions {
@@ -142,8 +144,44 @@ async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
   }
 }
 
+interface ClaudeSettings {
+  ANTHROPIC_AUTH_TOKEN?: string;
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_BASE_URL?: string;
+  ANTHROPIC_MODEL?: string;
+}
+
+let _claudeSettingsCache: ClaudeSettings | null = null;
+
+export function getClaudeSettings(): ClaudeSettings {
+  if (_claudeSettingsCache) return _claudeSettingsCache;
+  try {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const raw = require('fs').readFileSync(settingsPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    _claudeSettingsCache = {
+      ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN,
+      ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY,
+      ANTHROPIC_BASE_URL: parsed.ANTHROPIC_BASE_URL,
+      ANTHROPIC_MODEL: parsed.ANTHROPIC_MODEL,
+    };
+  } catch {
+    _claudeSettingsCache = {};
+  }
+  return _claudeSettingsCache;
+}
+
+export function resolveClaudeModel(cliModel?: string): string {
+  const settings = getClaudeSettings();
+  return cliModel ?? process.env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+}
+
 export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunResult> {
-  const client = new Anthropic();
+  const settings = getClaudeSettings();
+  const client = new Anthropic({
+    apiKey: process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_API_KEY ?? settings.ANTHROPIC_AUTH_TOKEN ?? settings.ANTHROPIC_API_KEY,
+    baseURL: process.env.ANTHROPIC_BASE_URL ?? settings.ANTHROPIC_BASE_URL ?? undefined,
+  });
   const { model, systemPrompt, instructions, maxTurns, cwd, signal } = options;
 
   const messages: MessageParam[] = [

@@ -1,7 +1,7 @@
 import { runAuto } from '../runtime/orchestrator.js';
 import type { AutoOptions, AutoResult } from '../runtime/orchestrator.js';
+import { resolveClaudeModel } from '../runtime/agent-runner.js';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_TURNS_PER_AGENT = 50;
 
@@ -18,7 +18,7 @@ export async function autoCommand(
   const projectRootPath = projectRoot || process.cwd();
 
   const autoOptions: AutoOptions = {
-    model: options.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+    model: resolveClaudeModel(options.model),
     maxIterations: options.maxIterations ? parseInt(options.maxIterations, 10) : DEFAULT_MAX_ITERATIONS,
     maxTurnsPerAgent: options.maxTurns ? parseInt(options.maxTurns, 10) : DEFAULT_MAX_TURNS_PER_AGENT,
     dryRun: options.dryRun ?? false,
