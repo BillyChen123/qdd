@@ -1,0 +1,44 @@
+entry_script: scripts/scrna_module_score.py
+python_env: qdd-skill-core
+summary: Compute curated module and signature scores on a canonical scRNA AnnData object using Scanpy score_genes.
+methods:
+  scanpy-score-genes:
+    description: Score one or more curated signatures per cell and summarize them by group.
+defaults:
+  score_name: module_score
+  ctrl_size: 50
+  n_bins: 25
+  random_state: 0
+  embedding_key: auto
+  max_plot_signatures: 4
+cli:
+  required:
+    - --input
+    - --output
+  optional:
+    - --genes <comma-separated-genes>
+    - --signature-file <csv-or-tsv-or-txt>
+    - --score-name <name>
+    - --group-key <obs-column>
+    - --subset-key <obs-column>
+    - --subset-values <comma-separated-values>
+    - --gene-pool-file <txt-or-csv>
+    - --ctrl-size <int>
+    - --n-bins <int>
+    - --random-state <int>
+    - --use-raw
+    - --layer <layer-name>
+    - --case-insensitive
+    - --embedding-key <basis|auto>
+    - --max-plot-signatures <int>
+output_contract:
+  main_h5ad: scored.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/signature_scores.csv
+    - tables/signature_coverage.csv
+    - tables/score_summary.csv
+    - tables/group_score_summary.csv
+  figures:
+    - figures/*_<basis>.png

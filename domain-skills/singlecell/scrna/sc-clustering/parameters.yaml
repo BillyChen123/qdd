@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_clustering.py
-python_env: CellFM_torch
+python_env: qdd-skill-core
 summary: Build a neighbor graph, Leiden clusters, and UMAP from an AnnData object using a chosen embedding.
 methods:
   scanpy:

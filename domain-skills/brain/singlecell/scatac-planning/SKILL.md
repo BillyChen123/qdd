@@ -182,7 +182,7 @@ A Stage-1-passed object should preserve or establish:
 If Stage 1 work is needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage preprocess --tag peak-matrix --tag qc --json
+qdd skills suggest --domain singlecell --stage preprocess --tag scatac --tag qc --json
 ```
 
 Expected executor skill candidate:
@@ -251,7 +251,7 @@ A Stage-2-passed object should include:
 If Stage 2 work is needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage integration --tag peak-matrix --tag batch-diagnosis --json
+qdd skills suggest --domain singlecell --stage integration --tag scatac --tag batch --json
 ```
 
 Expected executor skill candidate:
@@ -320,7 +320,7 @@ A Stage-3-passed object should include:
 When latent/clustering needs work, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage integration --tag lsi --tag leiden --json
+qdd skills suggest --domain singlecell --stage integration --tag scatac --json
 ```
 
 Expected executor skill candidate:
@@ -330,7 +330,7 @@ Expected executor skill candidate:
 When annotation needs work, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage annotation --tag gene-activity --tag cell-type --json
+qdd skills suggest --domain singlecell --stage clustering --tag scatac --tag markers --json
 ```
 
 Expected executor skill candidate:
@@ -395,7 +395,7 @@ Stage-4-passed work should include:
 If Stage 4 work is needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage de --tag differential-accessibility --tag condition-comparison --json
+qdd skills suggest --domain singlecell --stage downstream --tag scatac --tag de --json
 ```
 
 Expected executor skill candidate:

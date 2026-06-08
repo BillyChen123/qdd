@@ -10,7 +10,7 @@ export interface LocalSkillEntry {
 
 // problem-level skill 所属的领域。
 // 第一版只收敛到少量可控领域，避免 catalog 变成自由文本。
-export type SkillDomain = 'singlecell' | 'spatial' | 'bulk' | 'general';
+export type SkillDomain = 'singlecell' | 'spatial' | 'public-data' | 'bulk' | 'general';
 
 // problem-level skill 的 stage。
 // 第一版保持受控但很小，避免元数据膨胀。
@@ -18,46 +18,27 @@ export type SkillStage =
   | 'preprocess'
   | 'integration'
   | 'clustering'
-  | 'annotation'
   | 'acquisition'
-  | 'de'
-  | 'visualization'
-  | 'other';
+  | 'downstream';
 
 // problem-level skill 的受控标签。
 // 这些标签是轻量判别信号，不是自由关键词池。
 export type SkillTag =
-  | 'scanpy'
-  | 'anndata'
-  | 'h5ad'
-  | 'public-data'
-  | 'dataset-search'
-  | 'dataset-download'
+  | 'scrna'
+  | 'scatac'
   | 'cellxgene'
-  | 'citation'
-  | 'title-match'
-  | 'raw-counts'
   | 'qc'
-  | 'normalization'
-  | 'peaks'
-  | 'peak-matrix'
-  | 'multiome'
-  | 'tfidf'
-  | 'lsi'
-  | 'multi-sample'
-  | 'batch-correction'
-  | 'batch-diagnosis'
-  | 'neighbors'
-  | 'leiden'
-  | 'umap'
+  | 'batch'
   | 'markers'
-  | 'marker-based'
-  | 'gene-activity'
-  | 'cell-type'
-  | 'cell-state'
-  | 'differential-expression'
-  | 'differential-accessibility'
-  | 'condition-comparison';
+  | 'de'
+  | 'group-stats'
+  | 'enrichment'
+  | 'module-score'
+  | 'trajectory'
+  | 'neighborhood'
+  | 'niche'
+  | 'structure'
+  | 'communication';
 
 // problem-level skill 的 metadata。
 // 这里是给轻量 resolver / suggest CLI 用的机器面。

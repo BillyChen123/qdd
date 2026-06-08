@@ -1,9 +1,9 @@
 ---
-name: brain/singlecell/public-data-planning
-description: Public single-cell dataset planning protocol for QDD. Use during qdd-propose and qdd-explore whenever the study may need external public scRNA data and the agent must decide whether to search, how to structure the search, and what final dataset targets should be handed to apply.
+name: brain/public-data/public-data-planning
+description: Public dataset planning protocol for QDD. Use during qdd-propose and qdd-explore whenever a study may need external datasets and the agent must decide whether to search, how to structure the request, and what final selected targets should be handed to apply.
 ---
 
-# brain/singlecell/public-data-planning
+# brain/public-data/public-data-planning
 
 ## When To Use
 
@@ -15,7 +15,7 @@ Trigger this skill when at least one of the following is true:
 - the study needs an external validation cohort
 - the study needs an external reference atlas for annotation
 - the study needs an external control or baseline dataset
-- the user explicitly asks to search public single-cell datasets
+- the user explicitly asks to search public datasets
 
 Do not use this skill as an executor skill.
 Do not write `brain/*` into task `skills:`.
@@ -33,7 +33,7 @@ This skill does not define QDD workflow semantics.
 Its job is:
 
 1. decide whether external public data is actually needed
-2. structure a thin search request that a tool skill can execute
+2. structure a thin search request that a source skill can execute
 3. narrow candidate datasets to a very small selected set
 4. define the handoff that `qdd-apply` may consume without reopening search
 
@@ -126,31 +126,41 @@ Bad:
 
 ### Goal
 
-Convert the human research direction into a thin structured query that an executor skill can consume directly.
+Convert the human research direction into a thin structured request that an executor skill can consume directly.
 
 ### Required Fields
 
 Write or confirm these fields for `public_data_request.yaml`:
 
-- `source`: `cellxgene`
-- `modality`: `scrna`
+- `source`: current executor-backed public source such as `cellxgene`
+- `modality`: study intent such as `scrna` or `spatial`
 - `goal`: a short study-level purpose such as:
   - `validation`
   - `reference`
   - `control`
   - `extension`
 
-Under `query`, structure at minimum:
+Under `constraints`, structure at minimum:
 
 - `organism`
 - `tissue`
 - `disease`
 - `state` when it materially matters
 - `cell_type` when it materially matters
+- `assay` when it materially matters
+
+Under `source_query`, keep only the few source-specific knobs that matter for this slice, for example:
+
 - `max_results`
 
-Keep the query thin.
+Keep the handoff thin.
 Do not persist a long free-text rationale in the handoff file.
+
+### Source Choice Rule
+
+- choose a source only when there is a matching executor skill in the local catalog
+- do not write `geo`, `arrayexpress`, or other sources into the handoff until a corresponding executor skill exists
+- current stable source executor: `public-data/cellxgene-discover`
 
 ### Search Broadening Ladder
 
@@ -172,12 +182,15 @@ source: cellxgene
 modality: scrna
 goal: validation
 
-query:
+constraints:
   organism: Homo sapiens
   tissue: ovary
   disease: ovarian cancer
   state: TRM
   cell_type:
+  assay:
+
+source_query:
   max_results: 5
 
 selected: []
@@ -266,19 +279,20 @@ Do not create a fake selected target just to keep execution moving.
 When a public-data task is genuinely needed, prefer:
 
 ```bash
-qdd skills suggest --domain singlecell --stage acquisition --tag public-data --tag cellxgene --json
+qdd skills suggest --domain public-data --stage acquisition --tag cellxgene --json
 ```
 
 Expected executor skill candidate:
 
-- `singlecell/public-data/cellxgene-discover`
+- `public-data/cellxgene-discover`
 
 ## Output Rules
 
 If a public-data task is required:
 
 - create or update `studies/STUDY-XXX/output/public_data_request.yaml`
-- keep `query` explicit
+- keep `constraints` explicit
+- keep `source_query` small
 - keep `selected` explicit
 - keep `selection_note` short
 
@@ -300,4 +314,4 @@ Do not:
 - let `qdd-apply` reopen broad search
 - choose many datasets because they all look vaguely relevant
 - depend on article abstracts as a hard requirement for the first slice
-- mix public-data acquisition skills into `singlecell/scrna/*` analysis execution skills
+- mix public-data acquisition skills into `singlecell/*` or `spatial/*` analysis execution skills

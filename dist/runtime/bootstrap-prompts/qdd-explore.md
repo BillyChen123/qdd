@@ -136,6 +136,8 @@ Depending on what the user brings, you might:
 - What output would let us judge the study?
 - Are the current tasks aimed at judgment or just activity?
 - Is there a better first task?
+- If a task needs local reaction, can it be expressed as one or two clear if-then checklist bullets?
+- Are any reaction bullets too broad, vague, or likely to turn into an unplanned search?
 
 **Compare options**
 
@@ -212,6 +214,7 @@ Offer changes such as:
 - replace the first task with a reality check
 - add a blocker note
 - tighten expected outputs
+- add, simplify, or remove lightweight if-then reaction bullets in a task checklist
 - replace a weak executor skill choice with a better problem-level skill bundle
 - add or remove a public-data task depending on whether outside data is actually required now
 

@@ -158,7 +158,7 @@ Prefer problem-level skills such as:
 - `singlecell/scatac/scatac-batch-latent`
 - `singlecell/scatac/scatac-annotation-geneactivity`
 - `singlecell/scatac/scatac-dar`
-- `singlecell/public-data/cellxgene-discover`
+- `public-data/cellxgene-discover`
 
 ### 4.6 Handle external public data during planning
 
@@ -167,7 +167,7 @@ When the study may need external public data:
 - first decide whether local resources are already sufficient
 - do not create a public-data task by reflex
 - if outside data is genuinely required, use the public-data planning brain guidance
-- use `qdd skills suggest --domain singlecell --stage acquisition --tag public-data --tag cellxgene --json` when the executor skill choice matters
+- use `qdd skills suggest --domain public-data --stage acquisition --tag cellxgene --json` when the executor skill choice matters
 - keep candidate review in the planning conversation
 - persist only the final selected target set in `studies/STUDY-XXX/output/public_data_request.yaml`
 
@@ -228,6 +228,9 @@ Write them concretely:
 - never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
 - if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
 - if the task is a public-data acquisition task, finalize `studies/STUDY-XXX/output/public_data_request.yaml` during planning so apply only downloads the selected targets
+- when a task has an obvious local diagnostic and a known small correction, add one or two plain if-then checklist bullets instead of a separate reaction contract
+- keep these reaction bullets concrete enough for `qdd-apply` to execute, such as "if first-pass PCA is dominated by depth signal, rerun the PCA handoff with scaling before finalizing"
+- do not add reaction bullets by default; if more than two are needed, the task is probably too broad or belongs in `qdd-explore`
 
 Each initial task should be:
 

@@ -37,6 +37,32 @@
 
 QDD 当前没有发布到 npm registry，所以安装方式是 **源码安装** 或 **tarball 安装**。
 
+## Python 分析环境
+
+如果要直接运行 `domain-skills/` 里的分析脚本，除了 Node CLI 之外，还需要单独准备分析环境。
+
+仓库现在提供了一个稳定核心环境文件：
+
+```bash
+conda env create -f envs/qdd-skill-core.yml
+conda activate qdd-skill-core
+```
+
+这份环境覆盖了当前已落地的 skill 依赖，包括：
+
+- `scanpy`
+- `squidpy`
+- `scvelo`
+- `pydeseq2`
+- `gseapy`
+- `cellxgene-census`
+- `harmonypy`
+- `scanorama`
+- `bbknn`
+- `scib`
+
+当前这套已发布 skill **不依赖 R 包**。如果后面真的引入 R-backed skill，再单独补 `R` 环境文件，不要提前把默认环境做重。
+
 ---
 
 ## 方案 A：从源码全局安装（推荐）

@@ -74,7 +74,7 @@ export function createExampleResourcesMarkdown(): string {
     '',
     '## Runtime Environments',
     '',
-    '- Python: CellFM_torch with scanpy and scib installed',
+    '- Python: qdd-skill-core with scanpy and scib installed',
     '- R: not required for the current loop',
     '- External tools / compute: CPU okay for planning, GPU not required',
     '',

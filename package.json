@@ -7,6 +7,7 @@
     "bin/",
     "dist/",
     "domain-skills/",
+    "envs/",
     "README.md",
     "docs/04-installation-guide.md"
   ],

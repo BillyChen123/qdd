@@ -4,17 +4,8 @@ description: Problem-level scATAC latent-space diagnosis and optional batch corr
 domain: singlecell
 stage: integration
 tags:
-  - scanpy
-  - anndata
-  - h5ad
-  - peaks
-  - peak-matrix
-  - lsi
-  - multi-sample
-  - batch-diagnosis
-  - batch-correction
-  - leiden
-  - umap
+  - scatac
+  - batch
 ---
 
 # singlecell/scatac/scatac-batch-latent
@@ -23,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_batch_latent.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -52,7 +43,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scatac/scatac-batch-latent/scripts/scatac_batch_latent.py \
   --input outputs/scatac_preprocess/processed.h5ad \
   --output outputs/scatac_batch \

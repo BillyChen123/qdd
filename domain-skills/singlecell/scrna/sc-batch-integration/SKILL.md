@@ -4,12 +4,8 @@ description: Problem-level single-cell batch integration skill for multi-sample 
 domain: singlecell
 stage: integration
 tags:
-  - scanpy
-  - anndata
-  - h5ad
-  - multi-sample
-  - batch-correction
-  - batch-diagnosis
+  - scrna
+  - batch
 ---
 
 # singlecell/scrna/sc-batch-integration
@@ -18,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_integration.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -37,7 +33,7 @@ tags:
 
 - `scanpy 1.10.0`
 - `scib 1.1.5`
-- `bbknn` 当前不在 `CellFM_torch` 环境里
+- `bbknn` 当前不在 `qdd-skill-core` 环境里
 
 ## 关键参数
 
@@ -57,7 +53,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scrna/sc-batch-integration/scripts/scrna_integration.py \
   --input outputs/preprocess_qc/processed.h5ad \
   --output outputs/integration \

@@ -16,7 +16,7 @@ export function createDefaultLayerPolicy() {
                 default_skills: [
                     'brain/singlecell/scrna-planning',
                     'brain/singlecell/scatac-planning',
-                    'brain/singlecell/public-data-planning',
+                    'brain/public-data/public-data-planning',
                 ],
             },
             executor: {

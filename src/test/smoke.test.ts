@@ -111,7 +111,7 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     skills: Array<{ id: string }>;
   };
   assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-batch-integration'));
-  assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/public-data/cellxgene-discover'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/cellxgene-discover'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/scrna-planning'));
 });
 
@@ -473,24 +473,44 @@ test('qdd skills suggest returns executor-facing candidates and excludes brain s
     skills: Array<{ id: string }>;
   };
   assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scatac/scatac-preprocess-lsi'));
-  assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/public-data-planning'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'spatial/spatial-batch-integration'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'spatial/spatial-clustering'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-cell-communication'));
+  assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/public-data-planning'));
 
   const integration = await suggestProblemSkills(projectRoot, {
     domain: 'singlecell',
     stage: 'integration',
-    tags: ['multi-sample', 'batch-correction'],
+    tags: ['batch'],
   });
   assert.equal(integration.low_confidence, false);
   assert.ok(integration.candidates.some((candidate) => candidate.id === 'singlecell/scrna/sc-batch-integration'));
   assert.ok(integration.candidates.some((candidate) => candidate.id === 'singlecell/scatac/scatac-batch-latent'));
 
   const publicData = await suggestProblemSkills(projectRoot, {
-    domain: 'singlecell',
+    domain: 'public-data',
     stage: 'acquisition',
-    tags: ['public-data', 'cellxgene'],
+    tags: ['cellxgene'],
   });
   assert.equal(publicData.low_confidence, false);
-  assert.equal(publicData.candidates[0]?.id, 'singlecell/public-data/cellxgene-discover');
+  assert.equal(publicData.candidates[0]?.id, 'public-data/cellxgene-discover');
+
+  const spatialClustering = await suggestProblemSkills(projectRoot, {
+    domain: 'spatial',
+    stage: 'clustering',
+    tags: [],
+  });
+  assert.equal(spatialClustering.low_confidence, false);
+  assert.ok(spatialClustering.candidates.some((candidate) => candidate.id === 'spatial/spatial-clustering'));
+  assert.ok(spatialClustering.candidates.some((candidate) => candidate.id === 'spatial/spatial-marker-annotation'));
+
+  const communication = await suggestProblemSkills(projectRoot, {
+    domain: 'singlecell',
+    stage: 'downstream',
+    tags: ['communication'],
+  });
+  assert.equal(communication.low_confidence, false);
+  assert.equal(communication.candidates[0]?.id, 'singlecell/scrna/sc-cell-communication');
 });
 
 test('qdd init can install codex prompts without reintroducing old protocol language', async () => {

@@ -1,0 +1,65 @@
+entry_script: scripts/spatial_batch_integration.py
+python_env: qdd-skill-core
+summary: Diagnose or reduce batch effects in spatial AnnData using Scanpy integration backends while preserving spatial coordinates.
+methods:
+  none:
+    description: Do not correct batches; compute PCA, neighbors, Leiden clusters, and UMAP for diagnosis.
+  harmony:
+    description: Use scanpy.external.pp.harmony_integrate on X_pca.
+  scanorama:
+    description: Use scanpy.external.pp.scanorama_integrate on X_pca.
+  bbknn:
+    description: Build a batch-balanced neighbor graph with bbknn if installed.
+defaults:
+  method: harmony
+  n_hvg: 2000
+  n_pcs: 50
+  n_neighbors: 15
+  leiden_resolution: 0.5
+  harmony_theta: 2.0
+  scanorama_knn: 20
+  bbknn_neighbors_within_batch: 3
+  umap_min_dist: 0.3
+  random_state: 0
+  spatial_obsm_key: auto
+cli:
+  required:
+    - --input
+    - --output
+    - --batch-key
+  optional:
+    - --method <none|harmony|scanorama|bbknn>
+    - --section-key <obs-column>
+    - --label-key <obs-column>
+    - --cluster-key <obs-column>
+    - --use-hvg
+    - --n-hvg <int>
+    - --n-pcs <int>
+    - --n-neighbors <int>
+    - --leiden-resolution <float>
+    - --harmony-theta <float>
+    - --scanorama-knn <int>
+    - --bbknn-neighbors-within-batch <int>
+    - --umap-min-dist <float>
+    - --random-state <int>
+    - --spatial-obsm-key <obsm-key|auto>
+    - --color-key <obs-column>
+    - --skip-metrics
+    - --skip-umap
+output_contract:
+  main_h5ad: processed.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/batch_sizes.csv
+    - tables/integration_metrics.csv
+    - tables/observation_embeddings.csv
+    - tables/batch_cluster_counts.csv
+    - tables/section_cluster_counts.csv
+  figures:
+    - figures/umap_by_batch.png
+    - figures/umap_by_cluster.png
+    - figures/umap_by_label.png
+    - figures/umap_by_color.png
+    - figures/spatial_by_batch.png
+    - figures/spatial_by_cluster.png

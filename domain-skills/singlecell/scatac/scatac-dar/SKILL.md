@@ -2,14 +2,10 @@
 name: singlecell/scatac/scatac-dar
 description: Problem-level scATAC differential accessibility skill for matrix-style h5ad objects. Use when a task must compare ATAC accessibility across clusters or conditions with explicit contrast definitions and reusable result tables.
 domain: singlecell
-stage: de
+stage: downstream
 tags:
-  - scanpy
-  - anndata
-  - peaks
-  - peak-matrix
-  - differential-accessibility
-  - condition-comparison
+  - scatac
+  - de
 ---
 
 # singlecell/scatac/scatac-dar
@@ -18,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_dar.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -46,7 +42,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scatac/scatac-dar/scripts/scatac_dar.py \
   --input outputs/scatac_annotation/annotated.h5ad \
   --output outputs/scatac_dar \

@@ -2,15 +2,10 @@
 name: singlecell/scatac/scatac-annotation-geneactivity
 description: Problem-level scATAC annotation skill for turning ATAC clusters into auditable labels from gene-linked features, marker peaks, or trusted paired labels. Use when a task must attach explicit annotation evidence instead of informal cluster naming.
 domain: singlecell
-stage: annotation
+stage: clustering
 tags:
-  - scanpy
-  - anndata
-  - peaks
-  - marker-based
-  - gene-activity
-  - cell-type
-  - cell-state
+  - scatac
+  - markers
 ---
 
 # singlecell/scatac/scatac-annotation-geneactivity
@@ -19,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_annotation_geneactivity.py`
 - params: `parameters.yaml`
-- environment: `CellFM_torch`
+- environment: `qdd-skill-core`
 
 ## 什么时候用
 
@@ -49,7 +44,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n CellFM_torch python \
+conda run -n qdd-skill-core python \
   domain-skills/singlecell/scatac/scatac-annotation-geneactivity/scripts/scatac_annotation_geneactivity.py \
   --input outputs/scatac_batch/processed.h5ad \
   --output outputs/scatac_annotation \

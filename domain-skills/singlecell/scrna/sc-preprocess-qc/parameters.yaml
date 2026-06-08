@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_preprocess_qc.py
-python_env: CellFM_torch
+python_env: qdd-skill-core
 summary: Inspect AnnData state and run standard Scanpy preprocessing when raw counts are available.
 methods:
   auto:

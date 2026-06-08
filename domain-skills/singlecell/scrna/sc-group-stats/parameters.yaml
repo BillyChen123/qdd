@@ -1,0 +1,48 @@
+entry_script: scripts/scrna_group_stats.py
+python_env: qdd-skill-core
+summary: Compute downstream descriptive grouped statistics on scRNA AnnData objects after annotation.
+methods:
+  detection-rate:
+    description: Compute percentage of cells with gene value above a threshold.
+  fold-change:
+    description: Compute group_b versus group_a mean expression and descriptive log2 fold change.
+  correlation:
+    description: Compute gene-gene Pearson or Spearman correlation.
+  abundance:
+    description: Summarize annotation abundance within each group.
+defaults:
+  analysis: detection-rate
+  test: t-test
+  correlation_method: spearman
+  p_threshold: 0.05
+  count_threshold: 0
+  pseudocount: 1e-9
+cli:
+  required:
+    - --input
+    - --output
+    - --analysis <detection-rate|fold-change|correlation|abundance>
+  optional:
+    - --features <comma-separated-features>
+    - --feature-file <txt-or-csv>
+    - --feature-a <feature>
+    - --feature-b <feature>
+    - --group-key <obs-column>
+    - --group-a <group-value>
+    - --group-b <group-value>
+    - --label-key <obs-column>
+    - --subset-key <obs-column>
+    - --subset-values <comma-separated-values>
+    - --correlation-method <spearman|pearson>
+    - --count-threshold <float>
+    - --pseudocount <float>
+    - --use-raw
+    - --layer <layer-name>
+    - --case-insensitive
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/statistics.csv
+  figures:
+    - figures/statistics_barplot.png

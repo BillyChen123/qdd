@@ -1,0 +1,50 @@
+entry_script: scripts/scrna_pathway_enrichment.py
+python_env: qdd-skill-core
+summary: Run pathway or gene-set enrichment from ranked DE outputs or selected gene lists using GSEApy.
+methods:
+  prerank:
+    description: Run preranked GSEA from a DE table or ranking file.
+  ora:
+    description: Run ORA / Enrichr-style enrichment from a selected gene list.
+defaults:
+  feature_column: feature
+  padj_column: padj_bh
+  padj_threshold: 0.05
+  lfc_column: log2fc_group_b_vs_group_a
+  min_abs_lfc: 0
+  organism: Human
+  min_size: 15
+  max_size: 500
+  permutation_num: 1000
+  threads: 4
+cli:
+  required:
+    - --output
+    - --method <prerank|ora>
+    - --gene-sets <gmt-or-library>
+  optional:
+    - --de-table <csv-or-tsv>
+    - --ranking-file <csv-or-tsv>
+    - --gene-file <txt-or-csv>
+    - --feature-column <column>
+    - --rank-column <column>
+    - --padj-column <column>
+    - --padj-threshold <float>
+    - --lfc-column <column>
+    - --min-abs-lfc <float>
+    - --top-n <int>
+    - --organism <name>
+    - --min-size <int>
+    - --max-size <int>
+    - --permutation-num <int>
+    - --threads <int>
+output_contract:
+  report: report.md
+  result: result.json
+  tables:
+    - tables/enrichment_results.csv
+    - tables/ranking_used.csv
+    - tables/genes_used.csv
+  figures:
+    - figures/prerank_top_terms.png
+    - figures/ora_top_terms.png

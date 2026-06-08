@@ -7,68 +7,49 @@ Recommended layout:
 ```text
 domain-skills/
 ├── brain/
+│   ├── public-data/
+│   │   └── public-data-planning/
+│   │       └── SKILL.md
+│   ├── spatial/
+│   │   └── spatial-planning/
+│   │       └── SKILL.md
 │   └── singlecell/
 │       ├── scrna-planning/
 │       │   └── SKILL.md
 │       └── scatac-planning/
 │           └── SKILL.md
-│       └── public-data-planning/
-│           └── SKILL.md
-└── singlecell/
-    ├── scrna/
-    │   ├── sc-preprocess-qc/
-    │   │   ├── SKILL.md
-    │   │   ├── parameters.yaml
-    │   │   └── scripts/
-    │   │       └── scrna_preprocess_qc.py
-    │   ├── sc-batch-integration/
-    │   │   ├── SKILL.md
-    │   │   ├── parameters.yaml
-    │   │   └── scripts/
-    │   │       └── scrna_integration.py
-    │   ├── sc-clustering/
-    │   │   ├── SKILL.md
-    │   │   ├── parameters.yaml
-    │   │   └── scripts/
-    │   │       └── scrna_clustering.py
-    │   └── sc-marker-annotation/
-    │       ├── SKILL.md
-    │       ├── parameters.yaml
-    │       └── scripts/
-    │           └── scrna_marker_annotation.py
-    └── scatac/
-        ├── scatac-preprocess-lsi/
-        │   ├── SKILL.md
-        │   ├── parameters.yaml
-        │   └── scripts/
-        │       └── scatac_preprocess_lsi.py
-        ├── scatac-batch-latent/
-        │   ├── SKILL.md
-        │   ├── parameters.yaml
-        │   └── scripts/
-        │       └── scatac_batch_latent.py
-        ├── scatac-annotation-geneactivity/
-        │   ├── SKILL.md
-        │   ├── parameters.yaml
-        │   └── scripts/
-        │       └── scatac_annotation_geneactivity.py
-        └── scatac-dar/
-            ├── SKILL.md
-            ├── parameters.yaml
-            └── scripts/
-                └── scatac_dar.py
-    └── public-data/
-        └── cellxgene-discover/
-            ├── SKILL.md
-            ├── parameters.yaml
-            └── scripts/
-                └── cellxgene_discover.py
+├── public-data/
+│   └── cellxgene-discover/
+│       ├── SKILL.md
+│       ├── parameters.yaml
+│       └── scripts/
+│           └── cellxgene_discover.py
+├── singlecell/
+│   ├── scrna/
+│   │   ├── sc-preprocess-qc/
+│   │   ├── sc-batch-integration/
+│   │   ├── sc-clustering/
+│   │   ├── sc-marker-annotation/
+│   │   └── sc-cell-communication/
+│   └── scatac/
+│       ├── scatac-preprocess-lsi/
+│       ├── scatac-batch-latent/
+│       ├── scatac-annotation-geneactivity/
+│       └── scatac-dar/
+└── spatial/
+    ├── spatial-preprocess-qc/
+    ├── spatial-batch-integration/
+    ├── spatial-clustering/
+    ├── spatial-marker-annotation/
+    └── spatial-neighborhood-analysis/
 ```
+
+This tree is illustrative, not exhaustive. New executor skills should extend the same domain-rooted structure instead of creating new top-level taxonomies.
 
 Rules:
 
 - Planning skills live under `brain/*`
-- Executor problem-level skills live under domain trees such as `singlecell/scrna/*`
+- Executor problem-level skills live under domain trees such as `singlecell/scrna/*`, `spatial/*`, or `public-data/*`
 - Each skill lives at `domain-skills/<category...>/<skill-name>/`
 - Each skill root must contain `SKILL.md`
 - Executor skills should normally contain:
@@ -90,10 +71,14 @@ Task files should reference the stable skill IDs, for example:
 - `singlecell/scrna/sc-batch-integration`
 - `singlecell/scrna/sc-clustering`
 - `singlecell/scrna/sc-marker-annotation`
+- `singlecell/scrna/sc-cell-communication`
 - `singlecell/scatac/scatac-preprocess-lsi`
 - `singlecell/scatac/scatac-batch-latent`
 - `singlecell/scatac/scatac-annotation-geneactivity`
 - `singlecell/scatac/scatac-dar`
-- `singlecell/public-data/cellxgene-discover`
+- `spatial/spatial-batch-integration`
+- `spatial/spatial-clustering`
+- `spatial/spatial-marker-annotation`
+- `public-data/cellxgene-discover`
 
 Do not use `qdd/*` workflow skills or `brain/*` planning skills in task `skills:`.

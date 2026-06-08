@@ -5,24 +5,39 @@ export interface PublicDataSelectionEntry {
   alias: string;
 }
 
-// public-data 请求里的结构化查询部分。
-// 这个对象是 planning 写给 executor 的薄 handoff，而不是候选集历史。
-export interface PublicDataQuery {
+// public-data 请求里的研究约束部分。
+// 它表达研究问题想要的数据边界，而不是 source-specific API 参数。
+export interface PublicDataConstraints {
   organism?: string;
   tissue?: string;
   disease?: string;
   state?: string;
   cell_type?: string | null;
+  assay?: string | null;
+}
+
+// source-specific 的轻量查询参数。
+// 当前只稳定承诺 max_results，其他键留给具体 source skill 自己解释。
+export interface PublicDataSourceQuery {
+  max_results?: number;
+  [key: string]: unknown;
+}
+
+// 兼容旧版 `query` handoff。
+// 新规划应改写为 `constraints + source_query`。
+export interface LegacyPublicDataQuery extends PublicDataConstraints {
   max_results?: number;
 }
 
 // `studies/STUDY-XXX/output/public_data_request.yaml` 的结构。
-// planning 负责写 query 和 selected；apply 只消费 selected。
+// planning 负责写 constraints/source_query 和 selected；apply 只消费 selected。
 export interface PublicDataRequest {
-  source: 'cellxgene';
-  modality: 'scrna';
+  source: string;
+  modality: 'scrna' | 'spatial' | 'scatac' | 'bulk' | 'other';
   goal: string;
-  query: PublicDataQuery;
+  constraints: PublicDataConstraints;
+  source_query?: PublicDataSourceQuery;
   selected: PublicDataSelectionEntry[];
   selection_note?: string;
+  query?: LegacyPublicDataQuery;
 }

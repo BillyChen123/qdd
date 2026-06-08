@@ -1,0 +1,50 @@
+entry_script: scripts/scrna_trajectory.py
+python_env: qdd-skill-core
+summary: Run Scanpy or scVelo trajectory analysis on a canonical scRNA AnnData object.
+methods:
+  paga-dpt:
+    description: Build a PAGA graph and compute DPT pseudotime from a specified root.
+  rna-velocity:
+    description: Compute RNA velocity, velocity pseudotime, and optional latent time from spliced/unspliced layers.
+defaults:
+  embedding_key: auto
+  use_rep: auto
+  n_neighbors: 30
+  n_pcs: 30
+  velocity_mode: stochastic
+  n_top_genes: 50
+  min_shared_counts: 20
+cli:
+  required:
+    - --input
+    - --output
+    - --method <paga-dpt|rna-velocity>
+  optional:
+    - --cluster-key <obs-column>
+    - --root-cell <obs-name>
+    - --root-key <obs-column>
+    - --root-values <comma-separated-values>
+    - --embedding-key <basis|auto>
+    - --use-rep <obsm-key|auto>
+    - --n-neighbors <int>
+    - --n-pcs <int>
+    - --velocity-mode <stochastic|deterministic|dynamical>
+    - --compute-latent-time
+    - --rank-velocity-genes
+    - --n-top-genes <int>
+    - --min-shared-counts <int>
+output_contract:
+  main_h5ad: trajectory.h5ad
+  report: report.md
+  result: result.json
+  tables:
+    - tables/trajectory_metrics.csv
+    - tables/group_trajectory_summary.csv
+    - tables/paga_edges.csv
+    - tables/velocity_gene_metrics.csv
+    - tables/velocity_gene_rankings.csv
+  figures:
+    - figures/paga_graph.png
+    - figures/dpt_pseudotime.png
+    - figures/velocity_stream.png
+    - figures/latent_time.png
