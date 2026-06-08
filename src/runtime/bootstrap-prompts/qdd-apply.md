@@ -71,7 +71,7 @@ If a task declares missing domain skills, stop immediately. In this case `qdd-ap
 
 Do not reopen broad skill selection here.
 
-If a task depends on external public data, `qdd-apply` still must not reopen broad dataset search.
+If a task depends on external public datasets, `qdd-apply` still must not reopen broad dataset search.
 It may only consume the already selected dataset targets recorded in `studies/STUDY-XXX/output/public_data_request.yaml`.
 
 `qdd-apply` consumes the task's declared executor problem-level skills only.
@@ -147,6 +147,13 @@ If one of the declared skills is `public-data/cellxgene-discover`:
 2. confirm that the selected target set is explicit
 3. download only those selected datasets
 4. if the selected set is empty, treat that as a planning/blocker issue rather than re-running broad search here
+
+If one of the declared skills is `public-data/cellmarker-fetch` or `public-data/lrdb-fetch`:
+
+1. read the task text itself as the bounded search intent
+2. use only the named source and query terms already captured there
+3. materialize the chosen local CSV/TSV output under the study output directory
+4. do not invent a new managed YAML handoff for reference-table fetch tasks
 
 ### 2.5 Be patient with heavy analysis
 

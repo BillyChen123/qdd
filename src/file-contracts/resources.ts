@@ -41,6 +41,7 @@ export function createDefaultResourcesMarkdown(): string {
     '- Treat non-`brain/*` skills with metadata as executor-facing problem-level skills.',
     '- Use public-data planning only when local resources are insufficient or an external validation/reference dataset is genuinely needed.',
     '- Keep external dataset search results small and explicit; record only final selected targets in study-local handoff files.',
+    '- For public reference tables such as markers or ligand-receptor pairs, keep the search intent in the task and materialize the chosen CSV/TSV directly; do not force them through public_data_request.yaml.',
     '- Validate task skills against the QDD root `domain-skills/` library and `.qdd/skills-catalog.json`.',
     '- Keep workflow skills under local `.codex/skills/qdd/` and mirror those workflow skills into `.claude/skills/qdd/` when Claude bootstrap is installed.',
     '- Keep task-level `skills:` for concrete problem-level dependencies only; do not list `qdd/*` or `brain/*` there.',
@@ -90,6 +91,7 @@ export function createExampleResourcesMarkdown(): string {
     '- Study planning should read brain skills before proposing executor skills.',
     '- Executor tasks should use only problem-level skills already indexed in `.qdd/skills-catalog.json`.',
     '- Public-data acquisition should stay explicit and small; do not download broad candidate sets by default.',
+    '- Dataset handoffs and reference-table fetches are different: only dataset-style public-data tasks need `public_data_request.yaml`.',
     '',
   ].join('\n');
 }

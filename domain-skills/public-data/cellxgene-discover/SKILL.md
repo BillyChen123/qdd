@@ -24,6 +24,8 @@ tags:
   - `search`
   - `download`
 
+不要把这个 skill 用在 marker、ligand-receptor、gene-set 这类轻量 reference fetch 上。
+
 ## 输入契约
 
 这个 skill 读取的核心 handoff 文件是：

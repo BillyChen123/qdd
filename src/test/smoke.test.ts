@@ -476,7 +476,10 @@ test('qdd skills suggest returns executor-facing candidates and excludes brain s
   assert.ok(catalog.skills.some((entry) => entry.id === 'spatial/spatial-batch-integration'));
   assert.ok(catalog.skills.some((entry) => entry.id === 'spatial/spatial-clustering'));
   assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-cell-communication'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/cellmarker-fetch'));
+  assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/lrdb-fetch'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/public-data-planning'));
+  assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/reference-planning'));
 
   const integration = await suggestProblemSkills(projectRoot, {
     domain: 'singlecell',
@@ -494,6 +497,22 @@ test('qdd skills suggest returns executor-facing candidates and excludes brain s
   });
   assert.equal(publicData.low_confidence, false);
   assert.equal(publicData.candidates[0]?.id, 'public-data/cellxgene-discover');
+
+  const publicMarkers = await suggestProblemSkills(projectRoot, {
+    domain: 'public-data',
+    stage: 'acquisition',
+    tags: ['markers'],
+  });
+  assert.equal(publicMarkers.low_confidence, false);
+  assert.equal(publicMarkers.candidates[0]?.id, 'public-data/cellmarker-fetch');
+
+  const publicCommunication = await suggestProblemSkills(projectRoot, {
+    domain: 'public-data',
+    stage: 'acquisition',
+    tags: ['communication'],
+  });
+  assert.equal(publicCommunication.low_confidence, false);
+  assert.equal(publicCommunication.candidates[0]?.id, 'public-data/lrdb-fetch');
 
   const spatialClustering = await suggestProblemSkills(projectRoot, {
     domain: 'spatial',

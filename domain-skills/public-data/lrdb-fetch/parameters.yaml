@@ -1,0 +1,30 @@
+entry_script: scripts/lrdb_fetch.py
+python_env: qdd-skill-core
+summary: Download a public ligand-receptor database on demand, filter it with bounded task-specified terms, and materialize a downstream-ready TSV.
+actions:
+  fetch:
+    description: Download a supported LR database source, normalize the interaction table, and write a local ligand-receptor TSV for downstream communication scoring.
+defaults:
+  source: celltalkdb
+  organism: human
+  max_rows: 500
+cli:
+  required:
+    - --output <study-output-dir>
+  optional:
+    - --source <celltalkdb|cellchatdb>
+    - --organism <human|mouse|zebrafish>
+    - --query <text> [repeatable]
+    - --category <text>
+    - --pathway <text>
+    - --exact
+    - --max-rows <int>
+    - --note <text>
+    - --refresh
+output_contract:
+  fetch:
+    tables:
+      - tables/lr_selected.tsv
+    reports:
+      - reports/lrdb_fetch_report.md
+      - reports/lrdb_fetch_result.json

@@ -19,6 +19,7 @@ Trigger this skill when at least one of the following is true:
 
 Do not use this skill as an executor skill.
 Do not write `brain/*` into task `skills:`.
+Do not use this skill for lightweight public reference tables such as markers, ligand-receptor pairs, or pathway collections; those belong to `brain/public-data/reference-planning`.
 
 If local resources already support the study well enough, do not force a public-data task.
 
@@ -36,6 +37,9 @@ Its job is:
 2. structure a thin search request that a source skill can execute
 3. narrow candidate datasets to a very small selected set
 4. define the handoff that `qdd-apply` may consume without reopening search
+
+This skill is specifically for dataset-shaped public data.
+It is not the planning surface for lightweight reference fetches.
 
 ## Planning Contract
 
