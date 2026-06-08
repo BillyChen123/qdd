@@ -7,7 +7,7 @@ import { readBootstrapConfig } from './bootstrap.js';
 import { readMarkdownFrontmatter } from './store.js';
 
 const SKILL_FILE_NAME = 'SKILL.md';
-const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}/`;
+const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}-`;
 const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
 const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
 const CONTROLLED_DOMAINS: readonly SkillDomain[] = ['singlecell', 'spatial', 'bulk', 'general'];

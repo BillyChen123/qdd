@@ -97,7 +97,7 @@ function resolveToolAssetPath(projectRoot, tool, workflowId) {
 function resolveToolSkillPath(projectRoot, tool, workflowId) {
     switch (tool) {
         case 'claude':
-            return path.join(projectRoot, PATHS.claudeSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
+            return path.join(projectRoot, PATHS.claudeSkillsDir, workflowId, 'SKILL.md');
         case 'codex':
             return path.join(projectRoot, PATHS.codexSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
     }
