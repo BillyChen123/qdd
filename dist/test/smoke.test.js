@@ -5,6 +5,7 @@ import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
+import { checkTermination, computeInitialPhase, runAuto } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
@@ -28,6 +29,129 @@ async function setTaskCompleted(projectRoot, studyId, taskId) {
         updated_at: new Date().toISOString(),
     }, document.body);
 }
+function statusFixture(overrides = {}) {
+    return {
+        project: {
+            theme: 'Test theme',
+            mode: 'auto',
+            current_question: 'What should be tested?',
+            ...overrides.project,
+        },
+        studies: {
+            active: [],
+            blocked: [],
+            completed: [],
+            closed: [],
+            ...overrides.studies,
+        },
+        tasks: {
+            pending: [],
+            running: [],
+            blocked: [],
+            completed: [],
+            promotion_pending: [],
+            candidate_recorded: [],
+            registered: [],
+            ...overrides.tasks,
+        },
+        output_review: {
+            studies_with_unpackaged_output: [],
+            studies_with_invalid_candidate_paths: [],
+            ...overrides.output_review,
+        },
+        close_preflight: {
+            ready: [],
+            blocked: [],
+            ...overrides.close_preflight,
+        },
+        artifacts: {
+            count: 0,
+            latest: [],
+            ...overrides.artifacts,
+        },
+        memory: {
+            recent: [],
+            ...overrides.memory,
+        },
+        boundaries: {
+            total: 0,
+            open: 0,
+            resolved: 0,
+            active: [],
+            ...overrides.boundaries,
+        },
+        question_state: {
+            last_kind: null,
+            next_candidates: [],
+            open_boundary_ids: [],
+            ...overrides.question_state,
+        },
+    };
+}
+test('auto orchestrator computes phase from persisted QDD status', () => {
+    assert.deepEqual(computeInitialPhase(statusFixture()), {
+        phase: 'start',
+        target: 'PROJECT',
+        command: 'qdd-start',
+    });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: ['STUDY-001'], blocked: [], completed: [], closed: [] },
+    }), []), { phase: 'propose', target: 'STUDY-001', command: 'qdd-propose' });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: ['STUDY-001'], blocked: [], completed: [], closed: [] },
+    }), [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'pending' }]), { phase: 'apply', target: 'STUDY-001', command: 'qdd-apply' });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: [], blocked: ['STUDY-001'], completed: [], closed: [] },
+    }), [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'blocked' }]), { phase: 'close', target: 'STUDY-001', command: 'qdd-close' });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: [], blocked: [], completed: ['STUDY-001'], closed: [] },
+    }), [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'completed' }]), { phase: 'close', target: 'STUDY-001', command: 'qdd-close' });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+        question_state: {
+            last_kind: 'refinement',
+            next_candidates: ['Run the next bounded study'],
+            open_boundary_ids: ['B001'],
+        },
+    })), { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' });
+});
+test('auto orchestrator termination conditions are explicit', () => {
+    assert.equal(checkTermination(statusFixture()).shouldTerminate, false);
+    assert.equal(checkTermination(statusFixture({
+        question_state: { last_kind: 'confirmation', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })).shouldTerminate, true);
+    assert.equal(checkTermination(statusFixture({
+        question_state: { last_kind: 'dissolution', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })).shouldTerminate, true);
+    assert.equal(checkTermination(statusFixture({
+        question_state: { last_kind: 'refinement', next_candidates: ['possible follow-up'], open_boundary_ids: [] },
+    })).shouldTerminate, true);
+    assert.equal(checkTermination(statusFixture({
+        question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: ['B001'] },
+    })).shouldTerminate, true);
+});
+test('qdd auto dry-run sequences two cycles without mutating project state', async () => {
+    const projectRoot = await createTempProject('qdd-auto-dry-run-');
+    const result = await runAuto(projectRoot, {
+        model: 'dry-run-model',
+        maxIterations: 7,
+        maxTurnsPerAgent: 3,
+        dryRun: true,
+    });
+    assert.equal(result.terminalCode, 'max_iterations');
+    assert.equal(result.iterations, 7);
+    assert.equal(result.studiesCompleted, 2);
+    assert.deepEqual(result.phases.map((phase) => `${phase.phase}:${phase.target}:${phase.command}`), [
+        'start:PROJECT:qdd-start',
+        'propose:STUDY-001:qdd-propose',
+        'apply:STUDY-001:qdd-apply',
+        'close:STUDY-001:qdd-close',
+        'propose:STUDY-002:qdd-propose',
+        'apply:STUDY-002:qdd-apply',
+        'close:STUDY-002:qdd-close',
+    ]);
+    await assert.rejects(fs.access(path.join(projectRoot, 'studies', 'STUDY-001', 'study.md')));
+});
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
     const projectRoot = await createTempProject('qdd-init-');
     await assert.doesNotReject(fs.access(path.join(projectRoot, 'contract.yaml')));
@@ -77,19 +201,29 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.match(startCommand, /contract\.yaml/);
     assert.match(startCommand, /context\/resources\.md/);
     assert.match(startCommand, /artifacts\/data\//);
+    assert.doesNotMatch(startCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(startCommand, /qdd boundaries apply --file/);
     assert.doesNotMatch(startCommand, /boundaries\.yaml/);
     const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
     assert.match(proposeCommand, /evolution\.yaml/);
     assert.match(proposeCommand, /context\/memory/);
+    assert.doesNotMatch(proposeCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(proposeCommand, /qdd boundaries score/);
     assert.doesNotMatch(proposeCommand, /question_delta/);
+    const applyCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md'), 'utf-8');
+    assert.doesNotMatch(applyCommand, /Auto Mode: Fork Next Agent/);
     const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
     assert.match(closeCommand, /context\/memory/);
     assert.match(closeCommand, /research-map\.html/);
+    assert.doesNotMatch(closeCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(closeCommand, /Get human approval before running `qdd close-study`\./);
     assert.doesNotMatch(closeCommand, /boundary-updates\.yaml/);
     assert.doesNotMatch(closeCommand, /question_delta/);
+    const autoSkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd-auto', 'SKILL.md'), 'utf-8');
+    assert.match(autoSkill, /qdd auto/);
+    assert.match(autoSkill, /runtime is the orchestrator/);
+    assert.doesNotMatch(autoSkill, /fork chain takes over/);
+    assert.doesNotMatch(autoSkill, /Fork Instruction/);
     const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-batch-integration'));
     assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/cellxgene-discover'));

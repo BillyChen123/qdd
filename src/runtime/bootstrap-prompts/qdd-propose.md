@@ -270,30 +270,6 @@ Across the initial task set:
 
 ---
 
-## Auto Mode: Fork Next Agent
-
-When running in auto mode, after you have completed all propose-mode work above and the project has one clear study with a small initial task set:
-
-1. Confirm the filesystem state is consistent — `study.md` and all `TASK-XXX.md` files are written and aligned.
-2. Determine the current study ID from the study you just created or refreshed.
-3. Fork an Executor sub-agent to execute the task graph:
-
-   ```
-   /fork Executor for <current STUDY> with command qdd-apply.
-
-   Context to pass:
-   - The project root directory: <current working directory>
-   - Run: qdd instructions <current STUDY> --command qdd-apply --json
-   - Read the bootstrap prompt at: src/runtime/bootstrap-prompts/qdd-apply.md
-   - Follow the qdd-apply workflow normally.
-   - Execute the task graph declared in the study.
-   - At the end of your work, follow the "Auto Mode: Fork Next Agent" section in your instructions.
-   ```
-
-4. Your work is done. The fork chain continues from here.
-
----
-
 ## When To Ask The User
 
 Ask only if one of these is true:

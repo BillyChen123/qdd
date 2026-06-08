@@ -5,6 +5,15 @@ import { resolveClaudeModel } from '../runtime/agent-runner.js';
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_TURNS_PER_AGENT = 50;
 
+function parsePositiveInteger(value: string | undefined, fallback: number, optionName: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || `${parsed}` !== value.trim()) {
+    throw new Error(`${optionName} must be a positive integer.`);
+  }
+  return parsed;
+}
+
 export async function autoCommand(
   projectRoot: string,
   options: {
@@ -19,13 +28,16 @@ export async function autoCommand(
 
   const autoOptions: AutoOptions = {
     model: resolveClaudeModel(options.model),
-    maxIterations: options.maxIterations ? parseInt(options.maxIterations, 10) : DEFAULT_MAX_ITERATIONS,
-    maxTurnsPerAgent: options.maxTurns ? parseInt(options.maxTurns, 10) : DEFAULT_MAX_TURNS_PER_AGENT,
+    maxIterations: parsePositiveInteger(options.maxIterations, DEFAULT_MAX_ITERATIONS, '--max-iterations'),
+    maxTurnsPerAgent: parsePositiveInteger(options.maxTurns, DEFAULT_MAX_TURNS_PER_AGENT, '--max-turns'),
     dryRun: options.dryRun ?? false,
   };
 
   if (options.json) {
-    const result: AutoResult = await runAuto(projectRootPath, autoOptions);
+    const result: AutoResult = await runAuto(projectRootPath, {
+      ...autoOptions,
+      logger: () => undefined,
+    });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -41,5 +53,6 @@ export async function autoCommand(
   console.log('=====================');
   console.log(`Completed: ${result.iterations} iterations, ${result.studiesCompleted} studies.`);
   console.log(`Final phase: ${result.finalPhase}`);
+  console.log(`Stop reason: ${result.terminalReason}`);
   console.log(result.summary);
 }

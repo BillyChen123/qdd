@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Tool, MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 export interface AgentRunnerOptions {
@@ -14,11 +16,15 @@ export interface AgentRunnerOptions {
   signal?: AbortSignal;
 }
 
+export type AgentRunStatus = 'completed' | 'max_turns' | 'aborted' | 'missing_auth' | 'sdk_error';
+
 export interface AgentRunResult {
   turns: number;
   finalMessage: string;
   terminatedNormally: boolean;
   toolCalls: number;
+  status: AgentRunStatus;
+  failureReason?: string;
 }
 
 interface ToolCall {
@@ -27,13 +33,16 @@ interface ToolCall {
   input: Record<string, unknown>;
 }
 
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const packageRootDir = path.resolve(moduleDir, '..', '..');
+
 const BASH_TOOL: Tool = {
   name: 'bash',
-  description: 'Execute a bash command in the project directory. Use for running qdd CLI commands, reading/writing files, git operations, and installing dependencies.',
+  description: 'Execute a bash command from the QDD project root. Use for qdd CLI commands, project-local inspection, and bounded analysis commands.',
   input_schema: {
     type: 'object' as const,
     properties: {
-      command: { type: 'string', description: 'The bash command to execute' },
+      command: { type: 'string', description: 'The bash command to execute from the project root' },
       timeout: { type: 'number', description: 'Optional timeout in milliseconds (max 600000)' },
     },
     required: ['command'],
@@ -42,7 +51,7 @@ const BASH_TOOL: Tool = {
 
 const READ_TOOL: Tool = {
   name: 'read',
-  description: 'Read the contents of a file at the given path.',
+  description: 'Read a file under the QDD project root or package root.',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -54,11 +63,11 @@ const READ_TOOL: Tool = {
 
 const WRITE_TOOL: Tool = {
   name: 'write',
-  description: 'Write content to a file at the given path. Creates parent directories if needed.',
+  description: 'Write a file under the QDD project root. Creates parent directories if needed.',
   input_schema: {
     type: 'object' as const,
     properties: {
-      path: { type: 'string', description: 'Path to the file to write, relative to project root or absolute' },
+      path: { type: 'string', description: 'Project-local path to write' },
       content: { type: 'string', description: 'Content to write to the file' },
     },
     required: ['path', 'content'],
@@ -67,9 +76,36 @@ const WRITE_TOOL: Tool = {
 
 const TOOLS: Tool[] = [BASH_TOOL, READ_TOOL, WRITE_TOOL];
 
-function resolvePath(cwd: string, inputPath: string): string {
-  if (inputPath.startsWith('/')) return inputPath;
-  return `${cwd}/${inputPath}`;
+function normalizeRoot(root: string): string {
+  return path.resolve(root);
+}
+
+function isPathWithinRoot(targetPath: string, root: string): boolean {
+  const normalizedTarget = path.resolve(targetPath);
+  const normalizedRoot = normalizeRoot(root);
+  const relative = path.relative(normalizedRoot, normalizedTarget);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolvePathForRead(cwd: string, inputPath: string): string {
+  const resolved = path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(cwd, inputPath);
+  const allowedRoots = [cwd, packageRootDir];
+  if (!allowedRoots.some((root) => isPathWithinRoot(resolved, root))) {
+    throw new Error(`Read path '${inputPath}' is outside the allowed project/package roots.`);
+  }
+  return resolved;
+}
+
+function resolvePathForWrite(cwd: string, inputPath: string): string {
+  if (path.isAbsolute(inputPath)) {
+    throw new Error('Write path must be project-relative.');
+  }
+
+  const resolved = path.resolve(cwd, inputPath);
+  if (!isPathWithinRoot(resolved, cwd)) {
+    throw new Error(`Write path '${inputPath}' is outside the project root.`);
+  }
+  return resolved;
 }
 
 async function executeBash(cwd: string, command: string, timeoutMs?: number): Promise<string> {
@@ -112,35 +148,30 @@ async function executeBash(cwd: string, command: string, timeoutMs?: number): Pr
 }
 
 async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
-  switch (tool.name) {
-    case 'bash': {
-      const command = String(tool.input.command ?? '');
-      if (!command.trim()) return 'Error: empty command';
-      const timeout = typeof tool.input.timeout === 'number' ? tool.input.timeout : undefined;
-      return executeBash(cwd, command, timeout);
-    }
-    case 'read': {
-      const filePath = resolvePath(cwd, String(tool.input.path ?? ''));
-      try {
-        return await fs.readFile(filePath, 'utf-8');
-      } catch (error) {
-        return `Error reading file: ${(error as Error).message}`;
+  try {
+    switch (tool.name) {
+      case 'bash': {
+        const command = String(tool.input.command ?? '');
+        if (!command.trim()) return 'Error: empty command';
+        const timeout = typeof tool.input.timeout === 'number' ? tool.input.timeout : undefined;
+        return executeBash(cwd, command, timeout);
       }
-    }
-    case 'write': {
-      const filePath = resolvePath(cwd, String(tool.input.path ?? ''));
-      const content = String(tool.input.content ?? '');
-      if (!filePath) return 'Error: empty path';
-      try {
-        await fs.mkdir(filePath.replace(/[^/]+$/, '').replace(/\/$/, ''), { recursive: true }).catch(() => {});
+      case 'read': {
+        const filePath = resolvePathForRead(cwd, String(tool.input.path ?? ''));
+        return await fs.readFile(filePath, 'utf-8');
+      }
+      case 'write': {
+        const filePath = resolvePathForWrite(cwd, String(tool.input.path ?? ''));
+        const content = String(tool.input.content ?? '');
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, content, 'utf-8');
         return `File written: ${filePath}`;
-      } catch (error) {
-        return `Error writing file: ${(error as Error).message}`;
       }
+      default:
+        return `Unknown tool: ${tool.name}`;
     }
-    default:
-      return `Unknown tool: ${tool.name}`;
+  } catch (error) {
+    return `Error executing tool '${tool.name}': ${(error as Error).message}`;
   }
 }
 
@@ -157,8 +188,8 @@ export function getClaudeSettings(): ClaudeSettings {
   if (_claudeSettingsCache) return _claudeSettingsCache;
   try {
     const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    const raw = require('fs').readFileSync(settingsPath, 'utf-8');
-    const parsed = JSON.parse(raw);
+    const raw = fsSync.readFileSync(settingsPath, 'utf-8');
+    const parsed = JSON.parse(raw) as ClaudeSettings;
     _claudeSettingsCache = {
       ANTHROPIC_AUTH_TOKEN: parsed.ANTHROPIC_AUTH_TOKEN,
       ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY,
@@ -171,15 +202,39 @@ export function getClaudeSettings(): ClaudeSettings {
   return _claudeSettingsCache;
 }
 
+export function resolveClaudeApiKey(): string | undefined {
+  const settings = getClaudeSettings();
+  return process.env.ANTHROPIC_AUTH_TOKEN
+    ?? process.env.ANTHROPIC_API_KEY
+    ?? settings.ANTHROPIC_AUTH_TOKEN
+    ?? settings.ANTHROPIC_API_KEY;
+}
+
+export function hasClaudeCredentials(): boolean {
+  return Boolean(resolveClaudeApiKey());
+}
+
 export function resolveClaudeModel(cliModel?: string): string {
   const settings = getClaudeSettings();
   return cliModel ?? process.env.ANTHROPIC_MODEL ?? settings.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
 }
 
 export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunResult> {
+  const apiKey = resolveClaudeApiKey();
+  if (!apiKey) {
+    return {
+      turns: 0,
+      finalMessage: 'Claude SDK authentication is missing.',
+      terminatedNormally: false,
+      toolCalls: 0,
+      status: 'missing_auth',
+      failureReason: 'Set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY, or configure ~/.claude/settings.json.',
+    };
+  }
+
   const settings = getClaudeSettings();
   const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_API_KEY ?? settings.ANTHROPIC_AUTH_TOKEN ?? settings.ANTHROPIC_API_KEY,
+    apiKey,
     baseURL: process.env.ANTHROPIC_BASE_URL ?? settings.ANTHROPIC_BASE_URL ?? undefined,
   });
   const { model, systemPrompt, instructions, maxTurns, cwd, signal } = options;
@@ -187,29 +242,40 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
   const messages: MessageParam[] = [
     {
       role: 'user',
-      content: `You are an agent executing a QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run CLI commands, write files, and execute analysis. When you have completed all the work described in the instructions, respond with a summary of what you accomplished and the text "WORKFLOW_COMPLETE".`,
+      content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. When you have completed all the work described in the instructions, respond with a summary of what you accomplished and the text "WORKFLOW_COMPLETE".`,
     },
   ];
 
   let turns = 0;
   let toolCalls = 0;
   let finalMessage = '';
-  let terminatedNormally = false;
+  let status: AgentRunStatus = 'max_turns';
+  let failureReason: string | undefined;
 
   while (turns < maxTurns) {
     if (signal?.aborted) {
       finalMessage = 'Aborted by user.';
+      status = 'aborted';
+      failureReason = 'Run was aborted by signal.';
       break;
     }
 
     turns++;
-    const response = await client.messages.create({
-      model,
-      max_tokens: 8000,
-      system: systemPrompt,
-      messages,
-      tools: TOOLS,
-    });
+    let response: Awaited<ReturnType<typeof client.messages.create>>;
+    try {
+      response = await client.messages.create({
+        model,
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages,
+        tools: TOOLS,
+      });
+    } catch (error) {
+      finalMessage = `Claude SDK request failed: ${(error as Error).message}`;
+      status = 'sdk_error';
+      failureReason = (error as Error).message;
+      break;
+    }
 
     const toolUses: ToolUseBlock[] = [];
     const textParts: string[] = [];
@@ -226,14 +292,13 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
 
     if (toolUses.length === 0) {
       finalMessage = text;
-      terminatedNormally = text.includes('WORKFLOW_COMPLETE');
+      status = text.includes('WORKFLOW_COMPLETE') ? 'completed' : 'sdk_error';
+      failureReason = status === 'completed' ? undefined : 'Agent stopped without WORKFLOW_COMPLETE.';
       break;
     }
 
-    // Add assistant response to history
     messages.push({ role: 'assistant', content: response.content });
 
-    // Execute tools and collect results
     const toolResults: MessageParam['content'] = [];
     for (const toolUse of toolUses) {
       toolCalls++;
@@ -254,7 +319,16 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
 
   if (turns >= maxTurns && !finalMessage) {
     finalMessage = `Reached maximum turns (${maxTurns}) without explicit completion.`;
+    status = 'max_turns';
+    failureReason = finalMessage;
   }
 
-  return { turns, finalMessage, terminatedNormally, toolCalls };
+  return {
+    turns,
+    finalMessage,
+    terminatedNormally: status === 'completed',
+    toolCalls,
+    status,
+    failureReason,
+  };
 }

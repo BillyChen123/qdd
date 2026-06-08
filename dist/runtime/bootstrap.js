@@ -34,7 +34,7 @@ const WORKFLOW_METADATA = {
     },
 };
 const AUTO_ENTRY_SKILL_ID = 'qdd-auto';
-const AUTO_ENTRY_SKILL_DESCRIPTION = 'Start autonomous QDD research loop — forks a Thesis Manager that chains through Study Brain, Executor, and back until termination';
+const AUTO_ENTRY_SKILL_DESCRIPTION = 'Start autonomous QDD research loop through the runtime orchestrator and Claude SDK sessions';
 function uniqueValues(values) {
     return [...new Set(values)];
 }

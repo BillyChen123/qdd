@@ -270,32 +270,6 @@ But when the task is a structured benchmark or fixed-answer evaluation, make sur
 
 ---
 
-## Auto Mode: Fork Next Agent
-
-When running in auto mode, after you have completed execution and the study has enough evidence to judge or is meaningfully blocked:
-
-1. Confirm the filesystem state is consistent — outputs are packaged into canonical study output directories, `artifact-candidates.yaml` is updated, and all completed tasks have explicit `promotion_status`.
-2. Determine the current study ID from the study you just executed.
-3. Fork a Thesis Manager sub-agent to close the study:
-
-   ```
-   /fork Thesis Manager for <current STUDY> with command qdd-close.
-
-   Context to pass:
-   - The project root directory: <current working directory>
-   - Run: qdd instructions <current STUDY> --command qdd-close --json
-   - Read the bootstrap prompt at: src/runtime/bootstrap-prompts/qdd-close.md
-   - Follow the qdd-close workflow normally.
-   - Synthesize the study evidence, write the question_delta, promote artifacts.
-   - At the end of your work, follow the "Auto Mode: Fork Next Agent" section in your instructions.
-   ```
-
-4. Your work is done. The fork chain continues from here.
-
-**Note:** In auto mode, do not return to `qdd-explore`. If the declared task graph is no longer enough, record the situation as a blocker, set `promotion_status` appropriately, and proceed to close. The next cycle's Study Brain will adapt.
-
----
-
 ## When To Pause
 
 Pause and report if:

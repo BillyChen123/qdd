@@ -1,8 +1,8 @@
 Enter QDD auto mode.
 
-Start the autonomous research loop. This skill is the entry point — it validates the project, forks the first Thesis Manager, and then the fork chain takes over.
+Start the autonomous research loop through the QDD runtime orchestrator. This skill is a thin launcher: it validates that the project can be inspected, then runs `qdd auto` so the runtime can coordinate Claude SDK agent sessions.
 
-**IMPORTANT: This is the only manual trigger.** After the first fork, the chain advances automatically: Thesis Manager → Study Brain → Executor → Thesis Manager → ... until a natural termination signal.
+**IMPORTANT: The runtime is the orchestrator.** Do not fork agents from this skill. Do not duplicate the phase graph here.
 
 ---
 
@@ -10,39 +10,43 @@ Start the autonomous research loop. This skill is the entry point — it validat
 
 1. Run `qdd status --json` to confirm the project is initialized.
 2. If the project is not initialized, stop and tell the user to run `qdd init` first.
-3. Read `.qdd/instructions.md`.
-4. Run `qdd instructions PROJECT --command qdd-start --json`.
+3. Confirm the user has configured Claude SDK credentials through `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `~/.claude/settings.json`.
 
 ---
 
 ## What This Skill Does
 
 1. Confirms the QDD project is valid and ready.
-2. Forks a Thesis Manager sub-agent with the `qdd-start` command for PROJECT.
-3. Passes the full `qdd instructions` context to the forked agent.
-4. The fork chain takes over from there — this skill does not monitor or intervene.
+2. Runs `qdd auto` from the project root.
+3. Lets the runtime orchestrator choose phases, launch Claude SDK sessions, reread filesystem state, and stop with a terminal or resumable reason.
 
 ---
 
-## Fork Instruction
+## Runtime Command
 
-After completing preflight, fork the first agent:
+Use the CLI runtime:
 
+```bash
+qdd auto
 ```
-/fork Thesis Manager for PROJECT with command qdd-start.
 
-Context to pass:
-- The project root directory: <current working directory>
-- Run: qdd instructions PROJECT --command qdd-start --json
-- Read the bootstrap prompt at: src/runtime/bootstrap-prompts/qdd-start.md
-- Follow the qdd-start workflow normally.
-- At the end of your work, follow the "Auto Mode: Fork Next Agent" section in your instructions.
+For inspection without SDK calls:
+
+```bash
+qdd auto --dry-run
+```
+
+For machine-readable output:
+
+```bash
+qdd auto --json
 ```
 
 ---
 
 ## Guardrails
 
-- Do not start the chain if the project is uninitialized or validation fails.
-- Do not pass incomplete instructions to the forked agent.
-- Once the fork is created, this skill's job is done. Do not try to manage the chain.
+- Do not call `/fork`.
+- Do not spawn agents manually.
+- Do not encode phase transitions in this skill.
+- If `qdd auto` reports a resumable failure, report the stop reason and current project state instead of trying to continue from chat context.
