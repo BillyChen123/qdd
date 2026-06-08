@@ -12,6 +12,7 @@ import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
+import { autoCommand } from '../commands/auto.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
@@ -289,6 +290,23 @@ program
   .action(async (id: string, options?: { json?: boolean; command?: 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close' }) => {
     try {
       await instructionsCommand(id, options);
+    } catch (error) {
+      console.error(`Error: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('auto')
+  .description('Start autonomous QDD research loop using the Anthropic SDK to orchestrate agent sessions')
+  .option('--model <model>', 'Claude model to use', 'claude-sonnet-4-6')
+  .option('--max-iterations <n>', 'Maximum loop iterations', '20')
+  .option('--max-turns <n>', 'Maximum turns per agent session', '50')
+  .option('--dry-run', 'Show what would happen without executing')
+  .option('--json', 'Output result as JSON')
+  .action(async (options: { model?: string; maxIterations?: string; maxTurns?: string; dryRun?: boolean; json?: boolean } = {}) => {
+    try {
+      await autoCommand(process.cwd(), options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);
