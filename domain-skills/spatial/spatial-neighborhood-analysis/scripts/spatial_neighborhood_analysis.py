@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from scipy.sparse import csr_matrix
-from scipy.spatial import cKDTree
 
 
 @dataclass
@@ -50,7 +49,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spatial-obsm-key", default="auto", help="Coordinate obsm key, or auto.")
     parser.add_argument("--x-key", default=None, help="obs x coordinate column.")
     parser.add_argument("--y-key", default=None, help="obs y coordinate column.")
-    parser.add_argument("--backend", choices=["auto", "squidpy", "scipy-knn"], default="auto")
     parser.add_argument("--n-neighbors", type=int, default=15)
     parser.add_argument("--max-distance", type=float, default=None, help="Optional maximum neighbor distance.")
     return parser.parse_args()
@@ -165,49 +163,6 @@ def get_section_values(adata: AnnData, section_key: str | None) -> pd.Series:
     return adata.obs[section_key].astype("string").fillna("missing")
 
 
-def choose_backend(args: argparse.Namespace, notes: list[str]) -> str:
-    if args.backend == "scipy-knn":
-        return "scipy-knn"
-    try:
-        import squidpy as sq  # noqa: F401
-    except ModuleNotFoundError:
-        if args.backend == "squidpy":
-            raise ModuleNotFoundError(
-                "squidpy is not installed in qdd-skill-core. Install squidpy or rerun with --backend scipy-knn."
-            )
-        notes.append("squidpy is not installed; used scipy-knn fallback for spatial graph construction.")
-        return "scipy-knn"
-    return "squidpy"
-
-
-def scipy_knn_graph(points: np.ndarray, n_neighbors: int) -> tuple[csr_matrix, csr_matrix]:
-    n_obs = points.shape[0]
-    if n_obs <= 1:
-        empty = csr_matrix((n_obs, n_obs), dtype=float)
-        return empty, empty
-    query_k = min(n_neighbors + 1, n_obs)
-    tree = cKDTree(points)
-    distances, neighbors = tree.query(points, k=query_k)
-    if query_k == 1:
-        distances = distances.reshape(-1, 1)
-        neighbors = neighbors.reshape(-1, 1)
-
-    rows: list[int] = []
-    cols: list[int] = []
-    dist_values: list[float] = []
-    for i in range(n_obs):
-        for dist, j in zip(np.ravel(distances[i]), np.ravel(neighbors[i])):
-            j = int(j)
-            if i == j:
-                continue
-            rows.append(i)
-            cols.append(j)
-            dist_values.append(float(dist))
-    conn = csr_matrix((np.ones(len(rows), dtype=float), (rows, cols)), shape=(n_obs, n_obs))
-    dist = csr_matrix((np.asarray(dist_values, dtype=float), (rows, cols)), shape=(n_obs, n_obs))
-    return conn, dist
-
-
 def squidpy_graph(points: np.ndarray, n_neighbors: int) -> tuple[csr_matrix, csr_matrix]:
     import squidpy as sq
 
@@ -220,9 +175,9 @@ def squidpy_graph(points: np.ndarray, n_neighbors: int) -> tuple[csr_matrix, csr
 
 
 def build_graph(points: np.ndarray, args: argparse.Namespace, backend_used: str) -> tuple[csr_matrix, csr_matrix]:
-    if backend_used == "squidpy":
-        return squidpy_graph(points, args.n_neighbors)
-    return scipy_knn_graph(points, args.n_neighbors)
+    if backend_used != "squidpy":
+        raise ValueError(f"Unsupported backend: {backend_used}")
+    return squidpy_graph(points, args.n_neighbors)
 
 
 def sorted_neighbors(connectivities: csr_matrix, distances: csr_matrix, focal_index: int, max_distance: float | None, n_neighbors: int) -> list[int]:
@@ -258,7 +213,11 @@ def compute_neighborhoods(
     valid_coord = coord_numeric.notna().all(axis=1)
 
     notes: list[str] = []
-    backend_used = choose_backend(args, notes)
+    try:
+        import squidpy as sq  # noqa: F401
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError("squidpy is required for spatial neighborhood analysis in qdd-skill-core.") from error
+    backend_used = "squidpy"
 
     score_rows: list[dict[str, Any]] = []
     composition_counts: dict[tuple[str, str, str], int] = {}
@@ -337,7 +296,7 @@ def compute_neighborhoods(
         if composition_rows
         else pd.DataFrame()
     )
-    backend_state = BackendState(requested=args.backend, used=backend_used, notes=notes)
+    backend_state = BackendState(requested="squidpy", used=backend_used, notes=notes)
     return scores, group_summary, composition, backend_state
 
 
@@ -463,7 +422,7 @@ def main() -> None:
         scores = pd.DataFrame()
         group_summary = pd.DataFrame()
         composition = pd.DataFrame()
-        backend_state = BackendState(requested=args.backend, used=None, notes=[])
+        backend_state = BackendState(requested="squidpy", used=None, notes=[])
     else:
         scores, group_summary, composition, backend_state = compute_neighborhoods(
             adata,

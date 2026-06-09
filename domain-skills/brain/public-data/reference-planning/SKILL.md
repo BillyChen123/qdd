@@ -1,6 +1,6 @@
 ---
 name: brain/public-data/reference-planning
-description: Public reference planning protocol for QDD. Use during qdd-propose and qdd-explore when a study needs lightweight public reference tables such as markers or ligand-receptor pairs and the agent must decide which source to query, what bounded search intent to write into the task, and which fetch executor should materialize the local file.
+description: Public reference planning protocol for QDD. Use during qdd-propose and qdd-explore when a study needs lightweight public reference or evidence capture such as markers, ligand-receptor pairs, or PubMed citation tables and the agent must decide which source to query, what bounded search intent to write into the task, and which fetch executor should materialize the local file.
 ---
 
 # brain/public-data/reference-planning
@@ -13,6 +13,7 @@ Trigger this skill when the study needs a lightweight public reference resource 
 
 - marker tables for annotation
 - ligand-receptor pairs for communication scoring
+- literature evidence tables for reviewable citation support
 - other small public reference tables that can be fetched on demand
 
 Do not use this skill for dataset discovery or validation cohorts.
@@ -79,6 +80,8 @@ Current stable executors:
   - for marker-backed annotation tables
 - `public-data/lrdb-fetch`
   - for ligand-receptor interaction tables
+- `public-data/pubmed-evidence-capture`
+  - for bounded literature evidence tables with PMID-backed provenance
 
 Do not assign a source unless there is an installed executor skill for it.
 
@@ -102,6 +105,10 @@ Good task wording example:
 Good task wording example:
 
 - fetch a mouse ligand-receptor table from CellTalkDB with immune and fibroblast signaling terms, materialize `lr_selected.tsv`, then use it in `singlecell/scrna/sc-cell-communication`
+
+Good task wording example:
+
+- capture PubMed evidence for fibroblast inflammatory signaling in human ulcerative colitis, materialize `pubmed_evidence.csv`, then use it to audit the downstream biological interpretation
 
 Bad:
 
@@ -154,6 +161,13 @@ Use `public-data/cellmarker-fetch` when:
 Use `public-data/lrdb-fetch` when:
 
 - `singlecell/scrna/sc-cell-communication` needs `--lr-file`
+
+### Literature evidence tables
+
+Use `public-data/pubmed-evidence-capture` when:
+
+- a study needs a reviewable citation table for marker, pathway, cell-state, or mechanism claims
+- a task should freeze PMID-backed evidence rows before downstream interpretation
 
 ## Notes
 

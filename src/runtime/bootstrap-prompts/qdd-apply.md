@@ -148,12 +148,12 @@ If one of the declared skills is `public-data/cellxgene-discover`:
 3. download only those selected datasets
 4. if the selected set is empty, treat that as a planning/blocker issue rather than re-running broad search here
 
-If one of the declared skills is `public-data/cellmarker-fetch` or `public-data/lrdb-fetch`:
+If one of the declared skills is `public-data/cellmarker-fetch`, `public-data/lrdb-fetch`, `public-data/geo-candidate-capture`, or `public-data/pubmed-evidence-capture`:
 
 1. read the task text itself as the bounded search intent
 2. use only the named source and query terms already captured there
 3. materialize the chosen local CSV/TSV output under the study output directory
-4. do not invent a new managed YAML handoff for reference-table fetch tasks
+4. do not invent a new managed YAML handoff for lightweight public-data capture tasks
 
 ### 2.5 Be patient with heavy analysis
 

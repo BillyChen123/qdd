@@ -673,7 +673,7 @@ AI asks:
 - Research theme? → "Identify marker genes for lung fibroblasts"
 - Initial question? → "What are the top marker genes for Day14 fibroblasts?"
 - Available data? → "GSE12345 (downloaded at /data/GSE12345), GSE67890 (need to download)"
-- Runtime environments? → "Python 3.10 with scanpy 1.9.3; R 4.3.1"
+- Runtime environments? → "Python analysis environment available; optional R environment if a task needs it"
 - Biological background? → "Lung fibroblasts, Day14 focus"
 
 Creates:

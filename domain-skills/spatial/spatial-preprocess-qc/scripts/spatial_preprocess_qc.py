@@ -3,9 +3,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+
+
+def bootstrap_threads(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--threads", type=int, default=1)
+    known, _ = parser.parse_known_args(argv)
+    threads = max(1, int(known.threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    return threads
+
+
+BOOTSTRAP_THREADS = bootstrap_threads(sys.argv[1:])
 
 import matplotlib
 matplotlib.use("Agg")
@@ -45,6 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Conservative preprocessing and audit skill for spatial AnnData h5ad files.")
     parser.add_argument("--input", required=True, help="Input h5ad path.")
     parser.add_argument("--output", required=True, help="Output directory.")
+    parser.add_argument("--threads", type=int, default=BOOTSTRAP_THREADS, help="CPU thread count for BLAS/OpenMP/Numba-backed steps.")
     parser.add_argument("--mode", choices=["inspect", "auto", "force"], default="auto")
     parser.add_argument("--counts-layer", default="auto", help="Which matrix to treat as counts: auto | X | <layer>.")
     parser.add_argument("--assay", choices=["auto", "targeted", "genome-wide", "feature-activity"], default="auto")
@@ -69,6 +92,15 @@ def parse_args() -> argparse.Namespace:
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def configure_threads(threads: int) -> int:
+    threads = max(1, int(threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    if hasattr(sc.settings, "n_jobs"):
+        sc.settings.n_jobs = threads
+    return threads
 
 
 def matrix_values_preview(matrix: Any, limit: int = 50000) -> np.ndarray:
@@ -138,6 +170,22 @@ def resolve_percent_top(n_vars: int) -> list[int] | None:
     candidates = [50, 100, 200, 500]
     valid = [value for value in candidates if value < n_vars]
     return valid or None
+
+
+def pca_components(n_obs: int, n_vars: int, requested: int) -> int:
+    upper = min(n_obs, n_vars) - 1
+    if upper < 1:
+        raise ValueError("PCA requires at least two observations and two usable features.")
+    return 1 if upper == 1 else min(requested, upper)
+
+
+def pca_feature_space(adata: sc.AnnData) -> tuple[str, int | None]:
+    if "highly_variable" not in adata.var.columns:
+        return "all_features", None
+    mask = adata.var["highly_variable"].fillna(False).to_numpy(dtype=bool)
+    if not mask.any():
+        return "all_features", None
+    return "highly_variable", int(mask.sum())
 
 
 def infer_assay(adata: sc.AnnData, requested: str) -> str:
@@ -331,6 +379,7 @@ def write_report(
     metadata_summary: pd.DataFrame,
     operations: list[str],
     metadata_candidates: dict[str, list[str]],
+    provenance: dict[str, object],
 ) -> None:
     lines = [
         "# spatial-preprocess-qc report",
@@ -350,6 +399,12 @@ def write_report(
         f"- assay: `{assay}`",
         f"- coordinate_source: `{coordinate_state.source}`",
         f"- coordinate_complete_observations: `{coordinate_state.n_complete}`",
+        "",
+        "## Runtime Provenance",
+        "",
+        "```json",
+        json.dumps(provenance, indent=2, ensure_ascii=False),
+        "```",
         "",
         "## Metadata Candidates",
         "",
@@ -376,6 +431,7 @@ def write_report(
 
 def main() -> None:
     args = parse_args()
+    args.threads = configure_threads(args.threads)
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()
     tables_dir = output_dir / "tables"
@@ -427,18 +483,28 @@ def main() -> None:
         if not args.skip_log1p:
             sc.pp.log1p(working)
             operations.append("log1p")
-            working.raw = working.copy()
         if args.run_hvg:
             hvg_kwargs = {"flavor": args.hvg_flavor, "n_top_genes": min(args.n_top_genes, working.n_vars)}
             if args.batch_key:
                 hvg_kwargs["batch_key"] = args.batch_key
             sc.pp.highly_variable_genes(working, **hvg_kwargs)
             operations.append(f"highly_variable_genes(flavor={args.hvg_flavor}, n_top_genes<={args.n_top_genes})")
+        pca_space = "not_run"
         if args.run_pca:
-            n_comps = min(args.n_pcs, max(2, working.n_vars - 1))
-            sc.tl.pca(working, svd_solver="arpack", n_comps=n_comps)
-            operations.append(f"pca(n_comps={n_comps})")
+            feature_space, n_features = pca_feature_space(working)
+            pca_kwargs: dict[str, object] = {
+                "svd_solver": "arpack",
+                "n_comps": pca_components(working.n_obs, n_features or working.n_vars, args.n_pcs),
+            }
+            if feature_space == "highly_variable":
+                pca_kwargs["mask_var"] = "highly_variable"
+            sc.tl.pca(working, **pca_kwargs)
+            pca_space = feature_space
+            operations.append(f"pca(n_comps={pca_kwargs['n_comps']}, feature_space={feature_space})")
+    else:
+        pca_space = "not_run"
 
+    working.raw = None
     working.write_h5ad(output_dir / "processed.h5ad")
     working.obs.to_csv(tables_dir / "qc_metrics_obs.csv")
     working.var.to_csv(tables_dir / "qc_metrics_var.csv")
@@ -451,6 +517,11 @@ def main() -> None:
     color = working.obs[args.sample_key] if args.sample_key and args.sample_key in working.obs.columns else None
     figure_files.extend(write_spatial_figure(coords, figures_dir, color=color))
 
+    provenance = {
+        "threads": args.threads,
+        "pca_feature_space": pca_space,
+        "raw_retained": False,
+    }
     write_report(
         output_dir / "report.md",
         args,
@@ -460,6 +531,7 @@ def main() -> None:
         metadata_summary,
         operations,
         metadata_candidates,
+        provenance,
     )
 
     result = {
@@ -470,6 +542,7 @@ def main() -> None:
         "assay": assay,
         "matrix_state": asdict(selected_state),
         "coordinate_state": asdict(coordinate_state),
+        "provenance": provenance,
         "metadata_candidates": metadata_candidates,
         "selected_metadata": metadata_rows,
         "operations": operations,

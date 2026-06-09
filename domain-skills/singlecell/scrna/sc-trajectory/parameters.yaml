@@ -7,6 +7,7 @@ methods:
   rna-velocity:
     description: Compute RNA velocity, velocity pseudotime, and optional latent time from spliced/unspliced layers.
 defaults:
+  threads: 1
   embedding_key: auto
   use_rep: auto
   n_neighbors: 30
@@ -20,6 +21,7 @@ cli:
     - --output
     - --method <paga-dpt|rna-velocity>
   optional:
+    - --threads <int>
     - --cluster-key <obs-column>
     - --root-cell <obs-name>
     - --root-key <obs-column>

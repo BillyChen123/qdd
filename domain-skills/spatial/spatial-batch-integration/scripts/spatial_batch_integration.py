@@ -3,8 +3,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+
+
+def bootstrap_threads(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--threads", type=int, default=1)
+    known, _ = parser.parse_known_args(argv)
+    threads = max(1, int(known.threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    return threads
+
+
+BOOTSTRAP_THREADS = bootstrap_threads(sys.argv[1:])
 
 import matplotlib
 matplotlib.use("Agg")
@@ -19,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Spatial AnnData batch diagnosis and optional integration skill.")
     parser.add_argument("--input", required=True, help="Input h5ad path.")
     parser.add_argument("--output", required=True, help="Output directory.")
+    parser.add_argument("--threads", type=int, default=BOOTSTRAP_THREADS, help="CPU thread count for BLAS/OpenMP/Numba-backed steps.")
     parser.add_argument("--batch-key", required=True, help="obs column identifying batch/sample/slide.")
     parser.add_argument("--method", choices=["none", "harmony", "scanorama", "bbknn"], default="harmony")
     parser.add_argument("--section-key", default=None, help="Optional obs column identifying spatial sections.")
@@ -45,6 +68,15 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def configure_threads(threads: int) -> int:
+    threads = max(1, int(threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    if hasattr(sc.settings, "n_jobs"):
+        sc.settings.n_jobs = threads
+    return threads
+
+
 def dataframe_to_markdown(frame: pd.DataFrame, max_rows: int = 20) -> str:
     if frame.empty:
         return "_No rows_"
@@ -60,32 +92,42 @@ def dataframe_to_markdown(frame: pd.DataFrame, max_rows: int = 20) -> str:
     return "\n".join(lines)
 
 
-def maybe_prepare_hvg(adata: sc.AnnData, args: argparse.Namespace) -> sc.AnnData:
+def maybe_prepare_hvg(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sc.AnnData, str, int | None]:
     if not args.use_hvg:
-        return adata
+        return adata, "all_features", None
     if "highly_variable" not in adata.var.columns:
         sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg, flavor="seurat")
-    if "highly_variable" in adata.var.columns and bool(adata.var["highly_variable"].sum()):
-        return adata[:, adata.var["highly_variable"]].copy()
-    return adata
+    if "highly_variable" in adata.var.columns:
+        n_hvg = int(adata.var["highly_variable"].fillna(False).sum())
+        if n_hvg > 0:
+            return adata, "highly_variable", n_hvg
+    return adata, "all_features", None
 
 
 def pca_components(adata: sc.AnnData, requested: int) -> int:
     upper = min(adata.n_obs, adata.n_vars) - 1
-    return max(2, min(requested, upper))
+    if upper < 1:
+        raise ValueError("PCA requires at least two observations and two usable features.")
+    return 1 if upper == 1 else min(requested, upper)
 
 
-def run_pca_basis(adata: sc.AnnData, args: argparse.Namespace) -> sc.AnnData:
-    working = maybe_prepare_hvg(adata, args)
-    if getattr(adata, "raw", None) is not None and getattr(working, "raw", None) is None:
-        working.raw = adata.raw
+def run_pca_basis(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sc.AnnData, str, int | None]:
+    working, pca_feature_space, n_hvg = maybe_prepare_hvg(adata, args)
     if "X_pca" not in working.obsm:
-        sc.tl.pca(working, n_comps=pca_components(working, args.n_pcs), svd_solver="arpack")
-    return working
+        pca_kwargs: dict[str, object] = {
+            "n_comps": pca_components(working, min(args.n_pcs, n_hvg or working.n_vars)),
+            "svd_solver": "arpack",
+        }
+        if pca_feature_space == "highly_variable":
+            pca_kwargs["mask_var"] = "highly_variable"
+        sc.tl.pca(working, **pca_kwargs)
+    else:
+        pca_feature_space = "precomputed"
+    return working, pca_feature_space, n_hvg
 
 
-def integrate(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sc.AnnData, str]:
-    working = run_pca_basis(adata, args)
+def integrate(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sc.AnnData, str, dict[str, object]]:
+    working, pca_feature_space, n_hvg = run_pca_basis(adata, args)
     embedding_key = "X_pca"
 
     if args.method == "none":
@@ -127,7 +169,14 @@ def integrate(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sc.AnnData, 
     sc.tl.leiden(working, resolution=args.leiden_resolution, key_added=args.cluster_key)
     if not args.skip_umap:
         sc.tl.umap(working, min_dist=args.umap_min_dist, random_state=args.random_state)
-    return working, embedding_key
+    provenance = {
+        "threads": args.threads,
+        "skip_umap": bool(args.skip_umap),
+        "pca_feature_space": pca_feature_space,
+        "n_hvg_used": n_hvg,
+        "raw_retained": False,
+    }
+    return working, embedding_key, provenance
 
 
 def compute_metrics(adata: sc.AnnData, args: argparse.Namespace, embedding_key: str) -> pd.DataFrame:
@@ -250,6 +299,7 @@ def write_report(
     coord_source: str | None,
     metrics: pd.DataFrame,
     batch_counts: pd.DataFrame,
+    provenance: dict[str, object],
 ) -> None:
     lines = [
         "# spatial-batch-integration report",
@@ -262,6 +312,12 @@ def write_report(
         f"- embedding_key: `{embedding_key}`",
         f"- cluster_key: `{args.cluster_key}`",
         f"- coordinate_source: `{coord_source or 'not found'}`",
+        "",
+        "## Runtime Provenance",
+        "",
+        "```json",
+        json.dumps(provenance, indent=2, ensure_ascii=False),
+        "```",
         "",
         "## Parameters",
         "",
@@ -291,6 +347,7 @@ def write_report(
 
 def main() -> None:
     args = parse_args()
+    args.threads = configure_threads(args.threads)
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()
     figures_dir = output_dir / "figures"
@@ -306,9 +363,10 @@ def main() -> None:
         raise ValueError(f"section key '{args.section_key}' not found in adata.obs")
 
     coord_source, coords = get_spatial_coords(adata, args.spatial_obsm_key)
-    working, embedding_key = integrate(adata, args)
+    working, embedding_key, provenance = integrate(adata, args)
     metrics = compute_metrics(working, args, embedding_key)
 
+    working.raw = None
     working.write_h5ad(output_dir / "processed.h5ad")
     batch_counts = working.obs[args.batch_key].value_counts().rename_axis(args.batch_key).reset_index(name="n_obs")
     batch_counts.to_csv(tables_dir / "batch_sizes.csv", index=False)
@@ -344,7 +402,7 @@ def main() -> None:
     save_spatial_plot(coords, working, figures_dir, args.batch_key, "spatial_by_batch.png")
     save_spatial_plot(coords, working, figures_dir, args.cluster_key, "spatial_by_cluster.png")
 
-    write_report(output_dir / "report.md", args, embedding_key, coord_source, metrics, batch_counts)
+    write_report(output_dir / "report.md", args, embedding_key, coord_source, metrics, batch_counts, provenance)
     result = {
         "skill": "spatial/spatial-batch-integration",
         "input": str(input_path),
@@ -355,6 +413,7 @@ def main() -> None:
         "embedding_key": embedding_key,
         "cluster_key": args.cluster_key,
         "coordinate_source": coord_source,
+        "provenance": provenance,
         "metrics": metrics.to_dict(orient="records"),
         "generated_figures": sorted(path.name for path in figures_dir.glob("*.png")),
         "generated_tables": sorted(f"tables/{path.name}" for path in tables_dir.glob("*.csv")),

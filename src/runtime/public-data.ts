@@ -8,7 +8,11 @@ export function isDatasetPublicDataSkillId(skillId: string): boolean {
   return DATASET_PUBLIC_DATA_SKILL_IDS.has(normalizeSkillId(skillId));
 }
 
-export function isReferencePublicDataSkillId(skillId: string): boolean {
+export function isLightweightPublicDataSkillId(skillId: string): boolean {
   const normalized = normalizeSkillId(skillId);
   return normalized.startsWith('public-data/') && !DATASET_PUBLIC_DATA_SKILL_IDS.has(normalized);
+}
+
+export function isReferencePublicDataSkillId(skillId: string): boolean {
+  return isLightweightPublicDataSkillId(skillId);
 }

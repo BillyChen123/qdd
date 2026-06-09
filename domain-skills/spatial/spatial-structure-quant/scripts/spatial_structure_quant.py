@@ -16,7 +16,6 @@ import pandas as pd
 import scanpy as sc
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
-from scipy.spatial import cKDTree
 
 
 @dataclass
@@ -51,7 +50,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spatial-obsm-key", default="auto")
     parser.add_argument("--x-key", default=None)
     parser.add_argument("--y-key", default=None)
-    parser.add_argument("--backend", choices=["auto", "squidpy", "scipy-graph"], default="auto")
     parser.add_argument("--graph-method", choices=["knn", "radius"], default="knn")
     parser.add_argument("--n-neighbors", type=int, default=8)
     parser.add_argument("--radius", type=float, default=None)
@@ -164,21 +162,6 @@ def dataframe_to_markdown(frame: pd.DataFrame, max_rows: int = 20) -> str:
     return "\n".join(lines)
 
 
-def choose_backend(args: argparse.Namespace, notes: list[str]) -> str:
-    if args.backend == "scipy-graph":
-        return "scipy-graph"
-    try:
-        import squidpy as sq  # noqa: F401
-    except ModuleNotFoundError:
-        if args.backend == "squidpy":
-            raise ModuleNotFoundError(
-                "squidpy is not installed in qdd-skill-core. Install squidpy or rerun with --backend scipy-graph."
-            )
-        notes.append("squidpy is not installed; used scipy-graph fallback for spatial graph construction.")
-        return "scipy-graph"
-    return "squidpy"
-
-
 def squidpy_graph(points: np.ndarray, args: argparse.Namespace) -> csr_matrix:
     import squidpy as sq
 
@@ -195,41 +178,10 @@ def squidpy_graph(points: np.ndarray, args: argparse.Namespace) -> csr_matrix:
     return section.obsp["spatial_connectivities"].tocsr()
 
 
-def scipy_graph(points: np.ndarray, args: argparse.Namespace) -> csr_matrix:
-    n_obs = points.shape[0]
-    if n_obs <= 1:
-        return csr_matrix((n_obs, n_obs), dtype=float)
-    tree = cKDTree(points)
-    rows: list[int] = []
-    cols: list[int] = []
-    if args.graph_method == "radius":
-        if args.radius is None:
-            raise ValueError("--radius is required when --graph-method radius")
-        for i, j in tree.query_pairs(r=args.radius):
-            i = int(i)
-            j = int(j)
-            rows.extend([i, j])
-            cols.extend([j, i])
-    else:
-        query_k = min(args.n_neighbors + 1, n_obs)
-        _, neighbors = tree.query(points, k=query_k)
-        if query_k == 1:
-            neighbors = neighbors.reshape(-1, 1)
-        for i in range(n_obs):
-            for j in np.ravel(neighbors[i]):
-                j = int(j)
-                if i == j:
-                    continue
-                rows.append(i)
-                cols.append(j)
-    values = np.ones(len(rows), dtype=float)
-    return csr_matrix((values, (rows, cols)), shape=(n_obs, n_obs))
-
-
 def build_graph(points: np.ndarray, args: argparse.Namespace, backend_used: str) -> csr_matrix:
-    if backend_used == "squidpy":
-        return squidpy_graph(points, args)
-    return scipy_graph(points, args)
+    if backend_used != "squidpy":
+        raise ValueError(f"Unsupported backend: {backend_used}")
+    return squidpy_graph(points, args)
 
 
 def component_passes(labels: pd.Series, seed_labels: set[str] | None, required_labels: set[str] | None, args: argparse.Namespace) -> tuple[bool, int, dict[str, int]]:
@@ -259,7 +211,11 @@ def quantify_structures(adata: AnnData, coords: pd.DataFrame, args: argparse.Nam
     valid = coord_numeric.notna().all(axis=1) & labels.astype(str).isin(component_labels)
 
     notes: list[str] = []
-    backend_used = choose_backend(args, notes)
+    try:
+        import squidpy as sq  # noqa: F401
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError("squidpy is required for spatial structure quantification in qdd-skill-core.") from error
+    backend_used = "squidpy"
 
     component_rows: list[dict[str, Any]] = []
     assignment_rows: list[dict[str, Any]] = []
@@ -328,7 +284,7 @@ def quantify_structures(adata: AnnData, coords: pd.DataFrame, args: argparse.Nam
             )
             .reset_index()
         )
-    backend_state = BackendState(requested=args.backend, used=backend_used, notes=notes)
+    backend_state = BackendState(requested="squidpy", used=backend_used, notes=notes)
     return components, assignments, group_summary, backend_state
 
 

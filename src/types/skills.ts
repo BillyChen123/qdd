@@ -24,6 +24,8 @@ export type SkillStage =
 // problem-level skill 的受控标签。
 // 这些标签是轻量判别信号，不是自由关键词池。
 export type SkillTag =
+  | 'datasets'
+  | 'literature'
   | 'scrna'
   | 'scatac'
   | 'cellxgene'

@@ -75,7 +75,7 @@ When external public data may be needed:
 - only then consider a bounded public-data task
 - keep candidate review in the discussion
 - in `human` and `assist` mode, confirm the final selected target set before writing `public_data_request.yaml`
-- if the study only needs public reference tables such as markers or ligand-receptor pairs, keep the search intent in the task discussion and do not force a `public_data_request.yaml` handoff
+- if the study only needs lightweight public-data capture such as markers, ligand-receptor pairs, GEO candidate tables, or PubMed evidence tables, keep the search intent in the task discussion and do not force a `public_data_request.yaml` handoff
 
 Read the actual `study.md` and current task files listed by the instructions output.
 

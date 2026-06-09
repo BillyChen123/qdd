@@ -27,12 +27,13 @@ Use this skill when:
 ## Supported Graphs
 
 - `expression`: Scanpy PCA or integrated embedding neighbors
-- `spatial`: coordinate kNN graph, using Squidpy when available and scikit-learn fallback otherwise
+- `spatial`: coordinate kNN graph built with Squidpy
 - `combined`: weighted average of expression and spatial connectivities
 
 ## Key Parameters
 
 - `--graph-source expression|spatial|combined`
+- `--threads`
 - `--use-rep auto|X_pca|X_pca_harmony|X_scanorama|...`
 - `--spatial-obsm-key`
 - `--section-key`
@@ -72,4 +73,5 @@ conda run -n qdd-skill-core python \
 
 - If coordinates are section-local, provide `--section-key` so spatial neighbors are built within sections.
 - Coordinate-based clustering is an operational spatial structure, not a biological annotation.
+- Spatial graph construction requires `squidpy` in `qdd-skill-core`; there is no hidden fallback backend.
 - This skill does not assign cell types, niches, neighborhoods, or communication labels.

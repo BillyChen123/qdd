@@ -28,7 +28,11 @@ domain-skills/
 │   │       └── cellxgene_discover.py
 │   ├── cellmarker-fetch/
 │   │   └── ...
-│   └── lrdb-fetch/
+│   ├── geo-candidate-capture/
+│   │   └── ...
+│   ├── lrdb-fetch/
+│   │   └── ...
+│   └── pubmed-evidence-capture/
 │       └── ...
 ├── singlecell/
 │   ├── scrna/
@@ -56,7 +60,7 @@ Rules:
 
 - Planning skills live under `brain/*`
 - Executor problem-level skills live under domain trees such as `singlecell/scrna/*`, `spatial/*`, or `public-data/*`
-- Not every `public-data/*` skill uses `public_data_request.yaml`; dataset acquisition and lighter reference-table fetches are intentionally separate
+- Not every `public-data/*` skill uses `public_data_request.yaml`; dataset acquisition and lighter public-data capture tasks are intentionally separate
 - Each skill lives at `domain-skills/<category...>/<skill-name>/`
 - Each skill root must contain `SKILL.md`
 - Executor skills should normally contain:
@@ -88,6 +92,8 @@ Task files should reference the stable skill IDs, for example:
 - `spatial/spatial-marker-annotation`
 - `public-data/cellxgene-discover`
 - `public-data/cellmarker-fetch`
+- `public-data/geo-candidate-capture`
 - `public-data/lrdb-fetch`
+- `public-data/pubmed-evidence-capture`
 
 Do not use `qdd/*` workflow skills or `brain/*` planning skills in task `skills:`.

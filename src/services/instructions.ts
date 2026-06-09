@@ -7,7 +7,7 @@ import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRe
 import { listRecentStudyMemoryPaths } from '../runtime/evolution.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from '../runtime/layer-policy.js';
 import { listLocalSkills, resolveLocalSkills } from '../runtime/local-skills.js';
-import { isDatasetPublicDataSkillId, isReferencePublicDataSkillId } from '../runtime/public-data.js';
+import { isDatasetPublicDataSkillId, isLightweightPublicDataSkillId } from '../runtime/public-data.js';
 import { readMarkdownFrontmatter } from '../runtime/store.js';
 
 const PROJECT_TARGET_ID = 'PROJECT';
@@ -269,7 +269,7 @@ export async function buildInstructions(
     const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
     const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...studyTaskSkills.matchedIds]);
     const hasDatasetPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => isDatasetPublicDataSkillId(skillId));
-    const hasReferencePublicDataTask = studyTaskSkills.matchedIds.some((skillId) => isReferencePublicDataSkillId(skillId));
+    const hasLightweightPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => isLightweightPublicDataSkillId(skillId));
     const readPaths = [
       ...listManagedFileReferencePathsForTarget('study'),
       PATHS.contract,
@@ -333,7 +333,7 @@ export async function buildInstructions(
       rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
       rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
       rules.push('When a study genuinely needs external public datasets, planning may search and narrow candidates, but it should persist only the final selected targets in studies/STUDY-XXX/output/public_data_request.yaml.');
-      rules.push('When a study needs public reference tables such as markers or ligand-receptor pairs, keep the bounded search intent in task Markdown and materialize the chosen local CSV/TSV outputs directly instead of inventing a new managed YAML handoff.');
+      rules.push('When a study needs lightweight public-data capture such as markers, ligand-receptor pairs, GEO candidate tables, or PubMed evidence tables, keep the bounded search intent in task Markdown and materialize the chosen local CSV/TSV outputs directly instead of inventing a new managed YAML handoff.');
       rules.push('Do not make boundary score output a required planning gate. Boundary-compatible CLI views are optional diagnostics, not core protocol requirements.');
     }
 
@@ -371,9 +371,9 @@ export async function buildInstructions(
       rules.push('If the selected public datasets were downloaded successfully, qdd-close should decide whether they belong in carried-forward project resources and document them explicitly in context/resources.md.');
     }
 
-    if (hasReferencePublicDataTask) {
-      rules.push('Reference-style public-data tasks should materialize the selected local marker/LR tables directly under the study output directory rather than relying on public_data_request.yaml.');
-      rules.push('Keep reference fetch tasks bounded by the task text itself: source choice, query terms, and downstream consumer should be explicit before apply starts.');
+    if (hasLightweightPublicDataTask) {
+      rules.push('Lightweight public-data tasks should materialize the selected local CSV/TSV outputs directly under the study output directory rather than relying on public_data_request.yaml.');
+      rules.push('Keep lightweight public-data tasks bounded by the task text itself: source choice, query terms, and downstream consumer should be explicit before apply starts.');
     }
 
     return {
@@ -400,7 +400,7 @@ export async function buildInstructions(
     const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
     const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...taskSkillSet.matchedIds]);
     const hasDatasetPublicDataTask = taskSkillSet.matchedIds.some((skillId) => isDatasetPublicDataSkillId(skillId));
-    const hasReferencePublicDataTask = taskSkillSet.matchedIds.some((skillId) => isReferencePublicDataSkillId(skillId));
+    const hasLightweightPublicDataTask = taskSkillSet.matchedIds.some((skillId) => isLightweightPublicDataSkillId(skillId));
     const rules = [
       'Do not redefine the study question.',
       'Keep the task minimal and evidence-producing.',
@@ -438,9 +438,9 @@ export async function buildInstructions(
       rules.push('Do not reopen broad public-data search during apply; download only the selected targets already written during planning.');
     }
 
-    if (hasReferencePublicDataTask) {
-      rules.push('Reference-style public-data tasks may perform the bounded source search already described in the task, but they must materialize the chosen local CSV/TSV outputs directly under the study output directory.');
-      rules.push('Do not invent a new managed YAML handoff for reference-table fetch tasks during apply.');
+    if (hasLightweightPublicDataTask) {
+      rules.push('Lightweight public-data tasks may perform the bounded source search already described in the task, but they must materialize the chosen local CSV/TSV outputs directly under the study output directory.');
+      rules.push('Do not invent a new managed YAML handoff for lightweight public-data capture tasks during apply.');
     }
 
     appendRoleSkillIssues(rules, 'Task', roleSkillSet);

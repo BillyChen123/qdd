@@ -17,6 +17,8 @@ const CONTROLLED_STAGES = [
     'downstream',
 ];
 const CONTROLLED_TAGS = [
+    'datasets',
+    'literature',
     'scrna',
     'scatac',
     'cellxgene',

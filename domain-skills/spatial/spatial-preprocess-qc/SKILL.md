@@ -36,6 +36,7 @@ Use this skill when:
 ## Key Parameters
 
 - `--counts-layer auto|X|<layer>`
+- `--threads`
 - `--assay auto|targeted|genome-wide|feature-activity`
 - `--sample-key`
 - `--section-key`
@@ -79,6 +80,7 @@ conda run -n qdd-skill-core python \
 
 - Do not apply scRNA default filtering thresholds blindly to targeted spatial panels.
 - Default behavior is conservative: no cell/spot filtering, no HVG, no PCA unless requested or needed by a later task.
+- QDD does not preserve `.raw` in this output; reusable matrix state should stay on `.X` or named layers.
 - Coordinates may be section-local. Do not compare coordinates across samples or sections unless registration is explicit.
 - Panel coverage is part of evidence. Missing marker signal is weak negative evidence if the marker is not covered.
 - This skill does not perform marker annotation, clustering, neighborhood analysis, or niche interpretation.

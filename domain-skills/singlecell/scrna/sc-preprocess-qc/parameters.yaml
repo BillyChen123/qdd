@@ -9,6 +9,7 @@ methods:
   inspect:
     description: Inspect state, compute QC summaries, and stop without mutating the matrix.
 defaults:
+  threads: 1
   mode: auto
   counts_layer: auto
   min_genes: 200
@@ -25,6 +26,7 @@ cli:
     - --input
     - --output
   optional:
+    - --threads <int>
     - --mode {auto,force,inspect}
     - --counts-layer <layer-name|X|auto>
     - --min-genes <int>

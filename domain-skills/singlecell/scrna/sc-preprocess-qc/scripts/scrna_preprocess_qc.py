@@ -3,8 +3,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+
+
+def bootstrap_threads(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--threads", type=int, default=1)
+    known, _ = parser.parse_known_args(argv)
+    threads = max(1, int(known.threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    return threads
+
+
+BOOTSTRAP_THREADS = bootstrap_threads(sys.argv[1:])
 
 import matplotlib
 matplotlib.use("Agg")
@@ -31,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Independent Scanpy preprocessing and QC skill for scRNA-seq h5ad files.")
     parser.add_argument("--input", required=True, help="Input h5ad path.")
     parser.add_argument("--output", required=True, help="Output directory.")
+    parser.add_argument("--threads", type=int, default=BOOTSTRAP_THREADS, help="CPU thread count for BLAS/OpenMP/Numba-backed steps.")
     parser.add_argument("--mode", choices=["auto", "force", "inspect"], default="auto")
     parser.add_argument("--counts-layer", default="auto", help="Which matrix to treat as counts: auto | X | <layer>.")
     parser.add_argument("--min-genes", type=int, default=200)
@@ -54,6 +77,15 @@ def parse_args() -> argparse.Namespace:
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def configure_threads(threads: int) -> int:
+    threads = max(1, int(threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    if hasattr(sc.settings, "n_jobs"):
+        sc.settings.n_jobs = threads
+    return threads
 
 
 def resolve_percent_top(n_vars: int) -> list[int] | None:
@@ -114,6 +146,22 @@ def resolve_matrix(adata: sc.AnnData, counts_layer: str) -> tuple[str, object]:
     return "X", adata.X
 
 
+def pca_components(n_obs: int, n_vars: int, requested: int) -> int:
+    upper = min(n_obs, n_vars) - 1
+    if upper < 1:
+        raise ValueError("PCA requires at least two observations and two usable features.")
+    return 1 if upper == 1 else min(requested, upper)
+
+
+def pca_feature_space(adata: sc.AnnData) -> tuple[str, int | None]:
+    if "highly_variable" not in adata.var.columns:
+        return "all_features", None
+    mask = adata.var["highly_variable"].fillna(False).to_numpy(dtype=bool)
+    if not mask.any():
+        return "all_features", None
+    return "highly_variable", int(mask.sum())
+
+
 def write_qc_figures(adata: sc.AnnData, figure_dir: Path) -> list[str]:
     generated: list[str] = []
     obs = adata.obs.copy()
@@ -144,7 +192,13 @@ def write_qc_figures(adata: sc.AnnData, figure_dir: Path) -> list[str]:
     return generated
 
 
-def write_report(report_path: Path, state: MatrixState, args: argparse.Namespace, operations: list[str]) -> None:
+def write_report(
+    report_path: Path,
+    state: MatrixState,
+    args: argparse.Namespace,
+    operations: list[str],
+    provenance: dict[str, object],
+) -> None:
     lines = [
         "# sc-preprocess-qc report",
         "",
@@ -156,6 +210,12 @@ def write_report(report_path: Path, state: MatrixState, args: argparse.Namespace
         f"- min_value: `{state.min_value:.4f}`",
         f"- max_value: `{state.max_value:.4f}`",
         f"- mean_value: `{state.mean_value:.4f}`",
+        "",
+        "## Runtime Provenance",
+        "",
+        "```json",
+        json.dumps(provenance, indent=2, ensure_ascii=False),
+        "```",
         "",
         "## Parameters",
         "",
@@ -172,6 +232,7 @@ def write_report(report_path: Path, state: MatrixState, args: argparse.Namespace
 
 def main() -> None:
     args = parse_args()
+    args.threads = configure_threads(args.threads)
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()
     tables_dir = output_dir / "tables"
@@ -219,26 +280,34 @@ def main() -> None:
         if not args.skip_log1p:
             sc.pp.log1p(working)
             operations.append("log1p")
-            # Preserve a marker-analysis-friendly matrix before HVG subsetting and scaling.
-            working.raw = working.copy()
 
         if not args.skip_hvg:
             hvg_kwargs = {"flavor": args.hvg_flavor, "n_top_genes": args.n_top_genes}
             if args.batch_key:
                 hvg_kwargs["batch_key"] = args.batch_key
             sc.pp.highly_variable_genes(working, **hvg_kwargs)
-            if "highly_variable" in working.var.columns:
-                working = working[:, working.var["highly_variable"]].copy()
             operations.append(f"highly_variable_genes(flavor={args.hvg_flavor}, n_top_genes={args.n_top_genes})")
 
+        pca_space = "not_run"
         if args.run_scale and not args.skip_scale:
             sc.pp.scale(working, max_value=args.scale_max_value)
             operations.append(f"scale(max_value={args.scale_max_value})")
 
         if not args.skip_pca:
-            sc.tl.pca(working, svd_solver="arpack", n_comps=min(args.n_pcs, max(2, working.n_vars - 1)))
-            operations.append(f"pca(n_comps<={args.n_pcs})")
+            feature_space, n_features = pca_feature_space(working)
+            pca_kwargs: dict[str, object] = {
+                "svd_solver": "arpack",
+                "n_comps": pca_components(working.n_obs, n_features or working.n_vars, args.n_pcs),
+            }
+            if feature_space == "highly_variable":
+                pca_kwargs["mask_var"] = "highly_variable"
+            sc.tl.pca(working, **pca_kwargs)
+            pca_space = feature_space
+            operations.append(f"pca(n_comps={pca_kwargs['n_comps']}, feature_space={feature_space})")
+    else:
+        pca_space = "not_run"
 
+    working.raw = None
     working.write_h5ad(output_dir / "processed.h5ad")
     working.obs.to_csv(tables_dir / "qc_metrics_obs.csv")
     working.var.to_csv(tables_dir / "qc_metrics_var.csv")
@@ -246,13 +315,19 @@ def main() -> None:
         working.var.loc[working.var["highly_variable"]].to_csv(tables_dir / "highly_variable_genes.csv")
 
     figure_files = write_qc_figures(working, figures_dir)
-    write_report(output_dir / "report.md", state, args, operations)
+    provenance = {
+        "threads": args.threads,
+        "pca_feature_space": pca_space,
+        "raw_retained": False,
+    }
+    write_report(output_dir / "report.md", state, args, operations, provenance)
 
     result = {
         "skill": "singlecell/scrna/sc-preprocess-qc",
         "input": str(input_path),
         "output": str(output_dir),
         "matrix_state": asdict(state),
+        "provenance": provenance,
         "mode": args.mode,
         "operations": operations,
         "generated_figures": figure_files,

@@ -74,5 +74,5 @@ conda run -n qdd-skill-core python \
 
 - 这是一个轻量的 marker-overlap annotation 基线，不是 reference mapping
 - 如果 marker 证据弱，脚本会保留 `unknown`
-- 如果对象带有 `.raw`，marker ranking 会优先基于 `.raw` 的表达信息来做
+- 这个 skill 默认基于当前对象的表达矩阵工作，不把 `.raw` 视为标准上游交接层
 - 先有证据，再给标签；不要只产出口头注释

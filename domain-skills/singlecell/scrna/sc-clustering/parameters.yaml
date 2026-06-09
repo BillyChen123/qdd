@@ -5,6 +5,7 @@ methods:
   scanpy:
     description: Standard Scanpy neighbors -> leiden -> umap workflow.
 defaults:
+  threads: 1
   use_rep: auto
   n_pcs: 50
   n_neighbors: 15
@@ -17,6 +18,7 @@ cli:
     - --input
     - --output
   optional:
+    - --threads <int>
     - --use-rep <auto|X_pca|X_pca_harmony|X_scanorama|...>
     - --n-pcs <int>
     - --n-neighbors <int>
@@ -25,6 +27,7 @@ cli:
     - --umap-min-dist <float>
     - --random-state <int>
     - --color-key <obs-column>
+    - --skip-umap
 output_contract:
   main_h5ad: processed.h5ad
   report: report.md

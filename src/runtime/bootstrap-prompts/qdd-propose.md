@@ -160,7 +160,9 @@ Prefer problem-level skills such as:
 - `singlecell/scatac/scatac-dar`
 - `public-data/cellxgene-discover`
 - `public-data/cellmarker-fetch`
+- `public-data/geo-candidate-capture`
 - `public-data/lrdb-fetch`
+- `public-data/pubmed-evidence-capture`
 
 ### 4.6 Handle external public data during planning
 
@@ -173,12 +175,12 @@ When the study may need external public data:
 - keep candidate review in the planning conversation
 - persist only the final selected target set in `studies/STUDY-XXX/output/public_data_request.yaml`
 
-When the study instead needs lightweight public reference tables such as markers or ligand-receptor pairs:
+When the study instead needs lightweight public-data capture such as markers, ligand-receptor pairs, GEO candidate tables, or PubMed evidence tables:
 
-- use the public-data reference-planning brain guidance
-- choose the executor skill during planning, for example `public-data/cellmarker-fetch` or `public-data/lrdb-fetch`
+- use the matching public-data planning brain guidance
+- choose the executor skill during planning, for example `public-data/cellmarker-fetch`, `public-data/lrdb-fetch`, `public-data/geo-candidate-capture`, or `public-data/pubmed-evidence-capture`
 - keep the bounded search intent in the task itself
-- do not create `public_data_request.yaml` for these reference fetch tasks
+- do not create `public_data_request.yaml` for these lightweight public-data capture tasks
 
 If no acceptable public dataset is found:
 
@@ -237,7 +239,7 @@ Write them concretely:
 - never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
 - if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
 - if the task is a dataset-style public-data acquisition task, finalize `studies/STUDY-XXX/output/public_data_request.yaml` during planning so apply only downloads the selected targets
-- if the task is a reference-table fetch task, write the intended source and bounded search terms directly into the task so apply can materialize a local CSV/TSV without inventing a new YAML contract
+- if the task is a lightweight public-data capture task, write the intended source and bounded search terms directly into the task so apply can materialize a local CSV/TSV without inventing a new YAML contract
 - when a task has an obvious local diagnostic and a known small correction, add one or two plain if-then checklist bullets instead of a separate reaction contract
 - keep these reaction bullets concrete enough for `qdd-apply` to execute, such as "if first-pass PCA is dominated by depth signal, rerun the PCA handoff with scaling before finalizing"
 - do not add reaction bullets by default; if more than two are needed, the task is probably too broad or belongs in `qdd-explore`

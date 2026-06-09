@@ -3,8 +3,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+
+
+def bootstrap_threads(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--threads", type=int, default=1)
+    known, _ = parser.parse_known_args(argv)
+    threads = max(1, int(known.threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    return threads
+
+
+BOOTSTRAP_THREADS = bootstrap_threads(sys.argv[1:])
 
 import matplotlib
 matplotlib.use("Agg")
@@ -23,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Trajectory analysis for scRNA AnnData using Scanpy or scVelo.")
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--threads", type=int, default=BOOTSTRAP_THREADS, help="CPU thread count for BLAS/OpenMP/Numba-backed steps.")
     parser.add_argument("--method", choices=["paga-dpt", "rna-velocity"], required=True)
     parser.add_argument("--cluster-key", default=None)
     parser.add_argument("--root-cell", default=None)
@@ -42,6 +65,17 @@ def parse_args() -> argparse.Namespace:
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def configure_threads(threads: int) -> int:
+    threads = max(1, int(threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    if hasattr(sc.settings, "n_jobs"):
+        sc.settings.n_jobs = threads
+    if hasattr(scv.settings, "n_jobs"):
+        scv.settings.n_jobs = threads
+    return threads
 
 
 def validate_args(args: argparse.Namespace, adata) -> None:
@@ -269,6 +303,7 @@ def run_paga_dpt(adata, args: argparse.Namespace, tables_dir: Path, figures_dir:
     summary = {
         "status": "completed",
         "method": "paga-dpt",
+        "threads": args.threads,
         "cluster_key": args.cluster_key,
         "root_cell": root_cell,
         "basis": basis,
@@ -304,7 +339,7 @@ def run_rna_velocity(adata, args: argparse.Namespace, tables_dir: Path, figures_
         scv.pp.moments(adata, n_neighbors=args.n_neighbors, n_pcs=args.n_pcs, use_rep=use_rep)
 
     if args.velocity_mode == "dynamical" or args.compute_latent_time:
-        scv.tl.recover_dynamics(adata, n_jobs=1)
+        scv.tl.recover_dynamics(adata, n_jobs=args.threads)
     scv.tl.velocity(adata, mode=args.velocity_mode)
     scv.tl.velocity_graph(adata)
     scv.tl.velocity_pseudotime(adata)
@@ -339,6 +374,7 @@ def run_rna_velocity(adata, args: argparse.Namespace, tables_dir: Path, figures_
     summary = {
         "status": "completed",
         "method": "rna-velocity",
+        "threads": args.threads,
         "velocity_mode": args.velocity_mode,
         "basis": basis,
         "cluster_key": args.cluster_key,
@@ -353,6 +389,7 @@ def run_rna_velocity(adata, args: argparse.Namespace, tables_dir: Path, figures_
 
 def main() -> None:
     args = parse_args()
+    args.threads = configure_threads(args.threads)
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()
     tables_dir = output_dir / "tables"

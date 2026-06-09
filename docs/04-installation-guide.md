@@ -55,11 +55,21 @@ conda activate qdd-skill-core
 - `scvelo`
 - `pydeseq2`
 - `gseapy`
+- `python-igraph`
+- `leidenalg`
 - `cellxgene-census`
 - `harmonypy`
 - `scanorama`
 - `bbknn`
 - `scib`
+
+其中所有依赖 Leiden clustering 的 skill 都默认指向这套环境，所以实际运行时应使用：
+
+```bash
+conda run -n qdd-skill-core python <skill-script>.py ...
+```
+
+不要用系统 Python 去判断这些 skill 是否“缺依赖”，否则很容易把本地 shell 环境和 `qdd-skill-core` 混淆。
 
 当前这套已发布 skill **不依赖 R 包**。如果后面真的引入 R-backed skill，再单独补 `R` 环境文件，不要提前把默认环境做重。
 

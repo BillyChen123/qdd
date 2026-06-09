@@ -19,7 +19,7 @@ tags:
 
 - 预处理或整合之后需要构建 neighbor graph
 - 需要生成 Leiden cluster
-- 需要 UMAP 供 marker / annotation / comparison 使用
+- 需要生成 Leiden cluster；UMAP 只在需要可视化时生成
 
 ## 方法范围
 
@@ -31,12 +31,14 @@ tags:
 ## 关键参数
 
 - `--use-rep auto|X_pca|X_pca_harmony|X_scanorama|...`
+- `--threads`
 - `--n-pcs`
 - `--n-neighbors`
 - `--resolution`
 - `--cluster-key`
 - `--umap-min-dist`
 - `--color-key`
+- `--skip-umap`
 
 ## 示例
 
@@ -65,3 +67,4 @@ conda run -n qdd-skill-core python \
 - 不要把 `k-means` 当作默认 scRNA clustering 方案
 - `auto` 会优先使用已存在的集成 embedding，例如 `X_pca_harmony` 或 `X_scanorama`
 - 如果没有任何 embedding，脚本会先补 PCA
+- `--skip-umap` 不会改变 graph clustering 主路径，只会跳过可视化 embedding

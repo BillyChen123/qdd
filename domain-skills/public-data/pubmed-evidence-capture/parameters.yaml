@@ -1,0 +1,29 @@
+entry_script: scripts/pubmed_evidence_capture.py
+python_env: qdd-skill-core
+summary: Capture a bounded PubMed evidence table with PMID-backed provenance and abstract excerpts.
+actions:
+  capture:
+    description: Query PubMed, fetch bounded article metadata, and write a local evidence CSV plus report.
+defaults:
+  max_results: 12
+cli:
+  required:
+    - --output <study-output-dir>
+  optional:
+    - --query <text> [repeatable]
+    - --pmid <id> [repeatable]
+    - --claim <text>
+    - --journal <text>
+    - --year-from <int>
+    - --year-to <int>
+    - --max-results <int>
+    - --note <text>
+    - --api-key <text>
+    - --email <text>
+output_contract:
+  capture:
+    tables:
+      - tables/pubmed_evidence.csv
+    reports:
+      - reports/pubmed_evidence_capture_report.md
+      - reports/pubmed_evidence_capture_result.json

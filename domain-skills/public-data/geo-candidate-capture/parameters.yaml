@@ -1,0 +1,28 @@
+entry_script: scripts/geo_candidate_capture.py
+python_env: qdd-skill-core
+summary: Capture a bounded, auditable GEO candidate table without forcing immediate dataset download or conversion.
+actions:
+  capture:
+    description: Query GEO metadata, normalize candidate rows, and write a local CSV plus report for review.
+defaults:
+  max_results: 10
+cli:
+  required:
+    - --output <study-output-dir>
+  optional:
+    - --query <text> [repeatable]
+    - --accession <text> [repeatable]
+    - --organism <text>
+    - --modality <scrna|spatial|bulk|other>
+    - --title-contains <text>
+    - --max-results <int>
+    - --note <text>
+    - --api-key <text>
+    - --email <text>
+output_contract:
+  capture:
+    tables:
+      - tables/geo_candidates.csv
+    reports:
+      - reports/geo_candidate_capture_report.md
+      - reports/geo_candidate_capture_result.json
