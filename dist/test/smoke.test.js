@@ -6,7 +6,7 @@ import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
 import { executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
-import { checkTermination, computeInitialPhase, runAuto } from '../runtime/orchestrator.js';
+import { checkTermination, computeInitialPhase, inferAutoVisibleLanguage, runAuto } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
@@ -225,6 +225,12 @@ test('qdd auto dry-run reports supplied auto prompt', async () => {
     assert.equal(logs.some((line) => line.includes('Max turns per agent: unlimited')), true);
     assert.equal(logs.some((line) => line.includes('Use /data/example.h5ad')), true);
 });
+test('qdd auto infers Chinese visible model output from prompt or env', () => {
+    assert.equal(inferAutoVisibleLanguage('去读取 benchmark 文件夹', {}), 'zh');
+    assert.equal(inferAutoVisibleLanguage('Read benchmark folders', {}), 'default');
+    assert.equal(inferAutoVisibleLanguage('Read benchmark folders', { QDD_AUTO_MODEL_LANG: 'zh' }), 'zh');
+    assert.equal(inferAutoVisibleLanguage('去读取 benchmark 文件夹', { QDD_AUTO_MODEL_LANG: 'en' }), 'default');
+});
 test('qdd auto console renderer emits compact non-tty output', async () => {
     const projectRoot = await createTempProject('qdd-auto-renderer-');
     const chunks = [];
@@ -255,7 +261,7 @@ test('qdd auto console renderer emits compact non-tty output', async () => {
     assert.match(output, /limits  1 phases, unlimited turns\/session/);
     assert.match(output, /\[1\] Thesis Manager \(qdd-start\) PROJECT/);
     assert.match(output, /dry-run system prompt qdd-start\.md/);
-    assert.match(output, /result max_iterations/);
+    assert.match(output, /Result max_iterations/);
     assert.match(output, /log     \.qdd\/runs\/auto-/);
     assert.doesNotMatch(output, /\x1b\[/);
 });
@@ -304,8 +310,39 @@ test('qdd auto console renderer shows visible model notes without completion mar
         phases: [],
     });
     const output = chunks.join('');
-    assert.match(output, /model I will inspect the benchmark README files first\./);
+    assert.match(output, /Model/);
+    assert.match(output, /└ I will inspect the benchmark README files first\./);
     assert.doesNotMatch(output, /WORKFLOW_COMPLETE/);
+});
+test('qdd auto console renderer supports Chinese labels', async () => {
+    const projectRoot = await createTempProject('qdd-auto-zh-renderer-');
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        locale: 'zh',
+        stdout: {
+            columns: 100,
+            isTTY: false,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    const result = await runAuto(projectRoot, {
+        model: 'dry-run-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: null,
+        dryRun: true,
+        events: renderer.events,
+        logger: () => undefined,
+    });
+    renderer.finish(result);
+    const output = chunks.join('');
+    assert.match(output, /qdd auto 自主研究循环/);
+    assert.match(output, /项目\s+\//);
+    assert.match(output, /└ 阶段 start  命令 qdd-start  角色 thesis-manager/);
+    assert.match(output, /• 结果 max_iterations/);
 });
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
     const projectRoot = await createTempProject('qdd-init-');

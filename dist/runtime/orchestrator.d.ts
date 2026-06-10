@@ -92,6 +92,8 @@ export declare function checkTermination(status: StatusJson): TerminationCheck;
 export declare function computeInitialPhase(status: StatusJson, taskRecords?: Pick<TaskRecord, 'study_id' | 'task_id' | 'status'>[]): PhaseTarget | null;
 export declare function nextPhase(current: PhaseTarget, status: StatusJson): PhaseTarget | null;
 export declare function nextDryRunPhase(current: PhaseTarget, status: StatusJson): PhaseTarget;
+export type AutoVisibleLanguage = 'default' | 'zh';
+export declare function inferAutoVisibleLanguage(prompt?: string, env?: NodeJS.ProcessEnv): AutoVisibleLanguage;
 export declare function runAuto(projectRoot: string, options: AutoOptions): Promise<AutoResult>;
 export {};
 //# sourceMappingURL=orchestrator.d.ts.map

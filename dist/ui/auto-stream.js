@@ -4,6 +4,81 @@ const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MARKER_TAIL_LENGTH = COMPLETION_MARKER.length + 16;
 const SYNC_START = '\x1b[?2026h';
 const SYNC_END = '\x1b[?2026l';
+const INTRO_FRAME_DELAY_MS = 55;
+const text = {
+    en: {
+        command: 'command',
+        createdStudy: 'Created study scaffold',
+        dryRun: 'dry-run',
+        final: 'final',
+        live: 'live',
+        limits: 'limits',
+        log: 'log',
+        mode: 'mode',
+        model: 'model',
+        modelEvent: 'Model',
+        next: 'next',
+        nextInspect: 'inspect log, then qdd status --json',
+        phase: 'phase',
+        phases: 'phases',
+        phaseIncomplete: 'Phase incomplete',
+        project: 'project',
+        prompt: 'prompt',
+        ran: 'Ran',
+        read: 'Read',
+        reason: 'reason',
+        result: 'Result',
+        role: 'role',
+        start: 'start',
+        studies: 'studies',
+        studiesClosed: 'closed',
+        subtitle: 'autonomous research loop',
+        systemPrompt: 'system prompt',
+        terminalState: 'terminal state',
+        tool: 'Tool',
+        waitingCompletion: 'Waiting for completion marker',
+        write: 'Write',
+    },
+    zh: {
+        command: '命令',
+        createdStudy: '创建研究脚手架',
+        dryRun: 'dry-run',
+        final: '最终',
+        live: 'live',
+        limits: '限制',
+        log: '日志',
+        mode: '模式',
+        model: '模型',
+        modelEvent: '模型',
+        next: '下一步',
+        nextInspect: '查看日志，然后运行 qdd status --json',
+        phase: '阶段',
+        phases: '阶段数',
+        phaseIncomplete: '阶段未完成',
+        project: '项目',
+        prompt: '提示',
+        ran: '运行',
+        read: '读取',
+        reason: '原因',
+        result: '结果',
+        role: '角色',
+        start: '起点',
+        studies: '研究',
+        studiesClosed: '已关闭',
+        subtitle: '自主研究循环',
+        systemPrompt: '系统提示',
+        terminalState: '终止状态',
+        tool: '工具',
+        waitingCompletion: '等待完成标记',
+        write: '写入',
+    },
+};
+function resolveLocale(value) {
+    if (value)
+        return value;
+    const raw = process.env.QDD_AUTO_LANG ?? process.env.QDD_LANG ?? '';
+    return /^zh(?:$|[-_])/i.test(raw) ? 'zh' : 'en';
+}
 const ansi = {
     reset: '\x1b[0m',
     bold: '\x1b[1m',
@@ -43,7 +118,9 @@ function timestampForFile(date = new Date()) {
 export class AutoConsoleRenderer {
     events;
     stdout;
+    locale;
     useColor;
+    useIntro;
     useSpinner;
     verbose;
     headerPrinted = false;
@@ -63,8 +140,10 @@ export class AutoConsoleRenderer {
     projectRoot = null;
     constructor(options = {}) {
         this.stdout = options.stdout ?? process.stdout;
+        this.locale = resolveLocale(options.locale);
         this.useColor = options.color ?? Boolean(this.stdout.isTTY && !process.env.NO_COLOR);
         this.useSpinner = Boolean(this.stdout.isTTY);
+        this.useIntro = options.intro ?? Boolean(this.useSpinner && !process.env.CI && process.env.QDD_AUTO_NO_INTRO !== '1');
         this.verbose = options.verbose ?? false;
         this.events = {
             runStart: (event) => this.runStart(event),
@@ -76,11 +155,11 @@ export class AutoConsoleRenderer {
             phaseStart: (event) => this.phaseStart(event),
             dryRunPhase: (event) => {
                 this.logLine(`dry-run system prompt: ${event.systemPrompt}`);
-                this.line(`  ${this.yellow('dry-run')} ${this.dim('system prompt')} ${event.systemPrompt}`);
+                this.line(`${this.bullet()} ${this.yellow(this.t('dryRun'))} ${this.dim(this.t('systemPrompt'))} ${event.systemPrompt}`);
             },
             studyScaffold: (event) => {
                 this.logLine(`study scaffold: requested=${event.requested} created=${event.created}`);
-                this.compactAction(`created study scaffold ${event.created}`);
+                this.compactAction(`${this.t('createdStudy')} ${event.created}`);
             },
             instructions: (event) => {
                 this.logLine(`instructions: role=${event.role} read=${event.readCount} write=${event.writeCount} skills=${event.requiredSkillCount}`);
@@ -99,7 +178,8 @@ export class AutoConsoleRenderer {
                 this.logLine(`phase incomplete: ${event.reason}`);
                 for (const detail of event.details)
                     this.logLine(`phase incomplete detail: ${detail}`);
-                this.line(`${this.red('  phase incomplete')} ${event.reason}`);
+                this.line(`${this.bullet()} ${this.red(this.t('phaseIncomplete'))}`);
+                this.line(`  ${this.branch()} ${event.reason}`);
                 for (const detail of event.details)
                     this.line(this.dim(`    ${detail}`));
             },
@@ -139,10 +219,10 @@ export class AutoConsoleRenderer {
                     this.stopSpinner();
                     this.logLine(`tool use: ${event.tool.name} ${JSON.stringify(event.tool.input)}`);
                     if (this.verbose) {
-                        this.line(`  ${this.cyan('tool')} ${this.describeTool(event.tool)}`);
+                        this.line(`${this.bullet()} ${this.cyan(this.t('tool'))} ${this.describeTool(event.tool)}`);
                     }
                     else {
-                        this.compactAction(this.describeCompactAction(event.tool));
+                        this.toolStart(event.tool);
                     }
                     this.startSpinner(`running ${event.tool.name}`);
                 },
@@ -154,17 +234,12 @@ export class AutoConsoleRenderer {
                         this.phaseFailures++;
                     this.logBlock(`tool result: ${event.tool.name} ${failed ? 'failed' : 'ok'}`, event.result);
                     const status = failed ? this.red('failed') : this.green('ok');
-                    if (this.verbose || failed) {
-                        this.stopSpinner(`    ${status} ${this.describeToolResult(event.tool, event.result)}`);
-                    }
-                    else {
-                        this.stopSpinner();
-                    }
+                    this.stopSpinner(`  ${this.branch()} ${status} ${this.describeToolResult(event.tool, event.result)}`);
                 },
                 completionMarkerMissing: (event) => {
                     this.stopSpinner();
                     this.logLine(`completion marker missing: ${event.attempt}/${event.maxAttempts}`);
-                    this.line(this.yellow(`  waiting for completion marker ${event.attempt}/${event.maxAttempts}`));
+                    this.line(`${this.bullet()} ${this.yellow(`${this.t('waitingCompletion')} ${event.attempt}/${event.maxAttempts}`)}`);
                 },
             },
         };
@@ -173,18 +248,20 @@ export class AutoConsoleRenderer {
         this.stopSpinner();
         this.endAssistantText();
         if (!this.headerPrinted) {
-            this.line(`${this.title('qdd auto')} ${this.dim('autonomous research loop')}`);
+            this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
         }
         this.line('');
+        if (this.phaseCount > 0)
+            this.separator();
         const tone = terminalTone(result.terminalCode);
-        this.line(`${this.paint(tone, 'result')} ${result.terminalCode}`);
-        this.field('reason', result.terminalReason);
-        this.field('phases', String(result.iterations));
-        this.field('studies', `${result.studiesCompleted} closed`);
-        this.field('final', result.finalPhase);
+        this.line(`${this.bullet()} ${this.paint(tone, this.t('result'))} ${result.terminalCode}`);
+        this.field(this.t('reason'), result.terminalReason);
+        this.field(this.t('phases'), String(result.iterations));
+        this.field(this.t('studies'), `${result.studiesCompleted} ${this.t('studiesClosed')}`);
+        this.field(this.t('final'), result.finalPhase);
         if (this.logPath)
-            this.field('log', this.relativeLogPath());
-        this.field('next', result.terminalCode === 'terminal_state' ? 'qdd status --json' : 'inspect log, then qdd status --json');
+            this.field(this.t('log'), this.relativeLogPath());
+        this.field(this.t('next'), result.terminalCode === 'terminal_state' ? 'qdd status --json' : this.t('nextInspect'));
     }
     runStart(event) {
         this.projectRoot = event.projectRoot;
@@ -194,16 +271,17 @@ export class AutoConsoleRenderer {
         if (event.prompt?.trim())
             this.logBlock('prompt', event.prompt);
         this.headerPrinted = true;
-        this.line(`${this.title('qdd auto')} ${this.dim('autonomous research loop')}`);
-        this.field('project', event.projectRoot);
-        this.field('model', event.model);
-        this.field('limits', `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
-        this.field('mode', event.dryRun ? 'dry-run' : 'live');
-        this.field('start', event.phase ? `${event.phase.phase} ${event.phase.target}` : 'terminal state');
+        this.playIntroAnimation(event);
+        this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
+        this.field(this.t('project'), event.projectRoot);
+        this.field(this.t('model'), event.model);
+        this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
+        this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
+        this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
         if (this.logPath)
-            this.field('log', this.relativeLogPath(event.projectRoot));
+            this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
         if (event.prompt?.trim())
-            this.field('prompt', compact(event.prompt, 100));
+            this.field(this.t('prompt'), compact(event.prompt, 100));
     }
     phaseStart(event) {
         this.stopSpinner();
@@ -217,8 +295,8 @@ export class AutoConsoleRenderer {
         if (this.headerPrinted || this.phaseCount > 0)
             this.line('');
         this.phaseCount++;
-        this.line(`${this.blue(`[${event.iteration}]`)} ${this.bold(event.label)} ${this.dim(event.phase.target)}`);
-        this.line(`${this.dim('  command')} ${this.cyan(event.phase.command)}  ${this.dim('role')} ${this.magenta(event.role)}`);
+        this.line(`${this.bullet()} ${this.blue(`[${event.iteration}]`)} ${this.bold(event.label)} ${this.dim(event.phase.target)}`);
+        this.line(`  ${this.branch()} ${this.dim(this.t('phase'))} ${event.phase.phase}  ${this.dim(this.t('command'))} ${this.cyan(event.phase.command)}  ${this.dim(this.t('role'))} ${this.magenta(event.role)}`);
     }
     phaseResult(result) {
         this.stopSpinner();
@@ -233,9 +311,9 @@ export class AutoConsoleRenderer {
             this.phaseWrites > 0 ? `writes=${this.phaseWrites}` : '',
             this.phaseFailures > 0 ? `failures=${this.phaseFailures}` : '',
         ].filter(Boolean).join(' ');
-        this.line(`  ${status} ${this.dim(details)}`);
+        this.line(`  ${this.branch()} ${status} ${this.dim(details)}`);
         if (result.failureReason)
-            this.line(this.red(`  failure ${result.failureReason}`));
+            this.line(`  ${this.branch()} ${this.red(`failure ${result.failureReason}`)}`);
         if (this.verbose && result.finalMessage.trim()) {
             this.line(this.dim(`  final ${compact(stripCompletionMarker(result.finalMessage), 300)}`));
         }
@@ -252,6 +330,29 @@ export class AutoConsoleRenderer {
     }
     writeRaw(value) {
         this.stdout.write(value);
+    }
+    playIntroAnimation(event) {
+        if (!this.useIntro)
+            return;
+        const target = event.phase ? `${event.phase.phase}:${event.phase.target}` : 'terminal';
+        const frames = [
+            { bar: '[=         ]', label: 'booting autonomous loop', tone: 'cyan' },
+            { bar: '[===       ]', label: 'loading qdd protocol', tone: 'blue' },
+            { bar: '[=====     ]', label: `syncing target ${target}`, tone: 'magenta' },
+            { bar: '[=======   ]', label: 'starting agent runtime', tone: 'cyan' },
+            { bar: '[========= ]', label: 'opening run log', tone: 'blue' },
+            { bar: '[==========]', label: 'ready', tone: 'green' },
+        ];
+        for (const frame of frames) {
+            const line = `  ${this.title('qdd auto')} ${this.paint(frame.tone, frame.bar)} ${this.truncate(frame.label, Math.max(18, this.termWidth() - 26))}`;
+            this.writeRaw(`${SYNC_START}\r\x1b[K${line}${SYNC_END}`);
+            this.sleepSync(INTRO_FRAME_DELAY_MS);
+        }
+        this.writeRaw(`${SYNC_START}\r\x1b[K${SYNC_END}`);
+    }
+    sleepSync(ms) {
+        const buffer = new SharedArrayBuffer(4);
+        Atomics.wait(new Int32Array(buffer), 0, 0, ms);
     }
     writeWithSpinnerCleared(value) {
         const shouldRestoreSpinner = this.spinnerTimer !== null;
@@ -285,7 +386,8 @@ export class AutoConsoleRenderer {
         if (!note || note === this.lastModelNote)
             return;
         this.lastModelNote = note;
-        this.line(`  ${this.magenta('model')} ${this.truncate(note, Math.max(20, this.termWidth() - 10))}`);
+        this.line(`${this.bullet()} ${this.magenta(this.t('modelEvent'))}`);
+        this.line(`  ${this.branch()} ${this.truncate(note, Math.max(20, this.termWidth() - 6))}`);
     }
     extractModelNote(text) {
         const cleaned = stripCompletionMarker(text)
@@ -347,6 +449,22 @@ export class AutoConsoleRenderer {
         }
         return `${tool.name} ${compact(JSON.stringify(tool.input), 120)}`;
     }
+    describeToolStart(tool) {
+        if (tool.name === 'bash') {
+            return `${this.cyan(this.t('ran'))} ${compact(String(tool.input.command ?? ''), Math.max(20, this.termWidth() - 8))}`;
+        }
+        if (tool.name === 'read') {
+            return `${this.cyan(this.t('read'))} ${this.truncate(String(tool.input.path ?? ''), Math.max(20, this.termWidth() - 9))}`;
+        }
+        if (tool.name === 'write') {
+            const content = String(tool.input.content ?? '');
+            return `${this.cyan(this.t('write'))} ${this.truncate(String(tool.input.path ?? ''), Math.max(20, this.termWidth() - 26))} ${this.dim(`(${content.length} chars)`)}`;
+        }
+        return `${this.cyan(this.t('tool'))} ${tool.name} ${compact(JSON.stringify(tool.input), 120)}`;
+    }
+    toolStart(tool) {
+        this.line(`${this.bullet()} ${this.describeToolStart(tool)}`);
+    }
     describeToolResult(tool, result) {
         if (isToolFailure(result))
             return `${this.describeTool(tool)} :: ${this.describeFailure(tool, result)}`;
@@ -385,7 +503,7 @@ export class AutoConsoleRenderer {
         if (this.verbose || action === this.currentCompactAction)
             return;
         this.currentCompactAction = action;
-        this.line(`  ${this.blue('step')} ${this.truncate(action, Math.max(20, this.termWidth() - 7))}`);
+        this.line(`${this.bullet()} ${this.blue(this.truncate(action, Math.max(20, this.termWidth() - 2)))}`);
     }
     describeFailure(tool, result) {
         if (tool.name === 'read' && result.includes('outside the allowed project/package roots')) {
@@ -395,6 +513,18 @@ export class AutoConsoleRenderer {
     }
     bold(value) {
         return this.paint('bold', value);
+    }
+    t(key) {
+        return text[this.locale][key];
+    }
+    bullet() {
+        return this.cyan('•');
+    }
+    branch() {
+        return this.dim('└');
+    }
+    separator() {
+        this.line(this.dim('─'.repeat(Math.min(120, this.termWidth()))));
     }
     title(value) {
         if (!this.useColor)
@@ -492,7 +622,7 @@ export class AutoConsoleRenderer {
         const frames = ['|', '/', '-', '\\'];
         const frame = frames[this.spinnerFrameIndex % frames.length];
         this.spinnerFrameIndex++;
-        return `\r${this.dim(`  ${frame}`)} ${this.spinnerText}\x1b[K`;
+        return `\r${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
     }
     termWidth() {
         return this.stdout.columns && this.stdout.columns > 0 ? this.stdout.columns : 100;

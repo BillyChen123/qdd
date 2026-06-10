@@ -461,17 +461,41 @@ function formatMaxTurns(maxTurns: number | null): string {
   return maxTurns === null ? 'unlimited' : String(maxTurns);
 }
 
+export type AutoVisibleLanguage = 'default' | 'zh';
+
+export function inferAutoVisibleLanguage(
+  prompt?: string,
+  env: NodeJS.ProcessEnv = process.env
+): AutoVisibleLanguage {
+  const requested = env.QDD_AUTO_MODEL_LANG ?? env.QDD_AUTO_LANG ?? env.QDD_LANG ?? '';
+  if (/^zh(?:$|[-_])/i.test(requested)) return 'zh';
+  if (/^(default|auto|en)(?:$|[-_])/i.test(requested)) return 'default';
+  return /[\u3400-\u9fff\uf900-\ufaff]/.test(prompt ?? '') ? 'zh' : 'default';
+}
+
 function appendAutoPrompt(instructions: string, prompt?: string): string {
   const trimmed = prompt?.trim();
-  if (!trimmed) return instructions;
+  const sections = [instructions];
 
-  return [
-    instructions,
-    '### Auto Run User Prompt',
-    trimmed,
-    '',
-    'Use this prompt as the durable user intent for the current auto run. During qdd-start, capture stable project-level context and resources from it. During qdd-propose, turn it into the first bounded study and concrete task graph. During qdd-apply and qdd-close, keep the work aligned with this intent while still obeying the persisted QDD files.',
-  ].join('\n');
+  if (trimmed) {
+    sections.push(
+      '### Auto Run User Prompt',
+      trimmed,
+      '',
+      'Use this prompt as the durable user intent for the current auto run. During qdd-start, capture stable project-level context and resources from it. During qdd-propose, turn it into the first bounded study and concrete task graph. During qdd-apply and qdd-close, keep the work aligned with this intent while still obeying the persisted QDD files.'
+    );
+  }
+
+  if (inferAutoVisibleLanguage(prompt) === 'zh') {
+    sections.push(
+      '',
+      '### Visible Output Language',
+      'Use Chinese for visible progress notes and concise final summaries shown to the user.',
+      'Keep file paths, shell commands, code identifiers, QDD ids, schema keys, and literal data values unchanged.'
+    );
+  }
+
+  return sections.join('\n');
 }
 
 export async function runAuto(
