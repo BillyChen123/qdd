@@ -33,12 +33,14 @@ const WORKFLOW_METADATA = {
         tags: ['qdd', 'research', 'workflow', 'close'],
     },
 };
+const AUTO_ENTRY_SKILL_ID = 'qdd-auto';
+const AUTO_ENTRY_SKILL_DESCRIPTION = 'Start autonomous QDD research loop through the runtime orchestrator and Claude SDK sessions';
 function uniqueValues(values) {
     return [...new Set(values)];
 }
 // QDD 的 codex prompt 会落到 CODEX_HOME/prompts，
 // 而本地 skill 镜像仍然落在项目目录里。
-// 这里统一解析“当前机器应该把 codex prompt 安装到哪里”。
+// 这里统一解析"当前机器应该把 codex prompt 安装到哪里"。
 function getCodexHome() {
     const envHome = process.env.CODEX_HOME?.trim();
     return path.resolve(envHome ? envHome : path.join(os.homedir(), '.codex'));
@@ -95,7 +97,7 @@ function resolveToolAssetPath(projectRoot, tool, workflowId) {
 function resolveToolSkillPath(projectRoot, tool, workflowId) {
     switch (tool) {
         case 'claude':
-            return path.join(projectRoot, PATHS.claudeSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
+            return path.join(projectRoot, PATHS.claudeSkillsDir, workflowId, 'SKILL.md');
         case 'codex':
             return path.join(projectRoot, PATHS.codexSkillsDir, PATHS.workflowSkillCategory, workflowId, 'SKILL.md');
     }
@@ -145,7 +147,7 @@ export async function resolveBootstrapToolsForInit(projectRoot, requestedTools) 
     return [...DEFAULT_BOOTSTRAP_TOOLS];
 }
 // 安装 QDD bootstrap：
-// 1. 写 workflow prompts/commands/skills
+// 1. 写 workflow prompts/commands/skills + qdd-auto entry skill
 // 2. 不再把 domain skills 投影到项目目录；领域 skill 真相源固定在 QDD 根 domain-skills/
 // 3. 记录 bootstrap.yaml，方便后续 refresh 和审计
 export async function installBootstrap(projectRoot, options) {
@@ -175,6 +177,21 @@ export async function installBootstrap(projectRoot, options) {
                 path: normalizeProjectPath(projectRoot, skillPath),
             });
         }
+        // Install qdd-auto entry skill (not a workflow command, skill-only)
+        const autoSkillPath = resolveToolSkillPath(projectRoot, tool, AUTO_ENTRY_SKILL_ID);
+        if (options.refresh || !(await FileSystemUtils.fileExists(autoSkillPath))) {
+            const autoBody = await FileSystemUtils.readFile(path.join(bootstrapPromptDir, `${AUTO_ENTRY_SKILL_ID}.md`));
+            await FileSystemUtils.writeFile(autoSkillPath, formatSkillContent({
+                id: AUTO_ENTRY_SKILL_ID,
+                description: AUTO_ENTRY_SKILL_DESCRIPTION,
+                tags: ['qdd', 'research', 'auto'],
+                body: autoBody,
+            }));
+        }
+        assets.push({
+            workflow: AUTO_ENTRY_SKILL_ID,
+            path: normalizeProjectPath(projectRoot, autoSkillPath),
+        });
         toolRecords.push({
             tool,
             assets,

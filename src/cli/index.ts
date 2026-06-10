@@ -12,6 +12,7 @@ import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
+import { autoCommand } from '../commands/auto.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
@@ -289,6 +290,26 @@ program
   .action(async (id: string, options?: { json?: boolean; command?: 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close' }) => {
     try {
       await instructionsCommand(id, options);
+    } catch (error) {
+      console.error(`Error: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('auto [prompt...]')
+  .description('Start autonomous QDD research loop using the Anthropic SDK to orchestrate agent sessions')
+  .option('--model <model>', 'Anthropic-compatible model to use')
+  .option('--max-iterations <n>', 'Maximum loop iterations', '20')
+  .option('--max-turns <n>', 'Maximum turns per agent session; use 0, none, or unlimited for no per-agent turn limit', '50')
+  .option('--prompt <text>', 'User intent to inject into qdd-start and downstream auto phases')
+  .option('--prompt-file <path>', 'Read user intent from a text/markdown file')
+  .option('--dry-run', 'Show what would happen without executing')
+  .option('--verbose', 'Show per-turn agent progress and phase state checks')
+  .option('--json', 'Output result as JSON')
+  .action(async (prompt: string[] = [], options: { model?: string; maxIterations?: string; maxTurns?: string; prompt?: string; promptFile?: string; dryRun?: boolean; verbose?: boolean; json?: boolean } = {}) => {
+    try {
+      await autoCommand(process.cwd(), prompt.join(' '), options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);

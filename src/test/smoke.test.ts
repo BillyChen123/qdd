@@ -5,6 +5,8 @@ import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
+import { executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
+import { checkTermination, computeInitialPhase, inferAutoVisibleLanguage, runAuto } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
@@ -14,7 +16,8 @@ import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
 import { createStudy } from '../services/studies.js';
 import { createTask } from '../services/tasks.js';
-import type { EvolutionState, StudyRecord, TaskRecord } from '../types.js';
+import type { EvolutionState, StatusJson, StudyRecord, TaskRecord } from '../types.js';
+import { createAutoConsoleRenderer } from '../ui/auto-stream.js';
 
 async function createTempProject(prefix: string, options: { tools?: string[] } = {}): Promise<string> {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -36,6 +39,413 @@ async function setTaskCompleted(projectRoot: string, studyId: string, taskId: st
     document.body
   );
 }
+
+function statusFixture(overrides: Partial<StatusJson> = {}): StatusJson {
+  return {
+    project: {
+      theme: 'Test theme',
+      mode: 'auto',
+      current_question: 'What should be tested?',
+      ...overrides.project,
+    },
+    studies: {
+      active: [],
+      blocked: [],
+      completed: [],
+      closed: [],
+      ...overrides.studies,
+    },
+    tasks: {
+      pending: [],
+      running: [],
+      blocked: [],
+      completed: [],
+      promotion_pending: [],
+      candidate_recorded: [],
+      registered: [],
+      ...overrides.tasks,
+    },
+    output_review: {
+      studies_with_unpackaged_output: [],
+      studies_with_invalid_candidate_paths: [],
+      ...overrides.output_review,
+    },
+    close_preflight: {
+      ready: [],
+      blocked: [],
+      ...overrides.close_preflight,
+    },
+    artifacts: {
+      count: 0,
+      latest: [],
+      ...overrides.artifacts,
+    },
+    memory: {
+      recent: [],
+      ...overrides.memory,
+    },
+    boundaries: {
+      total: 0,
+      open: 0,
+      resolved: 0,
+      active: [],
+      ...overrides.boundaries,
+    },
+    question_state: {
+      last_kind: null,
+      next_candidates: [],
+      open_boundary_ids: [],
+      ...overrides.question_state,
+    },
+  };
+}
+
+test('auto orchestrator computes phase from persisted QDD status', () => {
+  assert.deepEqual(computeInitialPhase(statusFixture()), {
+    phase: 'start',
+    target: 'PROJECT',
+    command: 'qdd-start',
+  });
+
+  assert.deepEqual(
+    computeInitialPhase(
+      statusFixture({
+        studies: { active: ['STUDY-001'], blocked: [], completed: [], closed: [] },
+      }),
+      []
+    ),
+    { phase: 'propose', target: 'STUDY-001', command: 'qdd-propose' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(
+      statusFixture({
+        studies: { active: ['STUDY-001'], blocked: [], completed: [], closed: [] },
+      }),
+      [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'pending' } as TaskRecord]
+    ),
+    { phase: 'apply', target: 'STUDY-001', command: 'qdd-apply' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(
+      statusFixture({
+        studies: { active: [], blocked: ['STUDY-001'], completed: [], closed: [] },
+      }),
+      [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'blocked' } as TaskRecord]
+    ),
+    { phase: 'close', target: 'STUDY-001', command: 'qdd-close' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(
+      statusFixture({
+        studies: { active: [], blocked: [], completed: ['STUDY-001'], closed: [] },
+      }),
+      [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'completed' } as TaskRecord]
+    ),
+    { phase: 'close', target: 'STUDY-001', command: 'qdd-close' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(
+      statusFixture({
+        studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+        question_state: {
+          last_kind: 'refinement',
+          next_candidates: ['Run the next bounded study'],
+          open_boundary_ids: ['B001'],
+        },
+      })
+    ),
+    { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' }
+  );
+});
+
+test('auto orchestrator termination conditions are explicit', () => {
+  assert.equal(checkTermination(statusFixture()).shouldTerminate, false);
+
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'confirmation', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })).shouldTerminate,
+    true
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'dissolution', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })).shouldTerminate,
+    true
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'refinement', next_candidates: ['possible follow-up'], open_boundary_ids: [] },
+    })).shouldTerminate,
+    true
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: ['B001'] },
+    })).shouldTerminate,
+    true
+  );
+});
+
+test('Claude settings parser reads Claude Code env block', () => {
+  const settings = parseClaudeSettings(JSON.stringify({
+    env: {
+      ANTHROPIC_AUTH_TOKEN: 'test-token',
+      ANTHROPIC_BASE_URL: 'https://example.test/anthropic',
+      ANTHROPIC_MODEL: 'test-model',
+    },
+  }));
+
+  assert.equal(settings.ANTHROPIC_AUTH_TOKEN, 'test-token');
+  assert.equal(settings.ANTHROPIC_BASE_URL, 'https://example.test/anthropic');
+  assert.equal(settings.ANTHROPIC_MODEL, 'test-model');
+});
+
+test('Claude model resolution lets CLI override env and settings only when explicit', () => {
+  assert.equal(
+    resolveClaudeModel('cli-model', {
+      env: { ANTHROPIC_MODEL: 'env-model' } as NodeJS.ProcessEnv,
+      settings: { ANTHROPIC_MODEL: 'settings-model' },
+    }),
+    'cli-model'
+  );
+
+  assert.equal(
+    resolveClaudeModel(undefined, {
+      env: { ANTHROPIC_MODEL: 'env-model' } as NodeJS.ProcessEnv,
+      settings: { ANTHROPIC_MODEL: 'settings-model' },
+    }),
+    'env-model'
+  );
+
+  assert.equal(
+    resolveClaudeModel(undefined, {
+      env: {} as NodeJS.ProcessEnv,
+      settings: { ANTHROPIC_MODEL: 'settings-model' },
+    }),
+    'settings-model'
+  );
+
+  assert.equal(
+    resolveClaudeModel(undefined, {
+      env: {} as NodeJS.ProcessEnv,
+      settings: {},
+    }),
+    'claude-sonnet-4-6'
+  );
+});
+
+test('agent bash tool rejects commands that leave the project root', async () => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-root-'));
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-outside-'));
+  const nestedRoot = path.join(projectRoot, 'nested');
+  await fs.mkdir(nestedRoot);
+
+  const nestedOutput = await executeProjectBashForTest(projectRoot, 'cd nested && pwd -P');
+  assert.equal(nestedOutput.trim(), await fs.realpath(nestedRoot));
+
+  const blockedOutput = await executeProjectBashForTest(projectRoot, `cd ${JSON.stringify(outsideRoot)} && pwd -P`);
+  assert.match(blockedOutput, /left QDD project root/);
+  assert.match(blockedOutput, /\[exit code: 125\]/);
+
+  const blockedSubshellOutput = await executeProjectBashForTest(projectRoot, `(cd ${JSON.stringify(outsideRoot)} && pwd -P)`);
+  assert.match(blockedSubshellOutput, /left QDD project root/);
+  assert.match(blockedSubshellOutput, /\[exit code: 125\]/);
+});
+
+test('qdd auto dry-run sequences two cycles without mutating project state', async () => {
+  const projectRoot = await createTempProject('qdd-auto-dry-run-');
+
+  const result = await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 7,
+    maxTurnsPerAgent: 3,
+    dryRun: true,
+  });
+
+  assert.equal(result.terminalCode, 'max_iterations');
+  assert.equal(result.iterations, 7);
+  assert.equal(result.studiesCompleted, 2);
+  assert.deepEqual(
+    result.phases.map((phase) => `${phase.phase}:${phase.target}:${phase.command}`),
+    [
+      'start:PROJECT:qdd-start',
+      'propose:STUDY-001:qdd-propose',
+      'apply:STUDY-001:qdd-apply',
+      'close:STUDY-001:qdd-close',
+      'propose:STUDY-002:qdd-propose',
+      'apply:STUDY-002:qdd-apply',
+      'close:STUDY-002:qdd-close',
+    ]
+  );
+  await assert.rejects(fs.access(path.join(projectRoot, 'studies', 'STUDY-001', 'study.md')));
+});
+
+test('qdd auto verbose dry-run reports initial state', async () => {
+  const projectRoot = await createTempProject('qdd-auto-verbose-dry-run-');
+  const logs: string[] = [];
+
+  await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: 3,
+    dryRun: true,
+    verbose: true,
+    logger: (message) => logs.push(message),
+  });
+
+  assert.equal(logs.some((line) => line.startsWith('Initial state: studies active=')), true);
+});
+
+test('qdd auto dry-run reports supplied auto prompt', async () => {
+  const projectRoot = await createTempProject('qdd-auto-prompt-dry-run-');
+  const logs: string[] = [];
+
+  await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: null,
+    dryRun: true,
+    prompt: 'Use /data/example.h5ad and evaluate with accuracy.py.',
+    logger: (message) => logs.push(message),
+  });
+
+  assert.equal(logs.some((line) => line.includes('Max turns per agent: unlimited')), true);
+  assert.equal(logs.some((line) => line.includes('Use /data/example.h5ad')), true);
+});
+
+test('qdd auto infers Chinese visible model output from prompt or env', () => {
+  assert.equal(inferAutoVisibleLanguage('去读取 benchmark 文件夹', {} as NodeJS.ProcessEnv), 'zh');
+  assert.equal(inferAutoVisibleLanguage('Read benchmark folders', {} as NodeJS.ProcessEnv), 'default');
+  assert.equal(inferAutoVisibleLanguage('Read benchmark folders', { QDD_AUTO_MODEL_LANG: 'zh' } as NodeJS.ProcessEnv), 'zh');
+  assert.equal(inferAutoVisibleLanguage('去读取 benchmark 文件夹', { QDD_AUTO_MODEL_LANG: 'en' } as NodeJS.ProcessEnv), 'default');
+});
+
+test('qdd auto console renderer emits compact non-tty output', async () => {
+  const projectRoot = await createTempProject('qdd-auto-renderer-');
+  const chunks: string[] = [];
+  const renderer = createAutoConsoleRenderer({
+    color: false,
+    stdout: {
+      columns: 100,
+      isTTY: false,
+      write: (chunk: string) => {
+        chunks.push(chunk);
+        return true;
+      },
+    },
+  });
+
+  const result = await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: null,
+    dryRun: true,
+    prompt: 'Read benchmark README files before proposing work.',
+    events: renderer.events,
+    logger: () => undefined,
+  });
+  renderer.finish(result);
+
+  const output = chunks.join('');
+  assert.match(output, /qdd auto autonomous research loop/);
+  assert.match(output, /mode    dry-run/);
+  assert.match(output, /limits  1 phases, unlimited turns\/session/);
+  assert.match(output, /\[1\] Thesis Manager \(qdd-start\) PROJECT/);
+  assert.match(output, /dry-run system prompt qdd-start\.md/);
+  assert.match(output, /Result max_iterations/);
+  assert.match(output, /log     \.qdd\/runs\/auto-/);
+  assert.doesNotMatch(output, /\x1b\[/);
+});
+
+test('qdd auto console renderer shows visible model notes without completion marker', async () => {
+  const projectRoot = await createTempProject('qdd-auto-model-note-');
+  const chunks: string[] = [];
+  const renderer = createAutoConsoleRenderer({
+    color: false,
+    stdout: {
+      columns: 100,
+      isTTY: false,
+      write: (chunk: string) => {
+        chunks.push(chunk);
+        return true;
+      },
+    },
+  });
+
+  renderer.events.runStart?.({
+    projectRoot,
+    phase: { phase: 'start', target: 'PROJECT', command: 'qdd-start' },
+    model: 'note-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: 3,
+    dryRun: false,
+    prompt: 'Inspect benchmark files.',
+  });
+  renderer.events.phaseStart?.({
+    iteration: 1,
+    phase: { phase: 'start', target: 'PROJECT', command: 'qdd-start' },
+    label: 'Thesis Manager (qdd-start)',
+    role: 'thesis-manager',
+  });
+  renderer.events.agent?.turnStart?.({ turn: 1 });
+  renderer.events.agent?.textDelta?.({ turn: 1, delta: 'I will inspect the benchmark README files first.' });
+  renderer.events.agent?.textEnd?.({
+    turn: 1,
+    text: 'I will inspect the benchmark README files first.\nWORKFLOW_COMPLETE',
+  });
+  renderer.finish({
+    iterations: 1,
+    studiesCompleted: 0,
+    finalPhase: 'start',
+    terminalCode: 'terminal_state',
+    terminalReason: 'Done.',
+    summary: 'Auto mode completed: 1 iterations, 0 studies closed. Stop reason: Done.',
+    phases: [],
+  });
+
+  const output = chunks.join('');
+  assert.match(output, /Model/);
+  assert.match(output, /└ I will inspect the benchmark README files first\./);
+  assert.doesNotMatch(output, /WORKFLOW_COMPLETE/);
+});
+
+test('qdd auto console renderer supports Chinese labels', async () => {
+  const projectRoot = await createTempProject('qdd-auto-zh-renderer-');
+  const chunks: string[] = [];
+  const renderer = createAutoConsoleRenderer({
+    color: false,
+    locale: 'zh',
+    stdout: {
+      columns: 100,
+      isTTY: false,
+      write: (chunk: string) => {
+        chunks.push(chunk);
+        return true;
+      },
+    },
+  });
+
+  const result = await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: null,
+    dryRun: true,
+    events: renderer.events,
+    logger: () => undefined,
+  });
+  renderer.finish(result);
+
+  const output = chunks.join('');
+  assert.match(output, /qdd auto 自主研究循环/);
+  assert.match(output, /项目\s+\//);
+  assert.match(output, /└ 阶段 start  命令 qdd-start  角色 thesis-manager/);
+  assert.match(output, /• 结果 max_iterations/);
+});
 
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
   const projectRoot = await createTempProject('qdd-init-');
@@ -91,21 +501,33 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
   assert.match(startCommand, /contract\.yaml/);
   assert.match(startCommand, /context\/resources\.md/);
   assert.match(startCommand, /artifacts\/data\//);
+  assert.doesNotMatch(startCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(startCommand, /qdd boundaries apply --file/);
   assert.doesNotMatch(startCommand, /boundaries\.yaml/);
 
   const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
   assert.match(proposeCommand, /evolution\.yaml/);
   assert.match(proposeCommand, /context\/memory/);
+  assert.doesNotMatch(proposeCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(proposeCommand, /qdd boundaries score/);
   assert.doesNotMatch(proposeCommand, /question_delta/);
+
+  const applyCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md'), 'utf-8');
+  assert.doesNotMatch(applyCommand, /Auto Mode: Fork Next Agent/);
 
   const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
   assert.match(closeCommand, /context\/memory/);
   assert.match(closeCommand, /research-map\.html/);
+  assert.doesNotMatch(closeCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(closeCommand, /Get human approval before running `qdd close-study`\./);
   assert.doesNotMatch(closeCommand, /boundary-updates\.yaml/);
   assert.doesNotMatch(closeCommand, /question_delta/);
+
+  const autoSkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd-auto', 'SKILL.md'), 'utf-8');
+  assert.match(autoSkill, /qdd auto/);
+  assert.match(autoSkill, /runtime is the orchestrator/);
+  assert.doesNotMatch(autoSkill, /fork chain takes over/);
+  assert.doesNotMatch(autoSkill, /Fork Instruction/);
 
   const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8')) as {
     skills: Array<{ id: string }>;

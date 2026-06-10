@@ -17,12 +17,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-runtime-assets.mjs",
     "dev": "tsc --watch -p tsconfig.json",
-    "test": "node --test dist/test"
+    "test": "node --test dist/test/*.js"
   },
   "engines": {
     "node": ">=20.19.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "commander": "^14.0.0",
     "yaml": "^2.8.2"
   },
