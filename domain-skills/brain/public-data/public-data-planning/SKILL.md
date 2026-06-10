@@ -1,6 +1,6 @@
 ---
 name: brain/public-data/public-data-planning
-description: Public dataset planning protocol for QDD. Use during qdd-propose and qdd-explore whenever a study may need external datasets and the agent must decide whether to search, how to structure the request, and what final selected targets should be handed to apply.
+description: Public dataset planning protocol for QDD. Use during qdd-propose and qdd-explore whenever a study may need external datasets and the agent must decide whether to search, whether a lightweight candidate-capture task is enough, how to structure the request, and what final selected targets should be handed to apply.
 ---
 
 # brain/public-data/public-data-planning
@@ -19,6 +19,7 @@ Trigger this skill when at least one of the following is true:
 
 Do not use this skill as an executor skill.
 Do not write `brain/*` into task `skills:`.
+Do not use this skill for lightweight public reference tables such as markers, ligand-receptor pairs, or pathway collections; those belong to `brain/public-data/reference-planning`.
 
 If local resources already support the study well enough, do not force a public-data task.
 
@@ -33,9 +34,13 @@ This skill does not define QDD workflow semantics.
 Its job is:
 
 1. decide whether external public data is actually needed
-2. structure a thin search request that a source skill can execute
-3. narrow candidate datasets to a very small selected set
-4. define the handoff that `qdd-apply` may consume without reopening search
+2. decide whether the next step is a selected-dataset path or a lighter candidate-capture path
+3. structure either a thin search request or a bounded candidate-capture intent that a source skill can execute
+4. narrow candidate datasets to a very small selected set when the study truly needs immediate acquisition
+5. define the handoff that `qdd-apply` may consume without reopening broad search
+
+This skill is specifically for dataset-shaped public data.
+It is not the planning surface for lightweight reference fetches.
 
 ## Planning Contract
 
@@ -52,6 +57,11 @@ The outcome must be one of:
   - local resources are sufficient
   - do not create a public-data task
   - do not create `public_data_request.yaml`
+- `capture`
+  - create a lightweight public-data task
+  - keep the bounded search intent in the task itself
+  - do not create `public_data_request.yaml`
+  - use this when the study first needs an auditable candidate table rather than an immediate download
 - `selected`
   - create a public-data task
   - write a thin `public_data_request.yaml`
@@ -159,8 +169,24 @@ Do not persist a long free-text rationale in the handoff file.
 ### Source Choice Rule
 
 - choose a source only when there is a matching executor skill in the local catalog
-- do not write `geo`, `arrayexpress`, or other sources into the handoff until a corresponding executor skill exists
-- current stable source executor: `public-data/cellxgene-discover`
+- do not write a source into `public_data_request.yaml` until a corresponding selected-dataset executor skill exists
+- current stable selected-dataset executor: `public-data/cellxgene-discover`
+- current stable lightweight dataset-survey executor: `public-data/geo-candidate-capture`
+
+### Lightweight Candidate-Capture Rule
+
+Use a lightweight capture task instead of `public_data_request.yaml` when:
+
+- the study first needs an auditable GEO candidate table
+- the likely source files are heterogeneous enough that forced auto-download would be premature
+- the user needs reviewable accession-level candidates before committing to one selected dataset
+
+In this path:
+
+- write the bounded source and search terms directly into the task
+- choose `public-data/geo-candidate-capture`
+- expect apply to materialize a local candidate CSV and report
+- do not invent a selected-target handoff yet
 
 ### Search Broadening Ladder
 
@@ -198,6 +224,7 @@ selection_note:
 ```
 
 Do not create a separate persisted candidate manifest by default.
+Do not create this handoff at all for lightweight candidate-capture tasks.
 
 ---
 

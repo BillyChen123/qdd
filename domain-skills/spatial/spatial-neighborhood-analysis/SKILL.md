@@ -42,8 +42,7 @@ It is not appropriate for:
 
 ## Backend
 
-- preferred: Squidpy spatial graph construction
-- fallback: explicit `scipy-knn` graph construction when Squidpy is unavailable
+- required: Squidpy spatial graph construction
 
 ## Key Parameters
 
@@ -55,7 +54,6 @@ It is not appropriate for:
 - `--spatial-obsm-key`
 - `--x-key`
 - `--y-key`
-- `--backend`
 - `--n-neighbors`
 - `--max-distance`
 
@@ -89,4 +87,4 @@ conda run -n qdd-skill-core python \
 - `neighbor-labels` define the positive labels for the co-localization score.
 - `target-labels` restrict which observations are summarized as focal observations. If omitted, all observations are focal observations.
 - This skill computes spatial evidence. It does not redefine annotations.
-- The skill reports which graph backend was actually used so a scipy fallback is never hidden.
+- This skill requires `squidpy` in `qdd-skill-core`; there is no hidden fallback graph path.

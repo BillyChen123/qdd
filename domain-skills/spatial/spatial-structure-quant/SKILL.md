@@ -41,8 +41,7 @@ It is not appropriate for:
 
 ## Backend
 
-- preferred: Squidpy spatial graph construction
-- fallback: explicit `scipy-graph` construction when Squidpy is unavailable
+- required: Squidpy spatial graph construction
 
 ## Key Parameters
 
@@ -55,7 +54,6 @@ It is not appropriate for:
 - `--spatial-obsm-key`
 - `--x-key`
 - `--y-key`
-- `--backend`
 - `--graph-method`
 - `--n-neighbors`
 - `--radius`
@@ -94,4 +92,4 @@ conda run -n qdd-skill-core python \
 - `seed-labels` are optional anchors. If provided, a component must include at least `--min-seed-count` seed observations to pass.
 - `required-labels` are optional supporting labels. If provided, each required label must appear at least `--min-required-count` times.
 - `assisted` interpretation should use the component tables and spatial plot rather than hidden manual edits.
-- Connected components are now derived from a sparse graph backend instead of a custom union-find implementation.
+- This skill requires `squidpy` in `qdd-skill-core`; there is no hidden fallback graph path.

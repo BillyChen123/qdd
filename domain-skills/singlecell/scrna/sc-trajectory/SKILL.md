@@ -41,6 +41,7 @@ It is not appropriate for:
 ## Key Parameters
 
 - `--method paga-dpt|rna-velocity`
+- `--threads`
 - `--cluster-key`
 - `--root-cell`
 - `--root-key`
@@ -82,3 +83,4 @@ conda run -n qdd-skill-core python \
 - `paga-dpt` requires an explicit root choice.
 - `rna-velocity` requires `spliced` and `unspliced` layers.
 - The skill prefers to reuse existing PCA / neighbors / embeddings when present, and only computes the minimum missing graph structure needed for the requested method.
+- Dynamical velocity fitting now follows the explicit `--threads` setting instead of hard-coding single-core execution.

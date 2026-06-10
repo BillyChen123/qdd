@@ -9,6 +9,7 @@ methods:
   force:
     description: Treat the selected layer or X matrix as counts and rerun requested preprocessing steps.
 defaults:
+  threads: 1
   mode: auto
   counts_layer: auto
   assay: auto
@@ -23,6 +24,7 @@ cli:
     - --input
     - --output
   optional:
+    - --threads <int>
     - --mode <inspect|auto|force>
     - --counts-layer <layer-name|X|auto>
     - --assay <auto|targeted|genome-wide|feature-activity>

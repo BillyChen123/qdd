@@ -3,8 +3,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
+
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+
+
+def bootstrap_threads(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--threads", type=int, default=1)
+    known, _ = parser.parse_known_args(argv)
+    threads = max(1, int(known.threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    return threads
+
+
+BOOTSTRAP_THREADS = bootstrap_threads(sys.argv[1:])
 
 import matplotlib
 matplotlib.use("Agg")
@@ -13,13 +35,13 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from scipy import sparse
-from sklearn.neighbors import NearestNeighbors
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Spatial AnnData graph construction, clustering, and embedding skill.")
     parser.add_argument("--input", required=True, help="Input h5ad path.")
     parser.add_argument("--output", required=True, help="Output directory.")
+    parser.add_argument("--threads", type=int, default=BOOTSTRAP_THREADS, help="CPU thread count for BLAS/OpenMP/Numba-backed steps.")
     parser.add_argument("--graph-source", choices=["expression", "spatial", "combined"], default="expression")
     parser.add_argument("--use-rep", default="auto", help="Embedding in adata.obsm to use, or auto.")
     parser.add_argument("--spatial-obsm-key", default="auto", help="Coordinate obsm key, or auto.")
@@ -41,6 +63,15 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def configure_threads(threads: int) -> int:
+    threads = max(1, int(threads))
+    for env_name in THREAD_ENV_VARS:
+        os.environ[env_name] = str(threads)
+    if hasattr(sc.settings, "n_jobs"):
+        sc.settings.n_jobs = threads
+    return threads
+
+
 def dataframe_to_markdown(frame: pd.DataFrame, max_rows: int = 20) -> str:
     if frame.empty:
         return "_No rows_"
@@ -58,7 +89,9 @@ def dataframe_to_markdown(frame: pd.DataFrame, max_rows: int = 20) -> str:
 
 def pca_components(adata: sc.AnnData, requested: int) -> int:
     upper = min(adata.n_obs, adata.n_vars) - 1
-    return max(2, min(requested, upper))
+    if upper < 1:
+        raise ValueError("PCA requires at least two observations and two usable features.")
+    return 1 if upper == 1 else min(requested, upper)
 
 
 def resolve_use_rep(adata: sc.AnnData, requested: str, n_pcs: int) -> tuple[str | None, int | None]:
@@ -126,42 +159,11 @@ def build_expression_graph(adata: sc.AnnData, args: argparse.Namespace) -> tuple
     return normalize_connectivities(adata.obsp["connectivities"]), resolved
 
 
-def sklearn_spatial_graph(coords: np.ndarray, obs: pd.DataFrame, section_key: str | None, n_neighbors: int) -> sparse.csr_matrix:
-    valid = np.isfinite(coords).all(axis=1)
-    rows: list[int] = []
-    cols: list[int] = []
-    data: list[float] = []
-
-    if section_key and section_key in obs.columns:
-        groups = obs.groupby(section_key, observed=False).indices.values()
-    else:
-        groups = [np.arange(coords.shape[0])]
-
-    for group_indices_raw in groups:
-        group_indices = np.asarray(list(group_indices_raw), dtype=int)
-        group_indices = group_indices[valid[group_indices]]
-        if group_indices.size <= 1:
-            continue
-        k = min(n_neighbors + 1, group_indices.size)
-        nn = NearestNeighbors(n_neighbors=k)
-        nn.fit(coords[group_indices])
-        distances, neighbors = nn.kneighbors(coords[group_indices])
-        for local_row, global_row in enumerate(group_indices):
-            for distance, local_col in zip(distances[local_row], neighbors[local_row]):
-                global_col = int(group_indices[local_col])
-                if global_col == int(global_row):
-                    continue
-                rows.append(int(global_row))
-                cols.append(global_col)
-                data.append(float(1.0 / (1.0 + distance)))
-
-    graph = sparse.csr_matrix((data, (rows, cols)), shape=(coords.shape[0], coords.shape[0]))
-    graph = graph.maximum(graph.T)
-    return normalize_connectivities(graph)
-
-
 def squidpy_spatial_graph(adata: sc.AnnData, coord_key: str, section_key: str | None, n_neighbors: int) -> sparse.csr_matrix:
-    import squidpy as sq
+    try:
+        import squidpy as sq
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError("squidpy is required for spatial graph construction in qdd-skill-core.") from error
 
     kwargs: dict[str, Any] = {
         "spatial_key": coord_key,
@@ -187,12 +189,8 @@ def build_spatial_graph(adata: sc.AnnData, args: argparse.Namespace) -> tuple[sp
 
     coord_key = "_qdd_spatial_coords"
     adata.obsm[coord_key] = coords
-    try:
-        graph = squidpy_spatial_graph(adata, coord_key, args.section_key, args.spatial_neighbors)
-        return graph, "squidpy", coord_source
-    except Exception as error:  # noqa: BLE001
-        graph = sklearn_spatial_graph(coords, adata.obs, args.section_key, args.spatial_neighbors)
-        return graph, f"sklearn fallback: {error}", coord_source
+    graph = squidpy_spatial_graph(adata, coord_key, args.section_key, args.spatial_neighbors)
+    return graph, "squidpy", coord_source
 
 
 def register_custom_neighbors(adata: sc.AnnData, key: str, connectivities: sparse.spmatrix) -> str:
@@ -304,6 +302,8 @@ def run_clustering(adata: sc.AnnData, args: argparse.Namespace) -> dict[str, Any
         "spatial_backend": spatial_backend,
         "coordinate_source": coord_source,
         "neighbors_key": neighbors_key,
+        "threads": args.threads,
+        "skip_umap": bool(args.skip_umap),
     }
 
 
@@ -348,6 +348,7 @@ def write_report(
 
 def main() -> None:
     args = parse_args()
+    args.threads = configure_threads(args.threads)
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()
     figures_dir = output_dir / "figures"

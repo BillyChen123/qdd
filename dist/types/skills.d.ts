@@ -4,7 +4,7 @@ export interface LocalSkillEntry {
 }
 export type SkillDomain = 'singlecell' | 'spatial' | 'public-data' | 'bulk' | 'general';
 export type SkillStage = 'preprocess' | 'integration' | 'clustering' | 'acquisition' | 'downstream';
-export type SkillTag = 'scrna' | 'scatac' | 'cellxgene' | 'qc' | 'batch' | 'markers' | 'de' | 'group-stats' | 'enrichment' | 'module-score' | 'trajectory' | 'neighborhood' | 'niche' | 'structure' | 'communication';
+export type SkillTag = 'datasets' | 'literature' | 'scrna' | 'scatac' | 'cellxgene' | 'qc' | 'batch' | 'markers' | 'de' | 'group-stats' | 'enrichment' | 'module-score' | 'trajectory' | 'neighborhood' | 'niche' | 'structure' | 'communication';
 export interface ProblemSkillMetadata {
     id: string;
     domain: SkillDomain;

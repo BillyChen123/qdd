@@ -1,6 +1,6 @@
 entry_script: scripts/spatial_neighborhood_analysis.py
 python_env: qdd-skill-core
-summary: Compute section-aware spatial neighborhood scores from annotated spatial AnnData objects, preferring Squidpy graph construction when available.
+summary: Compute section-aware spatial neighborhood scores from annotated spatial AnnData objects using Squidpy graph construction.
 methods:
   inspect:
     description: Audit coordinate and label availability without computing neighborhoods.
@@ -10,7 +10,6 @@ methods:
     description: Compute neighborhood candidates and review artifacts for human interpretation.
 defaults:
   mode: auto
-  backend: auto
   spatial_obsm_key: auto
   n_neighbors: 15
   max_distance: null
@@ -28,7 +27,6 @@ cli:
     - --spatial-obsm-key <obsm-key|auto>
     - --x-key <obs-column>
     - --y-key <obs-column>
-    - --backend <auto|squidpy|scipy-knn>
     - --n-neighbors <int>
     - --max-distance <float>
 output_contract:

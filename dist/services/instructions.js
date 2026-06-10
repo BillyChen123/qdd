@@ -6,6 +6,7 @@ import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRe
 import { listRecentStudyMemoryPaths } from '../runtime/evolution.js';
 import { getDefaultSkillsForRole, isQddCommand, readLayerPolicy, resolveCommandRole } from '../runtime/layer-policy.js';
 import { listLocalSkills, resolveLocalSkills } from '../runtime/local-skills.js';
+import { isDatasetPublicDataSkillId, isLightweightPublicDataSkillId } from '../runtime/public-data.js';
 import { readMarkdownFrontmatter } from '../runtime/store.js';
 const PROJECT_TARGET_ID = 'PROJECT';
 const STUDY_ID_PATTERN = /^STUDY-\d{3}$/;
@@ -213,7 +214,8 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'study-brain');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...studyTaskSkills.matchedIds]);
-        const hasPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => skillId.startsWith('public-data/'));
+        const hasDatasetPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => isDatasetPublicDataSkillId(skillId));
+        const hasLightweightPublicDataTask = studyTaskSkills.matchedIds.some((skillId) => isLightweightPublicDataSkillId(skillId));
         const readPaths = [
             ...listManagedFileReferencePathsForTarget('study'),
             PATHS.contract,
@@ -263,7 +265,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
             'Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.',
             'Use studies/STUDY-XXX/output/artifact-candidates.yaml as the explicit promotion boundary for reusable study outputs.',
-            'Use studies/STUDY-XXX/output/public_data_request.yaml only when this study truly depends on external public data; do not create it for studies that can proceed entirely from local resources.',
+            'Use studies/STUDY-XXX/output/public_data_request.yaml only when this study truly depends on external public datasets; do not create it for studies that can proceed entirely from local resources.',
             'Include task_id in artifact candidates whenever one task clearly produced the reusable output.',
         ];
         if (command === 'qdd-propose' || command === 'qdd-explore') {
@@ -273,7 +275,8 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push('Use study-brain skills plus qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json when problem-level skill selection is needed.');
             rules.push('Candidate search belongs to planning. Keep apply execution on the task-local skill bundle only.');
             rules.push('When a task clearly belongs to a known executor problem class, choose and write the task-local skill bundle during planning instead of deferring the decision to qdd-apply.');
-            rules.push('When a study genuinely needs external public data, planning may search and narrow candidates, but it should persist only the final selected targets in studies/STUDY-XXX/output/public_data_request.yaml.');
+            rules.push('When a study genuinely needs external public datasets, planning may search and narrow candidates, but it should persist only the final selected targets in studies/STUDY-XXX/output/public_data_request.yaml.');
+            rules.push('When a study needs lightweight public-data capture such as markers, ligand-receptor pairs, GEO candidate tables, or PubMed evidence tables, keep the bounded search intent in task Markdown and materialize the chosen local CSV/TSV outputs directly instead of inventing a new managed YAML handoff.');
             rules.push('Do not make boundary score output a required planning gate. Boundary-compatible CLI views are optional diagnostics, not core protocol requirements.');
         }
         if (command === 'qdd-close') {
@@ -298,11 +301,15 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         if (studyTaskSkills.missing.length > 0) {
             rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}.`);
         }
-        if (hasPublicDataTask) {
+        if (hasDatasetPublicDataTask) {
             readPaths.push(getStudyPublicDataRequestPath(id));
             rules.push(`Treat ${getStudyPublicDataRequestPath(id)} as the planning-owned handoff for public-data selection.`);
             rules.push('Planning may narrow public-data candidates, but apply may only consume the selected targets already written there.');
             rules.push('If the selected public datasets were downloaded successfully, qdd-close should decide whether they belong in carried-forward project resources and document them explicitly in context/resources.md.');
+        }
+        if (hasLightweightPublicDataTask) {
+            rules.push('Lightweight public-data tasks should materialize the selected local CSV/TSV outputs directly under the study output directory rather than relying on public_data_request.yaml.');
+            rules.push('Keep lightweight public-data tasks bounded by the task text itself: source choice, query terms, and downstream consumer should be explicit before apply starts.');
         }
         return {
             ...buildInstructionHeader(command, role),
@@ -325,7 +332,8 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         const role = resolveCommandRole(policy, command, 'executor');
         const roleSkillSet = await resolveRoleSkillSet(projectRoot, role, policy);
         const requiredSkillIds = uniqueSortedValues([...roleSkillSet.matchedIds, ...taskSkillSet.matchedIds]);
-        const hasPublicDataTask = taskSkillSet.matchedIds.some((skillId) => skillId.startsWith('public-data/'));
+        const hasDatasetPublicDataTask = taskSkillSet.matchedIds.some((skillId) => isDatasetPublicDataSkillId(skillId));
+        const hasLightweightPublicDataTask = taskSkillSet.matchedIds.some((skillId) => isLightweightPublicDataSkillId(skillId));
         const rules = [
             'Do not redefine the study question.',
             'Keep the task minimal and evidence-producing.',
@@ -344,7 +352,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Use studies/STUDY-XXX/output/tmp only as scratch space; package final outputs back into canonical study output directories before marking the task complete.',
             `Treat ${getStudyOutputDir(studyId)}/data, code, figures, tables, and reports as the canonical final output surface for this study.`,
             `Preserve the final kept h5ad or equivalent reusable processed data object under ${getStudyOutputDir(studyId)}/data/ when this task produces one.`,
-            `Treat ${getStudyPublicDataRequestPath(studyId)} as a planning-owned handoff file. If this task uses it, consume only the selected dataset targets recorded there.`,
+            `Treat ${getStudyPublicDataRequestPath(studyId)} as a planning-owned dataset handoff file. If this task uses it, consume only the selected dataset targets recorded there.`,
             'Preserve readable scripts in studies/STUDY-XXX/output/code for substantive analyses.',
             'Save key figures in studies/STUDY-XXX/output/figures when the claim depends on visual evidence, or record why no figure was needed.',
             'Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.',
@@ -357,9 +365,13 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Do not switch strategies just because a heavy command has been running for a few minutes without finishing.',
             'Treat explicit process exit, repeated hard errors, or sustained non-progress after extended inspection as stronger failure evidence than simple elapsed time.',
         ];
-        if (hasPublicDataTask) {
+        if (hasDatasetPublicDataTask) {
             rules.push(`Treat ${getStudyPublicDataRequestPath(studyId)} as the only public-data handoff file for this task.`);
             rules.push('Do not reopen broad public-data search during apply; download only the selected targets already written during planning.');
+        }
+        if (hasLightweightPublicDataTask) {
+            rules.push('Lightweight public-data tasks may perform the bounded source search already described in the task, but they must materialize the chosen local CSV/TSV outputs directly under the study output directory.');
+            rules.push('Do not invent a new managed YAML handoff for lightweight public-data capture tasks during apply.');
         }
         appendRoleSkillIssues(rules, 'Task', roleSkillSet);
         if (taskSkillSet.disallowedWorkflow.length > 0) {

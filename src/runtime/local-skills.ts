@@ -19,6 +19,8 @@ const CONTROLLED_STAGES: readonly SkillStage[] = [
   'downstream',
 ];
 const CONTROLLED_TAGS: readonly SkillTag[] = [
+  'datasets',
+  'literature',
   'scrna',
   'scatac',
   'cellxgene',

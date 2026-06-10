@@ -34,6 +34,7 @@ Use this skill when:
 ## Key Parameters
 
 - `--batch-key`
+- `--threads`
 - `--method none|harmony|scanorama|bbknn`
 - `--section-key`
 - `--label-key`
@@ -80,4 +81,5 @@ conda run -n qdd-skill-core python \
 - Coordinates are preserved but not registered or transformed.
 - Do not compare section-local coordinates across sections unless registration is explicit.
 - `none` is a valid diagnostic path, not a failure state.
+- QDD does not preserve `.raw` in this output; reusable matrix state should stay on `.X` or named layers.
 - This skill does not perform spatial neighborhood, niche, or structure interpretation.

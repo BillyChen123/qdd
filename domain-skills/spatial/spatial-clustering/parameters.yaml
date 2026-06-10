@@ -5,10 +5,11 @@ methods:
   expression:
     description: Standard Scanpy neighbors -> Leiden -> UMAP workflow using PCA or an existing embedding.
   spatial:
-    description: Coordinate kNN graph using Squidpy when available and scikit-learn fallback otherwise.
+    description: Coordinate kNN graph using Squidpy.
   combined:
     description: Weighted average of expression and spatial connectivities before Leiden clustering.
 defaults:
+  threads: 1
   graph_source: expression
   use_rep: auto
   spatial_obsm_key: auto
@@ -25,6 +26,7 @@ cli:
     - --input
     - --output
   optional:
+    - --threads <int>
     - --graph-source <expression|spatial|combined>
     - --use-rep <auto|X_pca|X_pca_harmony|X_scanorama|...>
     - --spatial-obsm-key <obsm-key|auto>

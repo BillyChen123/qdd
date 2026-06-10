@@ -20,6 +20,7 @@ export function createDefaultLayerPolicy(): LayerPolicy {
           'brain/singlecell/scrna-planning',
           'brain/singlecell/scatac-planning',
           'brain/public-data/public-data-planning',
+          'brain/public-data/reference-planning',
         ],
       },
       executor: {

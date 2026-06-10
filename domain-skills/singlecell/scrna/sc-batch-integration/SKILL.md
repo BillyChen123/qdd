@@ -33,11 +33,12 @@ tags:
 
 - `scanpy 1.10.0`
 - `scib 1.1.5`
-- `bbknn` 当前不在 `qdd-skill-core` 环境里
+- `bbknn` 已纳入 `qdd-skill-core`
 
 ## 关键参数
 
 - `--batch-key`
+- `--threads`
 - `--method none|harmony|scanorama|bbknn`
 - `--label-key`
 - `--use-hvg`
@@ -90,4 +91,4 @@ conda run -n qdd-skill-core python \
 - `bbknn` 是可选方法；若包缺失会明确报错
 - `none` 不是失败路径，而是有意保留原始 batch 结构用于诊断
 - 这个 skill 默认也会补一个轻量 clustering，方便马上看批次和 cluster 的 UMAP 结构
-- 如果输入对象带有 `.raw`，脚本会尽量保留，供后续 marker 分析使用
+- QDD 不会在这个输出里保留 `.raw`；如需原始矩阵，应显式依赖 `.X` 或命名 layer

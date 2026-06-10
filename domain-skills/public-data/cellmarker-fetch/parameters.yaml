@@ -1,0 +1,32 @@
+entry_script: scripts/cellmarker_fetch.py
+python_env: qdd-skill-core
+summary: Download CellMarker on demand, filter it with bounded task-specified terms, and materialize a downstream-ready marker CSV.
+actions:
+  fetch:
+    description: Download the requested CellMarker table, filter matched rows, and aggregate a local marker file for downstream annotation.
+defaults:
+  organism: human
+  max_rows: 200
+  max_genes_per_label: 50
+cli:
+  required:
+    - --output <study-output-dir>
+  optional:
+    - --organism <human|mouse|all>
+    - --query <text> [repeatable]
+    - --tissue <text>
+    - --system <text>
+    - --cell-type <text>
+    - --exact
+    - --max-rows <int>
+    - --max-genes-per-label <int>
+    - --note <text>
+    - --refresh
+output_contract:
+  fetch:
+    tables:
+      - tables/cellmarker_matches.csv
+      - tables/markers_selected.csv
+    reports:
+      - reports/cellmarker_fetch_report.md
+      - reports/cellmarker_fetch_result.json

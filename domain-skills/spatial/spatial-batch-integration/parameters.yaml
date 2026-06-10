@@ -11,6 +11,7 @@ methods:
   bbknn:
     description: Build a batch-balanced neighbor graph with bbknn if installed.
 defaults:
+  threads: 1
   method: harmony
   n_hvg: 2000
   n_pcs: 50
@@ -28,6 +29,7 @@ cli:
     - --output
     - --batch-key
   optional:
+    - --threads <int>
     - --method <none|harmony|scanorama|bbknn>
     - --section-key <obs-column>
     - --label-key <obs-column>

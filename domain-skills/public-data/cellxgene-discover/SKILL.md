@@ -5,6 +5,7 @@ domain: public-data
 stage: acquisition
 tags:
   - cellxgene
+  - datasets
 ---
 
 # public-data/cellxgene-discover
@@ -23,6 +24,8 @@ tags:
 - 需要执行两类动作之一：
   - `search`
   - `download`
+
+不要把这个 skill 用在 marker、ligand-receptor、PubMed evidence、GEO candidate survey 这类轻量 public-data capture 上。
 
 ## 输入契约
 
