@@ -6,8 +6,10 @@ export type AutoStopCode = 'terminal_state' | 'max_iterations' | 'phase_incomple
 export interface AutoOptions {
     model: string;
     maxIterations: number;
-    maxTurnsPerAgent: number;
+    maxTurnsPerAgent: number | null;
     dryRun: boolean;
+    verbose?: boolean;
+    prompt?: string;
     logger?: (message: string) => void;
 }
 export interface PhaseTarget {

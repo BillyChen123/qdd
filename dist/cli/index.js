@@ -264,16 +264,19 @@ program
     }
 });
 program
-    .command('auto')
+    .command('auto [prompt...]')
     .description('Start autonomous QDD research loop using the Anthropic SDK to orchestrate agent sessions')
     .option('--model <model>', 'Anthropic-compatible model to use')
     .option('--max-iterations <n>', 'Maximum loop iterations', '20')
-    .option('--max-turns <n>', 'Maximum turns per agent session', '50')
+    .option('--max-turns <n>', 'Maximum turns per agent session; use 0, none, or unlimited for no per-agent turn limit', '50')
+    .option('--prompt <text>', 'User intent to inject into qdd-start and downstream auto phases')
+    .option('--prompt-file <path>', 'Read user intent from a text/markdown file')
     .option('--dry-run', 'Show what would happen without executing')
+    .option('--verbose', 'Show per-turn agent progress and phase state checks')
     .option('--json', 'Output result as JSON')
-    .action(async (options = {}) => {
+    .action(async (prompt = [], options = {}) => {
     try {
-        await autoCommand(process.cwd(), options);
+        await autoCommand(process.cwd(), prompt.join(' '), options);
     }
     catch (error) {
         console.error(`Error: ${error.message}`);

@@ -86,6 +86,17 @@ function studyHasAnyTasks(status, studyId, taskRecords) {
     }
     return statusTaskIds(status).length > 0;
 }
+function summarizeTaskRecords(taskRecords, studyId) {
+    return tasksForStudy(taskRecords, studyId).map((task) => `${task.task_id}:${taskStatus(task)}`);
+}
+function summarizeStatus(status) {
+    return [
+        `studies active=${status.studies.active.join(',') || '-'} completed=${status.studies.completed.join(',') || '-'} blocked=${status.studies.blocked.join(',') || '-'} closed=${status.studies.closed.join(',') || '-'}`,
+        `tasks pending=${status.tasks.pending.join(',') || '-'} running=${status.tasks.running.join(',') || '-'} completed=${status.tasks.completed.join(',') || '-'} blocked=${status.tasks.blocked.join(',') || '-'}`,
+        `promotion pending=${status.tasks.promotion_pending.join(',') || '-'} candidate_recorded=${status.tasks.candidate_recorded.join(',') || '-'} registered=${status.tasks.registered.join(',') || '-'}`,
+        `close ready=${status.close_preflight.ready.join(',') || '-'} blocked=${status.close_preflight.blocked.map((entry) => `${entry.study_id}(${entry.reasons.join('; ')})`).join(', ') || '-'}`,
+    ].join(' | ');
+}
 export function determineNextStudyId(status) {
     let maxNum = 0;
     for (const sid of allStudyIds(status)) {
@@ -220,23 +231,52 @@ function inspectPhaseCompletion(current, status, taskRecords) {
             return { ok: true };
         case 'propose':
             if (!allStudyIds(status).includes(current.target)) {
-                return { ok: false, reason: `qdd-propose did not create or preserve ${current.target}.` };
+                return {
+                    ok: false,
+                    reason: `qdd-propose did not create or preserve ${current.target}.`,
+                    details: [`known studies: ${allStudyIds(status).join(',') || '-'}`],
+                };
             }
             if (!studyHasAnyTasks(status, current.target, taskRecords)) {
-                return { ok: false, reason: `qdd-propose did not create any tasks for ${current.target}.` };
+                return {
+                    ok: false,
+                    reason: `qdd-propose did not create any tasks for ${current.target}.`,
+                    details: [
+                        `discovered tasks for ${current.target}: ${summarizeTaskRecords(taskRecords, current.target).join(',') || '-'}`,
+                        `global task ids: ${statusTaskIds(status).join(',') || '-'}`,
+                    ],
+                };
             }
             return { ok: true };
         case 'apply':
             if (!studyHasAnyTasks(status, current.target, taskRecords)) {
-                return { ok: false, reason: `qdd-apply target ${current.target} has no tasks.` };
+                return {
+                    ok: false,
+                    reason: `qdd-apply target ${current.target} has no tasks.`,
+                    details: [`discovered tasks for ${current.target}: ${summarizeTaskRecords(taskRecords, current.target).join(',') || '-'}`],
+                };
             }
             if (studyHasPendingOrRunningTasks(status, current.target, taskRecords)) {
-                return { ok: false, reason: `qdd-apply left pending or running tasks for ${current.target}.` };
+                return {
+                    ok: false,
+                    reason: `qdd-apply left pending or running tasks for ${current.target}.`,
+                    details: [
+                        `discovered tasks for ${current.target}: ${summarizeTaskRecords(taskRecords, current.target).join(',') || '-'}`,
+                        `status pending=${status.tasks.pending.join(',') || '-'} running=${status.tasks.running.join(',') || '-'}`,
+                    ],
+                };
             }
             return { ok: true };
         case 'close':
             if (!status.studies.closed.includes(current.target)) {
-                return { ok: false, reason: `qdd-close did not close ${current.target}.` };
+                return {
+                    ok: false,
+                    reason: `qdd-close did not close ${current.target}.`,
+                    details: [
+                        `study lifecycle lists: active=${status.studies.active.join(',') || '-'} completed=${status.studies.completed.join(',') || '-'} blocked=${status.studies.blocked.join(',') || '-'} closed=${status.studies.closed.join(',') || '-'}`,
+                        `close preflight blocked: ${status.close_preflight.blocked.filter((entry) => entry.study_id === current.target).flatMap((entry) => entry.reasons).join('; ') || '-'}`,
+                    ],
+                };
             }
             return { ok: true };
     }
@@ -270,6 +310,21 @@ function formatLogExcerpt(message, maxLength = 1000) {
     if (compact.length <= maxLength)
         return compact;
     return `${compact.slice(0, maxLength)}...`;
+}
+function formatMaxTurns(maxTurns) {
+    return maxTurns === null ? 'unlimited' : String(maxTurns);
+}
+function appendAutoPrompt(instructions, prompt) {
+    const trimmed = prompt?.trim();
+    if (!trimmed)
+        return instructions;
+    return [
+        instructions,
+        '### Auto Run User Prompt',
+        trimmed,
+        '',
+        'Use this prompt as the durable user intent for the current auto run. During qdd-start, capture stable project-level context and resources from it. During qdd-propose, turn it into the first bounded study and concrete task graph. During qdd-apply and qdd-close, keep the work aligned with this intent while still obeying the persisted QDD files.',
+    ].join('\n');
 }
 export async function runAuto(projectRoot, options) {
     const phases = [];
@@ -311,7 +366,11 @@ export async function runAuto(projectRoot, options) {
     }
     log(`Auto mode starting from phase: ${phaseLabel(current.phase)}`);
     log(`Target: ${current.target}, Command: ${current.command}`);
-    log(`Model: ${options.model}, Max iterations: ${options.maxIterations}, Max turns per agent: ${options.maxTurnsPerAgent}`);
+    log(`Model: ${options.model}, Max iterations: ${options.maxIterations}, Max turns per agent: ${formatMaxTurns(options.maxTurnsPerAgent)}`);
+    if (options.prompt?.trim())
+        log(`Prompt: ${formatLogExcerpt(options.prompt, 300)}`);
+    if (options.verbose)
+        log(`Initial state: ${summarizeStatus(status)}`);
     log('');
     while (iterations < options.maxIterations) {
         iterations++;
@@ -341,13 +400,18 @@ export async function runAuto(projectRoot, options) {
         });
         const bootstrapFile = commandToBootstrapFile(current.command);
         const systemPrompt = await readPromptFile(bootstrapFile);
-        const instructionsText = formatInstructionsForAgent(instructions);
+        const instructionsText = appendAutoPrompt(formatInstructionsForAgent(instructions), options.prompt);
+        if (options.verbose) {
+            log(`  Instructions: role=${instructions.role}, read=${instructions.read.length}, write=${instructions.write.length}, required_skills=${instructions.required_skills.length}`);
+        }
         const result = await runAgent({
             model: options.model,
             systemPrompt,
             instructions: instructionsText,
             maxTurns: options.maxTurnsPerAgent,
             cwd: projectRoot,
+            logger: log,
+            verbose: options.verbose ?? false,
         });
         phases.push({
             ...current,
@@ -370,11 +434,17 @@ export async function runAuto(projectRoot, options) {
         }
         status = await buildStatus(projectRoot);
         taskRecords = await discoverTasks(projectRoot);
+        if (options.verbose) {
+            log(`  State after phase: ${summarizeStatus(status)}`);
+        }
         const completion = inspectPhaseCompletion(current, status, taskRecords);
         if (!completion.ok) {
             terminalCode = 'phase_incomplete';
             terminalReason = completion.reason ?? 'Phase completed without producing required filesystem state.';
             log(`Stopping: ${terminalReason}`);
+            for (const detail of completion.details ?? []) {
+                log(`  Detail: ${detail}`);
+            }
             break;
         }
         if (current.phase === 'close')

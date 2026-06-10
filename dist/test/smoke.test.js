@@ -5,7 +5,7 @@ import os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
-import { parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
+import { executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
 import { checkTermination, computeInitialPhase, runAuto } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
@@ -161,6 +161,20 @@ test('Claude model resolution lets CLI override env and settings only when expli
         settings: {},
     }), 'claude-sonnet-4-6');
 });
+test('agent bash tool rejects commands that leave the project root', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-root-'));
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-outside-'));
+    const nestedRoot = path.join(projectRoot, 'nested');
+    await fs.mkdir(nestedRoot);
+    const nestedOutput = await executeProjectBashForTest(projectRoot, 'cd nested && pwd -P');
+    assert.equal(nestedOutput.trim(), await fs.realpath(nestedRoot));
+    const blockedOutput = await executeProjectBashForTest(projectRoot, `cd ${JSON.stringify(outsideRoot)} && pwd -P`);
+    assert.match(blockedOutput, /left QDD project root/);
+    assert.match(blockedOutput, /\[exit code: 125\]/);
+    const blockedSubshellOutput = await executeProjectBashForTest(projectRoot, `(cd ${JSON.stringify(outsideRoot)} && pwd -P)`);
+    assert.match(blockedSubshellOutput, /left QDD project root/);
+    assert.match(blockedSubshellOutput, /\[exit code: 125\]/);
+});
 test('qdd auto dry-run sequences two cycles without mutating project state', async () => {
     const projectRoot = await createTempProject('qdd-auto-dry-run-');
     const result = await runAuto(projectRoot, {
@@ -182,6 +196,33 @@ test('qdd auto dry-run sequences two cycles without mutating project state', asy
         'close:STUDY-002:qdd-close',
     ]);
     await assert.rejects(fs.access(path.join(projectRoot, 'studies', 'STUDY-001', 'study.md')));
+});
+test('qdd auto verbose dry-run reports initial state', async () => {
+    const projectRoot = await createTempProject('qdd-auto-verbose-dry-run-');
+    const logs = [];
+    await runAuto(projectRoot, {
+        model: 'dry-run-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: 3,
+        dryRun: true,
+        verbose: true,
+        logger: (message) => logs.push(message),
+    });
+    assert.equal(logs.some((line) => line.startsWith('Initial state: studies active=')), true);
+});
+test('qdd auto dry-run reports supplied auto prompt', async () => {
+    const projectRoot = await createTempProject('qdd-auto-prompt-dry-run-');
+    const logs = [];
+    await runAuto(projectRoot, {
+        model: 'dry-run-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: null,
+        dryRun: true,
+        prompt: 'Use /data/example.h5ad and evaluate with accuracy.py.',
+        logger: (message) => logs.push(message),
+    });
+    assert.equal(logs.some((line) => line.includes('Max turns per agent: unlimited')), true);
+    assert.equal(logs.some((line) => line.includes('Use /data/example.h5ad')), true);
 });
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
     const projectRoot = await createTempProject('qdd-init-');

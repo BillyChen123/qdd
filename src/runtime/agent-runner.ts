@@ -11,9 +11,11 @@ export interface AgentRunnerOptions {
   model: string;
   systemPrompt: string;
   instructions: string;
-  maxTurns: number;
+  maxTurns: number | null;
   cwd: string;
   signal?: AbortSignal;
+  logger?: (message: string) => void;
+  verbose?: boolean;
 }
 
 export type AgentRunStatus = 'completed' | 'max_turns' | 'aborted' | 'missing_auth' | 'sdk_error';
@@ -38,11 +40,11 @@ const packageRootDir = path.resolve(moduleDir, '..', '..');
 
 const BASH_TOOL: Tool = {
   name: 'bash',
-  description: 'Execute a bash command from the QDD project root. Use for qdd CLI commands, project-local inspection, and bounded analysis commands.',
+  description: 'Execute a bash command from the QDD project root. Commands already start at QDD_PROJECT_ROOT; do not cd to another checkout. Leaving the project root through cd/pushd/subshells is blocked.',
   input_schema: {
     type: 'object' as const,
     properties: {
-      command: { type: 'string', description: 'The bash command to execute from the project root' },
+      command: { type: 'string', description: 'The bash command to execute from the project root. Use relative paths or "$QDD_PROJECT_ROOT" instead of hard-coded project paths.' },
       timeout: { type: 'number', description: 'Optional timeout in milliseconds (max 600000)' },
     },
     required: ['command'],
@@ -77,6 +79,7 @@ const WRITE_TOOL: Tool = {
 const TOOLS: Tool[] = [BASH_TOOL, READ_TOOL, WRITE_TOOL];
 const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MAX_COMPLETION_MARKER_RETRIES = 2;
+const VERBOSE_RESULT_EXCERPT_LENGTH = 600;
 
 function normalizeRoot(root: string): string {
   return path.resolve(root);
@@ -110,16 +113,52 @@ function resolvePathForWrite(cwd: string, inputPath: string): string {
   return resolved;
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function resolvePhysicalRoot(cwd: string): Promise<string> {
+  try {
+    return await fs.realpath(cwd);
+  } catch {
+    return path.resolve(cwd);
+  }
+}
+
+function buildProjectRootGuardScript(projectRoot: string): string {
+  const quotedRoot = shellQuote(projectRoot);
+
+  return [
+    `__qdd_project_root=${quotedRoot}`,
+    'export QDD_PROJECT_ROOT="$__qdd_project_root"',
+    'set -T',
+    '__qdd_guard_pwd() {',
+    '  local __qdd_pwd',
+    '  __qdd_pwd="$(pwd -P)" || exit 125',
+    '  case "$__qdd_pwd" in',
+    '    "$__qdd_project_root"|"$__qdd_project_root"/*) ;;',
+    '    *) echo "Error: bash command left QDD project root: $__qdd_pwd" >&2; exit 125 ;;',
+    '  esac',
+    '}',
+    'cd "$__qdd_project_root" || exit 125',
+    "trap '__qdd_guard_pwd' DEBUG",
+    '__qdd_guard_pwd',
+  ].join('\n');
+}
+
 async function executeBash(cwd: string, command: string, timeoutMs?: number): Promise<string> {
+  const projectRoot = await resolvePhysicalRoot(cwd);
+  const guardedCommand = `${buildProjectRootGuardScript(projectRoot)}\n${command}`;
+
   return new Promise((resolve) => {
     const timeout = Math.min(timeoutMs ?? 120_000, 600_000);
     let stdout = '';
     let stderr = '';
     let killed = false;
 
-    const proc = spawn('bash', ['-c', command], {
-      cwd,
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    const proc = spawn('bash', ['-c', guardedCommand], {
+      cwd: projectRoot,
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', QDD_PROJECT_ROOT: projectRoot, PWD: projectRoot },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -147,6 +186,10 @@ async function executeBash(cwd: string, command: string, timeoutMs?: number): Pr
       resolve(`Error executing command: ${err.message}`);
     });
   });
+}
+
+export async function executeProjectBashForTest(cwd: string, command: string, timeoutMs?: number): Promise<string> {
+  return executeBash(cwd, command, timeoutMs);
 }
 
 async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
@@ -179,6 +222,45 @@ async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
 
 function hasCompletionMarker(text: string): boolean {
   return text.toUpperCase().includes(COMPLETION_MARKER);
+}
+
+function compactWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function formatExcerpt(value: string, maxLength = VERBOSE_RESULT_EXCERPT_LENGTH): string {
+  const compact = compactWhitespace(value);
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength)}...`;
+}
+
+function formatToolInput(tool: ToolCall): string {
+  switch (tool.name) {
+    case 'bash':
+      return `command=${JSON.stringify(String(tool.input.command ?? ''))}`;
+    case 'read':
+    case 'write':
+      return `path=${JSON.stringify(String(tool.input.path ?? ''))}`;
+    default:
+      return JSON.stringify(tool.input);
+  }
+}
+
+function formatToolResult(tool: ToolCall, result: string): string {
+  switch (tool.name) {
+    case 'read':
+      return `read ${String(tool.input.path ?? '')} (${result.length} chars)`;
+    case 'write':
+      return result;
+    case 'bash':
+      return formatExcerpt(result);
+    default:
+      return formatExcerpt(result);
+  }
+}
+
+function hasTurnsRemaining(turns: number, maxTurns: number | null): boolean {
+  return maxTurns === null || turns < maxTurns;
 }
 
 interface ClaudeSettings {
@@ -258,12 +340,13 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     apiKey,
     baseURL: process.env.ANTHROPIC_BASE_URL ?? settings.ANTHROPIC_BASE_URL ?? undefined,
   });
-  const { model, systemPrompt, instructions, maxTurns, cwd, signal } = options;
+  const { model, systemPrompt, instructions, maxTurns, cwd, signal, verbose = false } = options;
+  const log = options.logger ?? (() => undefined);
 
   const messages: MessageParam[] = [
     {
       role: 'user',
-      content: `You are an agent executing one QDD workflow step. Here are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. If the workflow step is not complete, continue using tools. When you have completed all the work described in the instructions, respond with a concise summary and end your final response with a standalone line containing exactly "${COMPLETION_MARKER}".`,
+      content: `You are an agent executing one QDD workflow step.\n\nProject root: ${cwd}\nAll bash commands already execute from this project root. Use relative paths or "$QDD_PROJECT_ROOT"; do not cd to another absolute project path. A bash command that leaves this root will be rejected.\n\nHere are your instructions:\n\n${instructions}\n\nWork through the instructions step by step. Use the available tools to read state, run project-local CLI commands, write project files, and execute analysis. If the workflow step is not complete, continue using tools. When you have completed all the work described in the instructions, respond with a concise summary and end your final response with a standalone line containing exactly "${COMPLETION_MARKER}".`,
     },
   ];
 
@@ -274,7 +357,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
   let failureReason: string | undefined;
   let completionMarkerRetries = 0;
 
-  while (turns < maxTurns) {
+  while (hasTurnsRemaining(turns, maxTurns)) {
     if (signal?.aborted) {
       finalMessage = 'Aborted by user.';
       status = 'aborted';
@@ -283,6 +366,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     }
 
     turns++;
+    if (verbose) log(`    [agent] turn ${turns}: requesting model`);
     let response: Awaited<ReturnType<typeof client.messages.create>>;
     try {
       response = await client.messages.create({
@@ -311,6 +395,16 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     }
 
     const text = textParts.join('\n').trim();
+    if (verbose && text) {
+      log(`    [agent] text: ${formatExcerpt(text)}`);
+    }
+    if (verbose && toolUses.length > 0) {
+      log(`    [agent] tool calls: ${toolUses.map((toolUse) => `${toolUse.name}(${formatToolInput({
+        id: toolUse.id,
+        name: toolUse.name,
+        input: toolUse.input as Record<string, unknown>,
+      })})`).join(', ')}`);
+    }
 
     if (toolUses.length === 0) {
       finalMessage = text;
@@ -320,8 +414,9 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
         break;
       }
 
-      if (completionMarkerRetries < MAX_COMPLETION_MARKER_RETRIES && turns < maxTurns) {
+      if (completionMarkerRetries < MAX_COMPLETION_MARKER_RETRIES && hasTurnsRemaining(turns, maxTurns)) {
         completionMarkerRetries++;
+        if (verbose) log(`    [agent] missing ${COMPLETION_MARKER}; requesting completion confirmation (${completionMarkerRetries}/${MAX_COMPLETION_MARKER_RETRIES})`);
         messages.push({ role: 'assistant', content: response.content });
         messages.push({
           role: 'user',
@@ -341,11 +436,17 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     const toolResults: MessageParam['content'] = [];
     for (const toolUse of toolUses) {
       toolCalls++;
-      const result = await executeToolCall(cwd, {
+      const toolCall: ToolCall = {
         id: toolUse.id,
         name: toolUse.name,
         input: toolUse.input as Record<string, unknown>,
+      };
+      const result = await executeToolCall(cwd, {
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input,
       });
+      if (verbose) log(`    [tool:${toolUse.name}] ${formatToolResult(toolCall, result)}`);
       toolResults.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -356,7 +457,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     messages.push({ role: 'user', content: toolResults });
   }
 
-  if (turns >= maxTurns && !finalMessage) {
+  if (maxTurns !== null && turns >= maxTurns && !finalMessage) {
     finalMessage = `Reached maximum turns (${maxTurns}) without explicit completion.`;
     status = 'max_turns';
     failureReason = finalMessage;

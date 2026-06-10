@@ -1,5 +1,6 @@
 import { runAuto } from '../runtime/orchestrator.js';
 import { resolveClaudeModel } from '../runtime/agent-runner.js';
+import { FileSystemUtils } from '../utils/file-system.js';
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_TURNS_PER_AGENT = 50;
 function parsePositiveInteger(value, fallback, optionName) {
@@ -11,13 +12,36 @@ function parsePositiveInteger(value, fallback, optionName) {
     }
     return parsed;
 }
-export async function autoCommand(projectRoot, options) {
+function parseMaxTurns(value) {
+    if (value === undefined)
+        return DEFAULT_MAX_TURNS_PER_AGENT;
+    const normalized = value.trim().toLowerCase();
+    if (['0', 'none', 'unlimited', 'off'].includes(normalized))
+        return null;
+    return parsePositiveInteger(value, DEFAULT_MAX_TURNS_PER_AGENT, '--max-turns');
+}
+async function resolveAutoPrompt(positionalPrompt, options) {
+    const prompts = [
+        positionalPrompt?.trim(),
+        options.prompt?.trim(),
+    ].filter((value) => Boolean(value));
+    if (options.promptFile) {
+        prompts.push((await FileSystemUtils.readFile(options.promptFile)).trim());
+    }
+    if (prompts.length === 0)
+        return undefined;
+    return prompts.join('\n\n');
+}
+export async function autoCommand(projectRoot, promptArg, options) {
     const projectRootPath = projectRoot || process.cwd();
+    const prompt = await resolveAutoPrompt(promptArg, options);
     const autoOptions = {
         model: resolveClaudeModel(options.model),
         maxIterations: parsePositiveInteger(options.maxIterations, DEFAULT_MAX_ITERATIONS, '--max-iterations'),
-        maxTurnsPerAgent: parsePositiveInteger(options.maxTurns, DEFAULT_MAX_TURNS_PER_AGENT, '--max-turns'),
+        maxTurnsPerAgent: parseMaxTurns(options.maxTurns),
         dryRun: options.dryRun ?? false,
+        verbose: options.verbose ?? false,
+        prompt,
     };
     if (options.json) {
         const result = await runAuto(projectRootPath, {

@@ -2,9 +2,11 @@ export interface AgentRunnerOptions {
     model: string;
     systemPrompt: string;
     instructions: string;
-    maxTurns: number;
+    maxTurns: number | null;
     cwd: string;
     signal?: AbortSignal;
+    logger?: (message: string) => void;
+    verbose?: boolean;
 }
 export type AgentRunStatus = 'completed' | 'max_turns' | 'aborted' | 'missing_auth' | 'sdk_error';
 export interface AgentRunResult {
@@ -15,6 +17,7 @@ export interface AgentRunResult {
     status: AgentRunStatus;
     failureReason?: string;
 }
+export declare function executeProjectBashForTest(cwd: string, command: string, timeoutMs?: number): Promise<string>;
 interface ClaudeSettings {
     ANTHROPIC_AUTH_TOKEN?: string;
     ANTHROPIC_API_KEY?: string;
