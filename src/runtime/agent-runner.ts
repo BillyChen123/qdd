@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Tool, MessageParam, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
+import type { Message, MessageParam, Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as path from 'node:path';
@@ -16,6 +16,7 @@ export interface AgentRunnerOptions {
   signal?: AbortSignal;
   logger?: (message: string) => void;
   verbose?: boolean;
+  events?: AgentRunEvents;
 }
 
 export type AgentRunStatus = 'completed' | 'max_turns' | 'aborted' | 'missing_auth' | 'sdk_error';
@@ -29,10 +30,19 @@ export interface AgentRunResult {
   failureReason?: string;
 }
 
-interface ToolCall {
+export interface AgentToolCall {
   id: string;
   name: string;
   input: Record<string, unknown>;
+}
+
+export interface AgentRunEvents {
+  turnStart?: (event: { turn: number }) => void;
+  textDelta?: (event: { turn: number; delta: string }) => void;
+  textEnd?: (event: { turn: number; text: string }) => void;
+  toolUse?: (event: { turn: number; tool: AgentToolCall }) => void;
+  toolResult?: (event: { turn: number; tool: AgentToolCall; result: string }) => void;
+  completionMarkerMissing?: (event: { turn: number; attempt: number; maxAttempts: number }) => void;
 }
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -192,7 +202,7 @@ export async function executeProjectBashForTest(cwd: string, command: string, ti
   return executeBash(cwd, command, timeoutMs);
 }
 
-async function executeToolCall(cwd: string, tool: ToolCall): Promise<string> {
+async function executeToolCall(cwd: string, tool: AgentToolCall): Promise<string> {
   try {
     switch (tool.name) {
       case 'bash': {
@@ -234,7 +244,7 @@ function formatExcerpt(value: string, maxLength = VERBOSE_RESULT_EXCERPT_LENGTH)
   return `${compact.slice(0, maxLength)}...`;
 }
 
-function formatToolInput(tool: ToolCall): string {
+function formatToolInput(tool: AgentToolCall): string {
   switch (tool.name) {
     case 'bash':
       return `command=${JSON.stringify(String(tool.input.command ?? ''))}`;
@@ -246,7 +256,7 @@ function formatToolInput(tool: ToolCall): string {
   }
 }
 
-function formatToolResult(tool: ToolCall, result: string): string {
+function formatToolResult(tool: AgentToolCall, result: string): string {
   switch (tool.name) {
     case 'read':
       return `read ${String(tool.input.path ?? '')} (${result.length} chars)`;
@@ -340,7 +350,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     apiKey,
     baseURL: process.env.ANTHROPIC_BASE_URL ?? settings.ANTHROPIC_BASE_URL ?? undefined,
   });
-  const { model, systemPrompt, instructions, maxTurns, cwd, signal, verbose = false } = options;
+  const { model, systemPrompt, instructions, maxTurns, cwd, signal, verbose = false, events } = options;
   const log = options.logger ?? (() => undefined);
 
   const messages: MessageParam[] = [
@@ -366,16 +376,21 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     }
 
     turns++;
+    events?.turnStart?.({ turn: turns });
     if (verbose) log(`    [agent] turn ${turns}: requesting model`);
-    let response: Awaited<ReturnType<typeof client.messages.create>>;
+    let response: Message;
     try {
-      response = await client.messages.create({
+      const stream = client.messages.stream({
         model,
         max_tokens: 8000,
         system: systemPrompt,
         messages,
         tools: TOOLS,
+      }, { signal });
+      stream.on('text', (textDelta) => {
+        events?.textDelta?.({ turn: turns, delta: textDelta });
       });
+      response = await stream.finalMessage();
     } catch (error) {
       finalMessage = `Claude SDK request failed: ${(error as Error).message}`;
       status = 'sdk_error';
@@ -395,6 +410,7 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     }
 
     const text = textParts.join('\n').trim();
+    events?.textEnd?.({ turn: turns, text });
     if (verbose && text) {
       log(`    [agent] text: ${formatExcerpt(text)}`);
     }
@@ -417,6 +433,11 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
       if (completionMarkerRetries < MAX_COMPLETION_MARKER_RETRIES && hasTurnsRemaining(turns, maxTurns)) {
         completionMarkerRetries++;
         if (verbose) log(`    [agent] missing ${COMPLETION_MARKER}; requesting completion confirmation (${completionMarkerRetries}/${MAX_COMPLETION_MARKER_RETRIES})`);
+        events?.completionMarkerMissing?.({
+          turn: turns,
+          attempt: completionMarkerRetries,
+          maxAttempts: MAX_COMPLETION_MARKER_RETRIES,
+        });
         messages.push({ role: 'assistant', content: response.content });
         messages.push({
           role: 'user',
@@ -436,17 +457,19 @@ export async function runAgent(options: AgentRunnerOptions): Promise<AgentRunRes
     const toolResults: MessageParam['content'] = [];
     for (const toolUse of toolUses) {
       toolCalls++;
-      const toolCall: ToolCall = {
+      const toolCall: AgentToolCall = {
         id: toolUse.id,
         name: toolUse.name,
         input: toolUse.input as Record<string, unknown>,
       };
+      events?.toolUse?.({ turn: turns, tool: toolCall });
       const result = await executeToolCall(cwd, {
         id: toolCall.id,
         name: toolCall.name,
         input: toolCall.input,
       });
       if (verbose) log(`    [tool:${toolUse.name}] ${formatToolResult(toolCall, result)}`);
+      events?.toolResult?.({ turn: turns, tool: toolCall, result });
       toolResults.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,

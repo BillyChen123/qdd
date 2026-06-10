@@ -16,6 +16,7 @@ import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
 import { createStudy } from '../services/studies.js';
 import { createTask } from '../services/tasks.js';
+import { createAutoConsoleRenderer } from '../ui/auto-stream.js';
 async function createTempProject(prefix, options = {}) {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
     await initCommand(projectRoot, { tools: options.tools ?? ['claude'] });
@@ -223,6 +224,88 @@ test('qdd auto dry-run reports supplied auto prompt', async () => {
     });
     assert.equal(logs.some((line) => line.includes('Max turns per agent: unlimited')), true);
     assert.equal(logs.some((line) => line.includes('Use /data/example.h5ad')), true);
+});
+test('qdd auto console renderer emits compact non-tty output', async () => {
+    const projectRoot = await createTempProject('qdd-auto-renderer-');
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        stdout: {
+            columns: 100,
+            isTTY: false,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    const result = await runAuto(projectRoot, {
+        model: 'dry-run-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: null,
+        dryRun: true,
+        prompt: 'Read benchmark README files before proposing work.',
+        events: renderer.events,
+        logger: () => undefined,
+    });
+    renderer.finish(result);
+    const output = chunks.join('');
+    assert.match(output, /qdd auto autonomous research loop/);
+    assert.match(output, /mode    dry-run/);
+    assert.match(output, /limits  1 phases, unlimited turns\/session/);
+    assert.match(output, /\[1\] Thesis Manager \(qdd-start\) PROJECT/);
+    assert.match(output, /dry-run system prompt qdd-start\.md/);
+    assert.match(output, /result max_iterations/);
+    assert.match(output, /log     \.qdd\/runs\/auto-/);
+    assert.doesNotMatch(output, /\x1b\[/);
+});
+test('qdd auto console renderer shows visible model notes without completion marker', async () => {
+    const projectRoot = await createTempProject('qdd-auto-model-note-');
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        stdout: {
+            columns: 100,
+            isTTY: false,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    renderer.events.runStart?.({
+        projectRoot,
+        phase: { phase: 'start', target: 'PROJECT', command: 'qdd-start' },
+        model: 'note-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: 3,
+        dryRun: false,
+        prompt: 'Inspect benchmark files.',
+    });
+    renderer.events.phaseStart?.({
+        iteration: 1,
+        phase: { phase: 'start', target: 'PROJECT', command: 'qdd-start' },
+        label: 'Thesis Manager (qdd-start)',
+        role: 'thesis-manager',
+    });
+    renderer.events.agent?.turnStart?.({ turn: 1 });
+    renderer.events.agent?.textDelta?.({ turn: 1, delta: 'I will inspect the benchmark README files first.' });
+    renderer.events.agent?.textEnd?.({
+        turn: 1,
+        text: 'I will inspect the benchmark README files first.\nWORKFLOW_COMPLETE',
+    });
+    renderer.finish({
+        iterations: 1,
+        studiesCompleted: 0,
+        finalPhase: 'start',
+        terminalCode: 'terminal_state',
+        terminalReason: 'Done.',
+        summary: 'Auto mode completed: 1 iterations, 0 studies closed. Stop reason: Done.',
+        phases: [],
+    });
+    const output = chunks.join('');
+    assert.match(output, /model I will inspect the benchmark README files first\./);
+    assert.doesNotMatch(output, /WORKFLOW_COMPLETE/);
 });
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
     const projectRoot = await createTempProject('qdd-init-');

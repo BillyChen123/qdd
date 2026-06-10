@@ -268,7 +268,7 @@ export async function runAgent(options) {
         apiKey,
         baseURL: process.env.ANTHROPIC_BASE_URL ?? settings.ANTHROPIC_BASE_URL ?? undefined,
     });
-    const { model, systemPrompt, instructions, maxTurns, cwd, signal, verbose = false } = options;
+    const { model, systemPrompt, instructions, maxTurns, cwd, signal, verbose = false, events } = options;
     const log = options.logger ?? (() => undefined);
     const messages = [
         {
@@ -290,17 +290,22 @@ export async function runAgent(options) {
             break;
         }
         turns++;
+        events?.turnStart?.({ turn: turns });
         if (verbose)
             log(`    [agent] turn ${turns}: requesting model`);
         let response;
         try {
-            response = await client.messages.create({
+            const stream = client.messages.stream({
                 model,
                 max_tokens: 8000,
                 system: systemPrompt,
                 messages,
                 tools: TOOLS,
+            }, { signal });
+            stream.on('text', (textDelta) => {
+                events?.textDelta?.({ turn: turns, delta: textDelta });
             });
+            response = await stream.finalMessage();
         }
         catch (error) {
             finalMessage = `Claude SDK request failed: ${error.message}`;
@@ -319,6 +324,7 @@ export async function runAgent(options) {
             }
         }
         const text = textParts.join('\n').trim();
+        events?.textEnd?.({ turn: turns, text });
         if (verbose && text) {
             log(`    [agent] text: ${formatExcerpt(text)}`);
         }
@@ -340,6 +346,11 @@ export async function runAgent(options) {
                 completionMarkerRetries++;
                 if (verbose)
                     log(`    [agent] missing ${COMPLETION_MARKER}; requesting completion confirmation (${completionMarkerRetries}/${MAX_COMPLETION_MARKER_RETRIES})`);
+                events?.completionMarkerMissing?.({
+                    turn: turns,
+                    attempt: completionMarkerRetries,
+                    maxAttempts: MAX_COMPLETION_MARKER_RETRIES,
+                });
                 messages.push({ role: 'assistant', content: response.content });
                 messages.push({
                     role: 'user',
@@ -361,6 +372,7 @@ export async function runAgent(options) {
                 name: toolUse.name,
                 input: toolUse.input,
             };
+            events?.toolUse?.({ turn: turns, tool: toolCall });
             const result = await executeToolCall(cwd, {
                 id: toolCall.id,
                 name: toolCall.name,
@@ -368,6 +380,7 @@ export async function runAgent(options) {
             });
             if (verbose)
                 log(`    [tool:${toolUse.name}] ${formatToolResult(toolCall, result)}`);
+            events?.toolResult?.({ turn: turns, tool: toolCall, result });
             toolResults.push({
                 type: 'tool_result',
                 tool_use_id: toolUse.id,

@@ -281,7 +281,7 @@ function inspectPhaseCompletion(current, status, taskRecords) {
             return { ok: true };
     }
 }
-async function ensureProposeTargetExists(projectRoot, current, log) {
+async function ensureProposeTargetExists(projectRoot, current, log, events) {
     if (current.phase !== 'propose' || !current.target.startsWith('STUDY-')) {
         return current;
     }
@@ -296,9 +296,11 @@ async function ensureProposeTargetExists(projectRoot, current, log) {
         });
         if (created.studyId !== current.target) {
             log(`  Study scaffold created as ${created.studyId} (requested: ${current.target})`);
+            events?.studyScaffold?.({ requested: current.target, created: created.studyId });
             return { ...current, target: created.studyId };
         }
         log(`  Created study scaffold: ${current.target}`);
+        events?.studyScaffold?.({ requested: current.target, created: current.target });
         return current;
     }
 }
@@ -336,10 +338,22 @@ export async function runAuto(projectRoot, options) {
     let status = await buildStatus(projectRoot);
     let taskRecords = await discoverTasks(projectRoot);
     let current = computeInitialPhase(status, taskRecords);
+    options.events?.runStart?.({
+        projectRoot,
+        phase: current,
+        model: options.model,
+        maxIterations: options.maxIterations,
+        maxTurnsPerAgent: options.maxTurnsPerAgent,
+        dryRun: options.dryRun,
+        prompt: options.prompt,
+    });
+    if (options.verbose)
+        options.events?.initialState?.({ summary: summarizeStatus(status) });
     if (!current) {
         const term = checkTermination(status);
         terminalCode = 'terminal_state';
         terminalReason = term.reason || 'Project is already in a terminal auto-mode state.';
+        options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
         return {
             iterations,
             studiesCompleted,
@@ -354,6 +368,7 @@ export async function runAuto(projectRoot, options) {
         terminalCode = 'missing_auth';
         terminalReason = 'Claude SDK authentication is missing. Set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY, or configure ~/.claude/settings.json.';
         log(`Cannot start auto mode: ${terminalReason}`);
+        options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
         return {
             iterations,
             studiesCompleted,
@@ -375,6 +390,13 @@ export async function runAuto(projectRoot, options) {
     while (iterations < options.maxIterations) {
         iterations++;
         log(`--- Iteration ${iterations}: ${phaseLabel(current.phase)} ---`);
+        const phaseStartEvent = {
+            iteration: iterations,
+            phase: current,
+            label: phaseLabel(current.phase),
+            role: phaseRole(current.phase),
+        };
+        options.events?.phaseStart?.(phaseStartEvent);
         if (options.dryRun) {
             const bootstrapFile = commandToBootstrapFile(current.command);
             log('[DRY RUN] Would run agent with:');
@@ -383,6 +405,7 @@ export async function runAuto(projectRoot, options) {
             log(`  Command: ${current.command}`);
             log(`  System prompt: ${bootstrapFile}.md`);
             log('');
+            options.events?.dryRunPhase?.({ ...phaseStartEvent, systemPrompt: `${bootstrapFile}.md` });
             phases.push({
                 ...current,
                 role: phaseRole(current.phase),
@@ -394,7 +417,7 @@ export async function runAuto(projectRoot, options) {
             current = nextDryRunPhase(current, status);
             continue;
         }
-        current = await ensureProposeTargetExists(projectRoot, current, log);
+        current = await ensureProposeTargetExists(projectRoot, current, log, options.events);
         const instructions = await buildInstructions(projectRoot, current.target, {
             command: current.command,
         });
@@ -404,6 +427,12 @@ export async function runAuto(projectRoot, options) {
         if (options.verbose) {
             log(`  Instructions: role=${instructions.role}, read=${instructions.read.length}, write=${instructions.write.length}, required_skills=${instructions.required_skills.length}`);
         }
+        options.events?.instructions?.({
+            role: instructions.role,
+            readCount: instructions.read.length,
+            writeCount: instructions.write.length,
+            requiredSkillCount: instructions.required_skills.length,
+        });
         const result = await runAgent({
             model: options.model,
             systemPrompt,
@@ -412,6 +441,7 @@ export async function runAuto(projectRoot, options) {
             cwd: projectRoot,
             logger: log,
             verbose: options.verbose ?? false,
+            events: options.events?.agent,
         });
         phases.push({
             ...current,
@@ -427,9 +457,11 @@ export async function runAuto(projectRoot, options) {
             log(`  Final message: ${formatLogExcerpt(result.finalMessage)}`);
         }
         log('');
+        options.events?.phaseResult?.({ phase: current, result });
         if (!result.terminatedNormally) {
             terminalCode = 'agent_failed';
             terminalReason = result.failureReason ?? result.finalMessage;
+            options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
             break;
         }
         status = await buildStatus(projectRoot);
@@ -437,6 +469,8 @@ export async function runAuto(projectRoot, options) {
         if (options.verbose) {
             log(`  State after phase: ${summarizeStatus(status)}`);
         }
+        if (options.verbose)
+            options.events?.stateAfterPhase?.({ summary: summarizeStatus(status) });
         const completion = inspectPhaseCompletion(current, status, taskRecords);
         if (!completion.ok) {
             terminalCode = 'phase_incomplete';
@@ -445,6 +479,8 @@ export async function runAuto(projectRoot, options) {
             for (const detail of completion.details ?? []) {
                 log(`  Detail: ${detail}`);
             }
+            options.events?.phaseIncomplete?.({ reason: terminalReason, details: completion.details ?? [] });
+            options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
             break;
         }
         if (current.phase === 'close')
@@ -455,12 +491,14 @@ export async function runAuto(projectRoot, options) {
             terminalCode = 'terminal_state';
             terminalReason = term.reason || 'No next phase is available.';
             log(`Termination: ${terminalReason}`);
+            options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
             break;
         }
         current = next;
     }
     if (iterations >= options.maxIterations && terminalCode === 'max_iterations') {
         log(terminalReason);
+        options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
     }
     return {
         iterations,

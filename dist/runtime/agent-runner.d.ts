@@ -7,6 +7,7 @@ export interface AgentRunnerOptions {
     signal?: AbortSignal;
     logger?: (message: string) => void;
     verbose?: boolean;
+    events?: AgentRunEvents;
 }
 export type AgentRunStatus = 'completed' | 'max_turns' | 'aborted' | 'missing_auth' | 'sdk_error';
 export interface AgentRunResult {
@@ -16,6 +17,38 @@ export interface AgentRunResult {
     toolCalls: number;
     status: AgentRunStatus;
     failureReason?: string;
+}
+export interface AgentToolCall {
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+}
+export interface AgentRunEvents {
+    turnStart?: (event: {
+        turn: number;
+    }) => void;
+    textDelta?: (event: {
+        turn: number;
+        delta: string;
+    }) => void;
+    textEnd?: (event: {
+        turn: number;
+        text: string;
+    }) => void;
+    toolUse?: (event: {
+        turn: number;
+        tool: AgentToolCall;
+    }) => void;
+    toolResult?: (event: {
+        turn: number;
+        tool: AgentToolCall;
+        result: string;
+    }) => void;
+    completionMarkerMissing?: (event: {
+        turn: number;
+        attempt: number;
+        maxAttempts: number;
+    }) => void;
 }
 export declare function executeProjectBashForTest(cwd: string, command: string, timeoutMs?: number): Promise<string>;
 interface ClaudeSettings {

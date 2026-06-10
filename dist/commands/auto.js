@@ -1,5 +1,6 @@
 import { runAuto } from '../runtime/orchestrator.js';
 import { resolveClaudeModel } from '../runtime/agent-runner.js';
+import { createAutoConsoleRenderer } from '../ui/auto-stream.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_TURNS_PER_AGENT = 50;
@@ -51,16 +52,12 @@ export async function autoCommand(projectRoot, promptArg, options) {
         console.log(JSON.stringify(result, null, 2));
         return;
     }
-    console.log('QDD Auto Research Loop');
-    console.log('=====================');
-    console.log(`Project: ${projectRootPath}`);
-    console.log('');
-    const result = await runAuto(projectRootPath, autoOptions);
-    console.log('');
-    console.log('=====================');
-    console.log(`Completed: ${result.iterations} iterations, ${result.studiesCompleted} studies.`);
-    console.log(`Final phase: ${result.finalPhase}`);
-    console.log(`Stop reason: ${result.terminalReason}`);
-    console.log(result.summary);
+    const renderer = createAutoConsoleRenderer({ verbose: autoOptions.verbose });
+    const result = await runAuto(projectRootPath, {
+        ...autoOptions,
+        events: renderer.events,
+        logger: () => undefined,
+    });
+    renderer.finish(result);
 }
 //# sourceMappingURL=auto.js.map
