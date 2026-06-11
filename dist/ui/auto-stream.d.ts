@@ -91,6 +91,7 @@ export interface AutoConsoleRendererOptions {
     color?: boolean;
     intro?: boolean;
     locale?: AutoConsoleLocale;
+    stickyFooter?: boolean;
     verbose?: boolean;
 }
 type PhaseAlias = 'Thesis Manager' | 'Study Brain' | 'Executor';
@@ -141,6 +142,7 @@ export declare class AutoConsoleRenderer {
     private readonly useColor;
     private readonly useIntro;
     private readonly useSpinner;
+    private readonly useStickyFooter;
     private readonly verbose;
     private headerPrinted;
     private phaseCount;
@@ -149,6 +151,7 @@ export declare class AutoConsoleRenderer {
     private assistantWrote;
     private spinnerTimer;
     private spinnerFrameIndex;
+    private spinnerRenderedRows;
     private spinnerText;
     private currentCompactAction;
     private modelPreviewBuffer;
@@ -164,6 +167,10 @@ export declare class AutoConsoleRenderer {
     private globalStatus;
     private runModel;
     private runMode;
+    private rootPrompt;
+    private activePhaseLabel;
+    private activePhaseCommand;
+    private activePhaseTarget;
     private phaseDisplays;
     private activePhaseIndex;
     private footerActive;
@@ -239,7 +246,10 @@ export declare class AutoConsoleRenderer {
     private updateSpinner;
     private stopSpinner;
     private renderSpinner;
-    private formatSpinnerFrame;
+    private clearSpinnerBlock;
+    private formatSpinnerBlock;
+    private formatLiveContextLine;
+    private formatSpinnerLine;
     private termWidth;
     private termRows;
     private truncate;

@@ -9,6 +9,8 @@ const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MARKER_TAIL_LENGTH = COMPLETION_MARKER.length + 16;
 const SYNC_START = '\x1b[?2026h';
 const SYNC_END = '\x1b[?2026l';
+const AUTOWRAP_OFF = '\x1b[?7l';
+const AUTOWRAP_ON = '\x1b[?7h';
 const INTRO_FRAME_DELAY_MS = 140;
 const FOOTER_ROWS = 2;
 const RESULT_INLINE_LINE_LIMIT = 2;
@@ -118,6 +120,7 @@ export interface AutoConsoleRendererOptions {
   color?: boolean;
   intro?: boolean;
   locale?: AutoConsoleLocale;
+  stickyFooter?: boolean;
   verbose?: boolean;
 }
 
@@ -295,15 +298,16 @@ export function renderAutoConsoleBody(screen: AutoConsoleScreen, options: AutoCo
 
 export function renderAutoConsoleFooter(screen: AutoConsoleScreen, options: AutoConsoleFrameOptions = {}): string[] {
   const width = Math.max(60, screen.width);
+  const writableWidth = Math.max(1, width - 1);
   const color = options.color ?? false;
   const proposeLabel = paintValue('reverse', ' PROPOSE ', color);
   const statusLabel = paintValue('reverse', ` ${screen.actionStatus.padEnd(9)} `, color);
   const status = paintValue(statusTone(screen.actionStatus), screen.actionStatus === 'THINKING' ? '⠹' : '▶', color);
-  const propose = truncateCells(`${proposeLabel} ${screen.propose || 'Awaiting current research question...'}`, width);
-  const action = truncateCells(`${statusLabel} ${status} ${screen.action || 'Waiting for next event'} [${timerLabel(screen.timerSeconds)}]`, width);
+  const propose = truncateCells(`${proposeLabel} ${screen.propose || 'Awaiting current research question...'}`, writableWidth);
+  const action = truncateCells(`${statusLabel} ${status} ${screen.action || 'Waiting for next event'} [${timerLabel(screen.timerSeconds)}]`, writableWidth);
   return [
-    padRightCells(propose, width),
-    padRightCells(action, width),
+    padRightCells(propose, writableWidth),
+    padRightCells(action, writableWidth),
   ];
 }
 
@@ -367,6 +371,7 @@ export class AutoConsoleRenderer {
   private readonly useColor: boolean;
   private readonly useIntro: boolean;
   private readonly useSpinner: boolean;
+  private readonly useStickyFooter: boolean;
   private readonly verbose: boolean;
   private headerPrinted = false;
   private phaseCount = 0;
@@ -375,6 +380,7 @@ export class AutoConsoleRenderer {
   private assistantWrote = false;
   private spinnerTimer: ReturnType<typeof setInterval> | null = null;
   private spinnerFrameIndex = 0;
+  private spinnerRenderedRows = 0;
   private spinnerText = '';
   private currentCompactAction = '';
   private modelPreviewBuffer = '';
@@ -390,6 +396,10 @@ export class AutoConsoleRenderer {
   private globalStatus: FooterStatus = 'WAITING';
   private runModel = '';
   private runMode = 'live';
+  private rootPrompt = '';
+  private activePhaseLabel = '';
+  private activePhaseCommand = '';
+  private activePhaseTarget = '';
   private phaseDisplays: PhaseDisplay[] = [];
   private activePhaseIndex = -1;
   private footerActive = false;
@@ -408,6 +418,7 @@ export class AutoConsoleRenderer {
     this.useColor = options.color ?? Boolean(this.stdout.isTTY && !process.env.NO_COLOR);
     this.useSpinner = Boolean(this.stdout.isTTY);
     this.useIntro = options.intro ?? Boolean(this.useSpinner && !process.env.CI && process.env.QDD_AUTO_NO_INTRO !== '1');
+    this.useStickyFooter = options.stickyFooter ?? process.env.QDD_AUTO_STICKY_FOOTER === '1';
     this.verbose = options.verbose ?? false;
     this.events = {
       runStart: (event) => this.runStart(event),
@@ -553,6 +564,7 @@ export class AutoConsoleRenderer {
     this.projectRoot = event.projectRoot;
     this.runModel = event.model;
     this.runMode = event.dryRun ? this.t('dryRun') : this.t('live');
+    this.rootPrompt = event.prompt?.trim() ?? '';
     this.currentProposal = event.prompt?.trim() || (event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
     this.currentAction = event.phase ? `${event.phase.command} ${event.phase.target}` : this.t('terminalState');
     this.actionStatus = 'WAITING';
@@ -563,15 +575,18 @@ export class AutoConsoleRenderer {
     if (event.prompt?.trim()) this.logBlock('prompt', event.prompt);
     this.headerPrinted = true;
     this.playIntroAnimation(event);
-    this.renderModernHeader();
-    this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
-    this.field(this.t('project'), event.projectRoot);
-    this.field(this.t('model'), event.model);
-    this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
-    this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
-    this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
-    if (this.logPath) this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
-    if (event.prompt?.trim()) this.field(this.t('prompt'), compact(event.prompt, 100));
+    if (this.stdout.isTTY) {
+      this.renderModernHeader();
+    } else {
+      this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
+      this.field(this.t('project'), event.projectRoot);
+      this.field(this.t('model'), event.model);
+      this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
+      this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
+      this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
+      if (this.logPath) this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
+      if (event.prompt?.trim()) this.field(this.t('prompt'), compact(event.prompt, 100));
+    }
     this.renderStickyFooter();
   }
 
@@ -584,6 +599,9 @@ export class AutoConsoleRenderer {
     this.phaseFailures = 0;
     this.phaseWrites = 0;
     const alias = phaseAliasForRole(event.role);
+    this.activePhaseLabel = event.label;
+    this.activePhaseCommand = event.phase.command;
+    this.activePhaseTarget = event.phase.target;
     this.phaseDisplays.push({
       alias: alias.alias,
       tone: alias.tone,
@@ -686,10 +704,12 @@ export class AutoConsoleRenderer {
     this.footerActive = true;
     this.writeRaw([
       SYNC_START,
+      AUTOWRAP_OFF,
       '\x1b7',
       `\x1b[${firstFooterRow};1H\x1b[2K${footer[0]}`,
       `\x1b[${firstFooterRow + 1};1H\x1b[2K${footer[1]}`,
       '\x1b8',
+      AUTOWRAP_ON,
       SYNC_END,
     ].join(''));
   }
@@ -703,17 +723,19 @@ export class AutoConsoleRenderer {
     const firstFooterRow = rows - FOOTER_ROWS + 1;
     this.writeRaw([
       SYNC_START,
+      AUTOWRAP_OFF,
       '\x1b7',
       `\x1b[${firstFooterRow};1H\x1b[2K`,
       `\x1b[${firstFooterRow + 1};1H\x1b[2K`,
       '\x1b8',
+      AUTOWRAP_ON,
       SYNC_END,
     ].join(''));
     this.footerActive = false;
   }
 
   private canUseStickyFooter(): boolean {
-    return Boolean(this.stdout.isTTY && this.termRows() >= 8);
+    return Boolean(this.useStickyFooter && this.stdout.isTTY && this.termRows() >= 8);
   }
 
   private setupKeyboardShortcuts(): void {
@@ -863,7 +885,10 @@ export class AutoConsoleRenderer {
       this.writeRaw(value);
       return;
     }
-    this.writeRaw(`${SYNC_START}\r\x1b[K${value}${this.formatSpinnerFrame()}${SYNC_END}`);
+    const clearBlock = this.clearSpinnerBlock();
+    this.spinnerRenderedRows = 0;
+    const separator = value.endsWith('\n') || value.endsWith('\r') ? '' : '\n';
+    this.writeRaw(`${SYNC_START}${clearBlock}${value}${separator}${this.formatSpinnerBlock(false)}${SYNC_END}`);
   }
 
   private writeAssistantDelta(delta: string): void {
@@ -1188,7 +1213,9 @@ export class AutoConsoleRenderer {
     if (this.spinnerTimer !== null) {
       clearInterval(this.spinnerTimer);
       this.spinnerTimer = null;
-      this.writeRaw(`${SYNC_START}\r\x1b[K${finalLine ? `${finalLine}\n` : ''}${SYNC_END}`);
+      const clearBlock = this.clearSpinnerBlock();
+      this.spinnerRenderedRows = 0;
+      this.writeRaw(`${SYNC_START}${clearBlock}${finalLine ? `${finalLine}\n` : ''}${SYNC_END}`);
       return;
     }
     if (finalLine) this.line(finalLine);
@@ -1196,15 +1223,43 @@ export class AutoConsoleRenderer {
 
   private renderSpinner(): void {
     if (this.spinnerTimer === null) return;
-    this.writeRaw(`${SYNC_START}${this.formatSpinnerFrame()}${SYNC_END}`);
+    this.writeRaw(`${SYNC_START}${this.formatSpinnerBlock()}${SYNC_END}`);
     this.renderStickyFooter();
   }
 
-  private formatSpinnerFrame(): string {
+  private clearSpinnerBlock(): string {
+    const rows = Math.max(1, this.spinnerRenderedRows);
+    let output = '\r\x1b[2K';
+    for (let index = 1; index < rows; index++) {
+      output += '\x1b[1A\r\x1b[2K';
+    }
+    return output;
+  }
+
+  private formatSpinnerBlock(clearExisting = true): string {
+    const context = this.formatLiveContextLine();
+    const spinner = this.formatSpinnerLine();
+    const clearBlock = clearExisting ? this.clearSpinnerBlock() : '\r';
+    this.spinnerRenderedRows = 2;
+    return `${clearBlock}${context}\n\r${spinner}`;
+  }
+
+  private formatLiveContextLine(): string {
+    const phaseContext = this.activePhaseLabel && this.activePhaseTarget
+      ? `${this.activePhaseLabel} -> ${this.activePhaseTarget}`
+      : this.currentProposal || 'QDD auto';
+    const proposeQuestion = this.rootPrompt || '';
+    const context = this.activePhaseCommand === 'qdd-propose' && proposeQuestion
+      ? `PROPOSE：${proposeQuestion}`
+      : phaseContext;
+    return `  ${this.dim('↳')} ${this.truncate(context, Math.max(20, this.termWidth() - 6))}\x1b[K`;
+  }
+
+  private formatSpinnerLine(): string {
     const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'];
     const frame = frames[this.spinnerFrameIndex % frames.length];
     this.spinnerFrameIndex++;
-    return `\r${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
+    return `${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
   }
 
   private termWidth(): number {
