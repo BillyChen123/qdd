@@ -35,6 +35,13 @@ Examples:
 - closing the study or deciding the final study event recorded at close time
 - building a large task tree up front
 
+## Planning Stance
+
+- Treat `brain/*` skills as advisory heuristics, not as mandatory pipelines.
+- Preserve benchmark or task semantics as the higher-priority contract when they conflict with a generic domain workflow.
+- Follow analyst-style reasoning explicitly: for each standard stage that seems relevant, decide whether it belongs in the main path, sensitivity-only, or should be skipped, and record one sentence of justification when that choice matters for later execution.
+- For multi-sample or multi-donor studies, do not silently skip or force integration / batch correction. Make an explicit planning judgment about it.
+
 ---
 
 ## Preflight
@@ -120,6 +127,10 @@ Only fall back to a single initial task when the study is genuinely atomic and s
 
 The initial tasks should together cover the small complete first pass needed to judge, refine, or block the study honestly.
 
+When a standard stage could materially affect the study answer, do not leave its status implicit.
+Examples include integration / batch correction in multi-sample data, annotation validity before downstream comparison, or whether a processed matrix can be reused as-is.
+If the stage is not part of the main answer path, say whether it is `sensitivity-only` or `skip`, and why.
+
 Examples:
 
 - if the study question is about feasibility, one task may be a data or environment reality check while another task verifies annotation or cohort fit
@@ -135,6 +146,9 @@ When a task needs concrete executor skills:
 - then use `qdd skills suggest` with controlled `domain + stage + tag` filters
 - write one small bundle of problem-level skills into the task only after the choice is clear
 - record the chosen skills directly in task frontmatter and in the task body `## Skills` section
+
+If a standard stage is deliberately not placed on the main path, do not pretend it disappeared.
+State whether that stage is being skipped because it is outside the answer contract or because the current evidence says it is unnecessary, and add a bounded sensitivity task when that omitted stage could plausibly change the final answer.
 
 This is part of propose, not something to leave for apply to invent later.
 
@@ -258,6 +272,7 @@ Across the initial task set:
 - do not collapse the whole study into one omnibus task
 - do not stop at one task if the study obviously needs several distinct evidence-producing moves
 - do not pre-plan a deep task tree just because more work is imaginable
+- if a benchmark asks for a quantity that could be changed by a standard omitted stage, prefer making that omitted stage an explicit sensitivity task rather than leaving the judgment unstated
 
 ---
 

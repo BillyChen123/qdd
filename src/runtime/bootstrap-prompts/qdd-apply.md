@@ -37,6 +37,12 @@ If omitted:
 - closure judgment before the evidence exists
 - replacing `qdd-explore` in `human` or `assist` mode when the task plan itself is under question
 
+## Execution Stance
+
+- Treat `brain/*` guidance and local domain skills as execution guidance, not as rigid pipelines that override the benchmark or task contract.
+- If a standard stage such as integration / batch correction is absent from the approved task graph, do not silently invent it as a new main path inside apply.
+- If that omitted stage could materially change the benchmark or study answer, either consume the already planned sensitivity path or report the gap explicitly instead of pretending the omission does not matter.
+
 ---
 
 ## Preflight
@@ -78,6 +84,9 @@ It may only consume the already selected dataset targets recorded in `studies/ST
 
 If a task already declares executor skills, do not skip them and jump straight to unconstrained ad hoc coding.
 
+When the study is multi-sample or multi-donor, explicitly notice whether integration / batch correction was planned as main-path, sensitivity-only, or skip.
+If that judgment is not legible from the current study/task set and could change the answer, pause and route the issue back to `qdd-explore` rather than silently assuming one side.
+
 ---
 
 ## Normalize The Active Task Before Running
@@ -90,6 +99,7 @@ Before or during execution:
 - make sure the expected outputs are concrete
 - make sure inputs and dependencies are still accurate
 - make sure you have actually read the task's declared local skills before choosing methods or writing code
+- make sure any omitted standard stage that could change the answer is either explicitly out of scope for this task or already covered by a planned sensitivity task
 
 If the task file is too vague to execute responsibly, say so.
 
@@ -105,6 +115,8 @@ Only fall back to general code generation when:
 - or the installed skill is clearly insufficient for the exact task and you explain that gap explicitly
 
 Even in fallback mode, keep the task aligned with the declared problem class and study boundary.
+
+Do not use fallback coding as an excuse to smuggle in an unplanned correction or to drop a planned sensitivity branch.
 
 If the task checklist includes plain if-then reaction bullets, execute them as local task guidance:
 

@@ -178,7 +178,7 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
 
     census = cellxgene_census.open_soma()
     try:
-        datasets_df = cellxgene_census.get_census_info(census)["datasets"].read().concat().to_pandas()
+        datasets_df = census["census_info"]["datasets"].read().concat().to_pandas()
         organism = normalize_text(constraints.get("organism")) or "Homo sapiens"
         value_filters: list[str] = []
         for field_name in ["tissue", "disease", "cell_type"]:
@@ -194,7 +194,7 @@ def search_action(args: argparse.Namespace, request_path: Path, output_dir: Path
             organism=organism,
             value_filter=" and ".join(value_filters) if value_filters else None,
             column_names=["dataset_id", "tissue", "disease", "cell_type", "is_primary_data"],
-        ).to_pandas()
+        )
     finally:
         census.close()
 

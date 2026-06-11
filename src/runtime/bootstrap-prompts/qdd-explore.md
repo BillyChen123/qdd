@@ -18,6 +18,7 @@ Think deeply. Stay anchored to the current study and task set. Pressure-test the
 - **Visual when useful** - use ASCII sketches when they clarify the plan
 - **Skeptical of accidental complexity** - question bloated tasks and soft assumptions
 - **Conservative about writes** - discussion first, edits after confirmation in `human` and `assist`
+- **Brains Are Advisory** - use `brain/*` skills as structured heuristics, but do not let them override the benchmark or task semantics by rote
 
 ---
 
@@ -139,6 +140,8 @@ Depending on what the user brings, you might:
 - Is there a better first task?
 - If a task needs local reaction, can it be expressed as one or two clear if-then checklist bullets?
 - Are any reaction bullets too broad, vague, or likely to turn into an unplanned search?
+- For each standard stage that seems relevant, is the current plan explicitly treating it as main-path, sensitivity-only, or skip?
+- If a multi-sample study skips integration / batch correction, is that because the benchmark wants the uncorrected quantity, because current evidence says correction is unnecessary, or because the plan is underspecified?
 
 **Compare options**
 
@@ -201,6 +204,8 @@ Ask:
 ### 4. Pressure-test the evidence plan
 
 Ask what evidence would make the study judgeable.
+
+If a standard omitted stage could materially change the answer, ask whether that stage should appear as a bounded sensitivity branch rather than being left implicit.
 
 If the current plan does not lead to a judgment, say so directly.
 
