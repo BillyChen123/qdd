@@ -95,7 +95,7 @@ export interface AutoConsoleRendererOptions {
     verbose?: boolean;
 }
 type PhaseAlias = 'Thesis Manager' | 'Study Brain' | 'Executor';
-type PhaseTone = 'coral' | 'violet' | 'mint';
+type PhaseTone = 'cyan' | 'violet' | 'mint';
 type RowState = 'complete' | 'active' | 'pending' | 'failed';
 type FooterStatus = 'THINKING' | 'EXECUTING' | 'WAITING' | 'COMPLETE' | 'FAILED';
 interface PhaseDisplay {
@@ -167,10 +167,10 @@ export declare class AutoConsoleRenderer {
     private globalStatus;
     private runModel;
     private runMode;
-    private rootPrompt;
     private activePhaseLabel;
     private activePhaseCommand;
     private activePhaseTarget;
+    private activeStudyQuestion;
     private phaseDisplays;
     private activePhaseIndex;
     private footerActive;
@@ -219,6 +219,8 @@ export declare class AutoConsoleRenderer {
     private toolStart;
     private describeToolResult;
     private summarizeToolResult;
+    private captureStudyQuestion;
+    private isActiveStudyFile;
     private describeCompactAction;
     private compactAction;
     private compactGap;

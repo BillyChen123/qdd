@@ -370,7 +370,7 @@ test('qdd auto console renderer emits compact non-tty output', async () => {
   assert.match(output, /qdd auto autonomous research loop/);
   assert.match(output, /mode    dry-run/);
   assert.match(output, /limits  1 phases, unlimited turns\/session/);
-  assert.match(output, /🔴 \[Phase: Thesis Manager\] PROJECT/);
+  assert.match(output, /🔵 \[Phase: Thesis Manager\] PROJECT/);
   assert.match(output, /├─ ▶ Thesis Manager \(qdd-start\)/);
   assert.match(output, /⌙ phase start  command qdd-start  role thesis-manager/);
   assert.match(output, /dry-run system prompt qdd-start\.md/);
@@ -397,7 +397,7 @@ test('qdd auto console frame renders modern header phases and footer', () => {
     phases: [
       {
         alias: 'Thesis Manager',
-        tone: 'coral',
+        tone: 'cyan',
         role: 'thesis-manager',
         target: 'PROJECT',
         command: 'qdd-start',
@@ -433,7 +433,7 @@ test('qdd auto console frame renders modern header phases and footer', () => {
 
   assert.match(output, /QDD AUTO modern multi-agent research loop/);
   assert.match(output, /v0\.1\.0  up 00:12  THINKING/);
-  assert.match(output, /🔴 \[Phase: Thesis Manager\]/);
+  assert.match(output, /🔵 \[Phase: Thesis Manager\]/);
   assert.match(output, /🟣 \[Phase: Study Brain\]/);
   assert.match(output, /🟢 \[Phase: Executor\]/);
   assert.match(output, /├─ ✔ 已解析当前 Prompt 的上下文结构/);
@@ -585,7 +585,7 @@ test('qdd auto console renderer shows active phase context above spinner', () =>
   assert.doesNotMatch(output, /\x1b\[23;1H\x1b\[2K/);
 });
 
-test('qdd auto console renderer shows propose question above spinner during qdd-propose', () => {
+test('qdd auto console renderer shows study question above spinner during qdd-propose', () => {
   const chunks: string[] = [];
   const renderer = createAutoConsoleRenderer({
     color: false,
@@ -617,6 +617,27 @@ test('qdd auto console renderer shows propose question above spinner during qdd-
     role: 'study-brain',
   });
   renderer.events.agent?.turnStart?.({ turn: 1 });
+  renderer.events.agent?.toolUse?.({
+    turn: 1,
+    tool: { id: 'tool-1', name: 'read', input: { path: 'studies/STUDY-001/study.md' } },
+  });
+  renderer.events.agent?.toolResult?.({
+    turn: 1,
+    tool: { id: 'tool-1', name: 'read', input: { path: 'studies/STUDY-001/study.md' } },
+    result: [
+      '---',
+      'study_id: STUDY-001',
+      'question: Does the recovered CD8 TIL state graph support a bounded exhaustion progression study?',
+      'hypothesis: To be refined.',
+      'status: created',
+      '---',
+      '',
+      '## Question',
+      '',
+      'Does the recovered CD8 TIL state graph support a bounded exhaustion progression study?',
+    ].join('\n'),
+  });
+  renderer.events.agent?.turnStart?.({ turn: 2 });
   renderer.finish({
     iterations: 1,
     studiesCompleted: 0,
@@ -628,7 +649,9 @@ test('qdd auto console renderer shows propose question above spinner during qdd-
   });
 
   const output = chunks.join('');
-  assert.match(output, /↳ PROPOSE：评估当前研究方法是否包含潜在的循环论证风险？/);
+  assert.match(output, /↳ Study Brain \(qdd-propose\) -> STUDY-001/);
+  assert.match(output, /↳ PROPOSE：Does the recovered CD8 TIL state graph support a bounded exhaustion progression study\?/);
+  assert.doesNotMatch(output, /↳ PROPOSE：评估当前研究方法是否包含潜在的循环论证风险？/);
   assert.doesNotMatch(output, / PROPOSE  评估当前研究方法是否包含潜在的循环论证风险？/);
   assert.doesNotMatch(output, /\x1b\[23;1H\x1b\[2K/);
 });
@@ -820,7 +843,7 @@ test('qdd auto console renderer supports Chinese labels', async () => {
   const output = chunks.join('');
   assert.match(output, /qdd auto 自主研究循环/);
   assert.match(output, /项目\s+\//);
-  assert.match(output, /🔴 \[Phase: Thesis Manager\]/);
+  assert.match(output, /🔵 \[Phase: Thesis Manager\]/);
   assert.match(output, /⌙ 阶段 start  命令 qdd-start  角色 thesis-manager/);
   assert.match(output, /• 结果 max_iterations/);
 });

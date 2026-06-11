@@ -141,7 +141,7 @@ const ansi = {
 };
 
 type PhaseAlias = 'Thesis Manager' | 'Study Brain' | 'Executor';
-type PhaseTone = 'coral' | 'violet' | 'mint';
+type PhaseTone = 'cyan' | 'violet' | 'mint';
 type RowState = 'complete' | 'active' | 'pending' | 'failed';
 type FooterStatus = 'THINKING' | 'EXECUTING' | 'WAITING' | 'COMPLETE' | 'FAILED';
 
@@ -185,13 +185,13 @@ export interface AutoConsoleFrameOptions {
 function phaseAliasForRole(role: string): { alias: PhaseAlias; tone: PhaseTone } {
   if (role === 'study-brain') return { alias: 'Study Brain', tone: 'violet' };
   if (role === 'executor') return { alias: 'Executor', tone: 'mint' };
-  return { alias: 'Thesis Manager', tone: 'coral' };
+  return { alias: 'Thesis Manager', tone: 'cyan' };
 }
 
 function phaseIcon(alias: PhaseAlias): string {
   if (alias === 'Study Brain') return '🟣';
   if (alias === 'Executor') return '🟢';
-  return '🔴';
+  return '🔵';
 }
 
 function rowPrefix(state: RowState): string {
@@ -335,6 +335,26 @@ function normalizedLines(value: string): string[] {
     .filter((line) => line.trim().length > 0);
 }
 
+function extractStudyQuestion(value: string): string {
+  const frontmatter = value.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (frontmatter) {
+    const questionLine = frontmatter[1]
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('question:'));
+    if (questionLine) {
+      const raw = questionLine.replace(/^question:\s*/, '').trim();
+      const quoted = raw.match(/^(['"])([\s\S]*)\1$/);
+      return compact(quoted ? quoted[2] : raw, 220);
+    }
+  }
+
+  const section = value.match(/(?:^|\n)## Question\s*\n+([\s\S]*?)(?=\n## |$)/);
+  if (!section) return '';
+  const question = normalizedLines(section[1]).join(' ');
+  return compact(question, 220);
+}
+
 function stripCompletionMarker(value: string): string {
   return value.replace(new RegExp(`(?:\\r?\\n)?\\s*${COMPLETION_MARKER}\\s*$`, 'i'), '');
 }
@@ -396,10 +416,10 @@ export class AutoConsoleRenderer {
   private globalStatus: FooterStatus = 'WAITING';
   private runModel = '';
   private runMode = 'live';
-  private rootPrompt = '';
   private activePhaseLabel = '';
   private activePhaseCommand = '';
   private activePhaseTarget = '';
+  private activeStudyQuestion = '';
   private phaseDisplays: PhaseDisplay[] = [];
   private activePhaseIndex = -1;
   private footerActive = false;
@@ -512,6 +532,7 @@ export class AutoConsoleRenderer {
           if (event.tool.name === 'write' && !failed) this.phaseWrites++;
           if (failed) this.phaseFailures++;
           this.logBlock(`tool result: ${event.tool.name} ${failed ? 'failed' : 'ok'}`, event.result);
+          if (!failed) this.captureStudyQuestion(event.tool, event.result);
           const summary = this.summarizeToolResult(event.tool, event.result, failed);
           const status = failed ? this.red('failed') : this.green('ok');
           this.actionStatus = failed ? 'FAILED' : 'WAITING';
@@ -564,7 +585,6 @@ export class AutoConsoleRenderer {
     this.projectRoot = event.projectRoot;
     this.runModel = event.model;
     this.runMode = event.dryRun ? this.t('dryRun') : this.t('live');
-    this.rootPrompt = event.prompt?.trim() ?? '';
     this.currentProposal = event.prompt?.trim() || (event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
     this.currentAction = event.phase ? `${event.phase.command} ${event.phase.target}` : this.t('terminalState');
     this.actionStatus = 'WAITING';
@@ -602,6 +622,7 @@ export class AutoConsoleRenderer {
     this.activePhaseLabel = event.label;
     this.activePhaseCommand = event.phase.command;
     this.activePhaseTarget = event.phase.target;
+    this.activeStudyQuestion = '';
     this.phaseDisplays.push({
       alias: alias.alias,
       tone: alias.tone,
@@ -1052,6 +1073,21 @@ export class AutoConsoleRenderer {
     };
   }
 
+  private captureStudyQuestion(tool: AgentToolCall, result: string): void {
+    if (!this.isActiveStudyFile(tool)) return;
+    const source = tool.name === 'write' ? String(tool.input.content ?? '') : result;
+    const question = extractStudyQuestion(source);
+    if (question) this.activeStudyQuestion = question;
+  }
+
+  private isActiveStudyFile(tool: AgentToolCall): boolean {
+    if (!['read', 'write'].includes(tool.name) || !this.activePhaseTarget) return false;
+    const rawPath = String(tool.input.path ?? '');
+    const normalized = rawPath.replace(/\\/g, '/');
+    const studyPath = `studies/${this.activePhaseTarget}/study.md`;
+    return normalized === studyPath || normalized.endsWith(`/${studyPath}`);
+  }
+
   private describeCompactAction(tool: AgentToolCall): string {
     if (tool.name === 'read') {
       const targetPath = String(tool.input.path ?? '');
@@ -1248,7 +1284,7 @@ export class AutoConsoleRenderer {
     const phaseContext = this.activePhaseLabel && this.activePhaseTarget
       ? `${this.activePhaseLabel} -> ${this.activePhaseTarget}`
       : this.currentProposal || 'QDD auto';
-    const proposeQuestion = this.rootPrompt || '';
+    const proposeQuestion = this.activeStudyQuestion;
     const context = this.activePhaseCommand === 'qdd-propose' && proposeQuestion
       ? `PROPOSE：${proposeQuestion}`
       : phaseContext;
