@@ -6,6 +6,8 @@ const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MARKER_TAIL_LENGTH = COMPLETION_MARKER.length + 16;
 const SYNC_START = '\x1b[?2026h';
 const SYNC_END = '\x1b[?2026l';
+const AUTOWRAP_OFF = '\x1b[?7l';
+const AUTOWRAP_ON = '\x1b[?7h';
 const INTRO_FRAME_DELAY_MS = 140;
 const FOOTER_ROWS = 2;
 const RESULT_INLINE_LINE_LIMIT = 2;
@@ -106,14 +108,14 @@ function phaseAliasForRole(role) {
         return { alias: 'Study Brain', tone: 'violet' };
     if (role === 'executor')
         return { alias: 'Executor', tone: 'mint' };
-    return { alias: 'Thesis Manager', tone: 'coral' };
+    return { alias: 'Thesis Manager', tone: 'cyan' };
 }
 function phaseIcon(alias) {
     if (alias === 'Study Brain')
         return '🟣';
     if (alias === 'Executor')
         return '🟢';
-    return '🔴';
+    return '🔵';
 }
 function rowPrefix(state) {
     if (state === 'complete')
@@ -217,15 +219,16 @@ export function renderAutoConsoleBody(screen, options = {}) {
 }
 export function renderAutoConsoleFooter(screen, options = {}) {
     const width = Math.max(60, screen.width);
+    const writableWidth = Math.max(1, width - 1);
     const color = options.color ?? false;
     const proposeLabel = paintValue('reverse', ' PROPOSE ', color);
     const statusLabel = paintValue('reverse', ` ${screen.actionStatus.padEnd(9)} `, color);
     const status = paintValue(statusTone(screen.actionStatus), screen.actionStatus === 'THINKING' ? '⠹' : '▶', color);
-    const propose = truncateCells(`${proposeLabel} ${screen.propose || 'Awaiting current research question...'}`, width);
-    const action = truncateCells(`${statusLabel} ${status} ${screen.action || 'Waiting for next event'} [${timerLabel(screen.timerSeconds)}]`, width);
+    const propose = truncateCells(`${proposeLabel} ${screen.propose || 'Awaiting current research question...'}`, writableWidth);
+    const action = truncateCells(`${statusLabel} ${status} ${screen.action || 'Waiting for next event'} [${timerLabel(screen.timerSeconds)}]`, writableWidth);
     return [
-        padRightCells(propose, width),
-        padRightCells(action, width),
+        padRightCells(propose, writableWidth),
+        padRightCells(action, writableWidth),
     ];
 }
 export function renderAutoConsoleFrame(screen, options = {}) {
@@ -249,6 +252,25 @@ function normalizedLines(value) {
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim().length > 0);
+}
+function extractStudyQuestion(value) {
+    const frontmatter = value.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (frontmatter) {
+        const questionLine = frontmatter[1]
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find((line) => line.startsWith('question:'));
+        if (questionLine) {
+            const raw = questionLine.replace(/^question:\s*/, '').trim();
+            const quoted = raw.match(/^(['"])([\s\S]*)\1$/);
+            return compact(quoted ? quoted[2] : raw, 220);
+        }
+    }
+    const section = value.match(/(?:^|\n)## Question\s*\n+([\s\S]*?)(?=\n## |$)/);
+    if (!section)
+        return '';
+    const question = normalizedLines(section[1]).join(' ');
+    return compact(question, 220);
 }
 function stripCompletionMarker(value) {
     return value.replace(new RegExp(`(?:\\r?\\n)?\\s*${COMPLETION_MARKER}\\s*$`, 'i'), '');
@@ -282,6 +304,7 @@ export class AutoConsoleRenderer {
     useColor;
     useIntro;
     useSpinner;
+    useStickyFooter;
     verbose;
     headerPrinted = false;
     phaseCount = 0;
@@ -290,6 +313,7 @@ export class AutoConsoleRenderer {
     assistantWrote = false;
     spinnerTimer = null;
     spinnerFrameIndex = 0;
+    spinnerRenderedRows = 0;
     spinnerText = '';
     currentCompactAction = '';
     modelPreviewBuffer = '';
@@ -305,6 +329,10 @@ export class AutoConsoleRenderer {
     globalStatus = 'WAITING';
     runModel = '';
     runMode = 'live';
+    activePhaseLabel = '';
+    activePhaseCommand = '';
+    activePhaseTarget = '';
+    activeStudyQuestion = '';
     phaseDisplays = [];
     activePhaseIndex = -1;
     footerActive = false;
@@ -322,6 +350,7 @@ export class AutoConsoleRenderer {
         this.useColor = options.color ?? Boolean(this.stdout.isTTY && !process.env.NO_COLOR);
         this.useSpinner = Boolean(this.stdout.isTTY);
         this.useIntro = options.intro ?? Boolean(this.useSpinner && !process.env.CI && process.env.QDD_AUTO_NO_INTRO !== '1');
+        this.useStickyFooter = options.stickyFooter ?? process.env.QDD_AUTO_STICKY_FOOTER === '1';
         this.verbose = options.verbose ?? false;
         this.events = {
             runStart: (event) => this.runStart(event),
@@ -425,6 +454,8 @@ export class AutoConsoleRenderer {
                     if (failed)
                         this.phaseFailures++;
                     this.logBlock(`tool result: ${event.tool.name} ${failed ? 'failed' : 'ok'}`, event.result);
+                    if (!failed)
+                        this.captureStudyQuestion(event.tool, event.result);
                     const summary = this.summarizeToolResult(event.tool, event.result, failed);
                     const status = failed ? this.red('failed') : this.green('ok');
                     this.actionStatus = failed ? 'FAILED' : 'WAITING';
@@ -488,17 +519,21 @@ export class AutoConsoleRenderer {
             this.logBlock('prompt', event.prompt);
         this.headerPrinted = true;
         this.playIntroAnimation(event);
-        this.renderModernHeader();
-        this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
-        this.field(this.t('project'), event.projectRoot);
-        this.field(this.t('model'), event.model);
-        this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
-        this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
-        this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
-        if (this.logPath)
-            this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
-        if (event.prompt?.trim())
-            this.field(this.t('prompt'), compact(event.prompt, 100));
+        if (this.stdout.isTTY) {
+            this.renderModernHeader();
+        }
+        else {
+            this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
+            this.field(this.t('project'), event.projectRoot);
+            this.field(this.t('model'), event.model);
+            this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
+            this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
+            this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
+            if (this.logPath)
+                this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
+            if (event.prompt?.trim())
+                this.field(this.t('prompt'), compact(event.prompt, 100));
+        }
         this.renderStickyFooter();
     }
     phaseStart(event) {
@@ -510,6 +545,10 @@ export class AutoConsoleRenderer {
         this.phaseFailures = 0;
         this.phaseWrites = 0;
         const alias = phaseAliasForRole(event.role);
+        this.activePhaseLabel = event.label;
+        this.activePhaseCommand = event.phase.command;
+        this.activePhaseTarget = event.phase.target;
+        this.activeStudyQuestion = '';
         this.phaseDisplays.push({
             alias: alias.alias,
             tone: alias.tone,
@@ -612,10 +651,12 @@ export class AutoConsoleRenderer {
         this.footerActive = true;
         this.writeRaw([
             SYNC_START,
+            AUTOWRAP_OFF,
             '\x1b7',
             `\x1b[${firstFooterRow};1H\x1b[2K${footer[0]}`,
             `\x1b[${firstFooterRow + 1};1H\x1b[2K${footer[1]}`,
             '\x1b8',
+            AUTOWRAP_ON,
             SYNC_END,
         ].join(''));
     }
@@ -628,16 +669,18 @@ export class AutoConsoleRenderer {
         const firstFooterRow = rows - FOOTER_ROWS + 1;
         this.writeRaw([
             SYNC_START,
+            AUTOWRAP_OFF,
             '\x1b7',
             `\x1b[${firstFooterRow};1H\x1b[2K`,
             `\x1b[${firstFooterRow + 1};1H\x1b[2K`,
             '\x1b8',
+            AUTOWRAP_ON,
             SYNC_END,
         ].join(''));
         this.footerActive = false;
     }
     canUseStickyFooter() {
-        return Boolean(this.stdout.isTTY && this.termRows() >= 8);
+        return Boolean(this.useStickyFooter && this.stdout.isTTY && this.termRows() >= 8);
     }
     setupKeyboardShortcuts() {
         if (this.verbose || process.env.CI || !this.stdout.isTTY || !this.stdin?.isTTY)
@@ -781,7 +824,10 @@ export class AutoConsoleRenderer {
             this.writeRaw(value);
             return;
         }
-        this.writeRaw(`${SYNC_START}\r\x1b[K${value}${this.formatSpinnerFrame()}${SYNC_END}`);
+        const clearBlock = this.clearSpinnerBlock();
+        this.spinnerRenderedRows = 0;
+        const separator = value.endsWith('\n') || value.endsWith('\r') ? '' : '\n';
+        this.writeRaw(`${SYNC_START}${clearBlock}${value}${separator}${this.formatSpinnerBlock(false)}${SYNC_END}`);
     }
     writeAssistantDelta(delta) {
         if (!delta)
@@ -938,6 +984,22 @@ export class AutoConsoleRenderer {
             omittedLines,
         };
     }
+    captureStudyQuestion(tool, result) {
+        if (!this.isActiveStudyFile(tool))
+            return;
+        const source = tool.name === 'write' ? String(tool.input.content ?? '') : result;
+        const question = extractStudyQuestion(source);
+        if (question)
+            this.activeStudyQuestion = question;
+    }
+    isActiveStudyFile(tool) {
+        if (!['read', 'write'].includes(tool.name) || !this.activePhaseTarget)
+            return false;
+        const rawPath = String(tool.input.path ?? '');
+        const normalized = rawPath.replace(/\\/g, '/');
+        const studyPath = `studies/${this.activePhaseTarget}/study.md`;
+        return normalized === studyPath || normalized.endsWith(`/${studyPath}`);
+    }
     describeCompactAction(tool) {
         if (tool.name === 'read') {
             const targetPath = String(tool.input.path ?? '');
@@ -1087,7 +1149,9 @@ export class AutoConsoleRenderer {
         if (this.spinnerTimer !== null) {
             clearInterval(this.spinnerTimer);
             this.spinnerTimer = null;
-            this.writeRaw(`${SYNC_START}\r\x1b[K${finalLine ? `${finalLine}\n` : ''}${SYNC_END}`);
+            const clearBlock = this.clearSpinnerBlock();
+            this.spinnerRenderedRows = 0;
+            this.writeRaw(`${SYNC_START}${clearBlock}${finalLine ? `${finalLine}\n` : ''}${SYNC_END}`);
             return;
         }
         if (finalLine)
@@ -1096,14 +1160,39 @@ export class AutoConsoleRenderer {
     renderSpinner() {
         if (this.spinnerTimer === null)
             return;
-        this.writeRaw(`${SYNC_START}${this.formatSpinnerFrame()}${SYNC_END}`);
+        this.writeRaw(`${SYNC_START}${this.formatSpinnerBlock()}${SYNC_END}`);
         this.renderStickyFooter();
     }
-    formatSpinnerFrame() {
+    clearSpinnerBlock() {
+        const rows = Math.max(1, this.spinnerRenderedRows);
+        let output = '\r\x1b[2K';
+        for (let index = 1; index < rows; index++) {
+            output += '\x1b[1A\r\x1b[2K';
+        }
+        return output;
+    }
+    formatSpinnerBlock(clearExisting = true) {
+        const context = this.formatLiveContextLine();
+        const spinner = this.formatSpinnerLine();
+        const clearBlock = clearExisting ? this.clearSpinnerBlock() : '\r';
+        this.spinnerRenderedRows = 2;
+        return `${clearBlock}${context}\n\r${spinner}`;
+    }
+    formatLiveContextLine() {
+        const phaseContext = this.activePhaseLabel && this.activePhaseTarget
+            ? `${this.activePhaseLabel} -> ${this.activePhaseTarget}`
+            : this.currentProposal || 'QDD auto';
+        const proposeQuestion = this.activeStudyQuestion;
+        const context = this.activePhaseCommand === 'qdd-propose' && proposeQuestion
+            ? `PROPOSE：${proposeQuestion}`
+            : phaseContext;
+        return `  ${this.dim('↳')} ${this.truncate(context, Math.max(20, this.termWidth() - 6))}\x1b[K`;
+    }
+    formatSpinnerLine() {
         const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'];
         const frame = frames[this.spinnerFrameIndex % frames.length];
         this.spinnerFrameIndex++;
-        return `\r${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
+        return `${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
     }
     termWidth() {
         return this.stdout.columns && this.stdout.columns > 0 ? this.stdout.columns : 100;
