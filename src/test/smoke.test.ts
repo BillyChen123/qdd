@@ -7,7 +7,16 @@ import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
 import { executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
-import { checkTermination, computeInitialPhase, inferAutoVisibleLanguage, runAuto } from '../runtime/orchestrator.js';
+import {
+  captureManagedPathSnapshot,
+  checkTermination,
+  computeInitialPhase,
+  computeNextPhaseAfterCompletedPhase,
+  inferAutoVisibleLanguage,
+  inspectAutoPhaseDrift,
+  runAuto,
+  safeReadAutoStatus,
+} from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
@@ -204,6 +213,165 @@ test('auto orchestrator termination conditions are explicit', () => {
     })).shouldTerminate,
     true
   );
+
+  assert.equal(
+    computeInitialPhase(statusFixture({
+      studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+      question_state: { last_kind: 'confirmation', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })),
+    null
+  );
+});
+
+test('auto orchestrator recomputes next real phase from persisted state after start', () => {
+  const startPhase = { phase: 'start' as const, target: 'PROJECT', command: 'qdd-start' as const };
+
+  assert.deepEqual(
+    computeNextPhaseAfterCompletedPhase(startPhase, statusFixture(), []),
+    { phase: 'propose', target: 'STUDY-001', command: 'qdd-propose' }
+  );
+
+  assert.deepEqual(
+    computeNextPhaseAfterCompletedPhase(
+      startPhase,
+      statusFixture({
+        studies: { active: ['STUDY-001'], blocked: [], completed: [], closed: [] },
+      }),
+      []
+    ),
+    { phase: 'propose', target: 'STUDY-001', command: 'qdd-propose' }
+  );
+
+  assert.deepEqual(
+    computeNextPhaseAfterCompletedPhase(
+      startPhase,
+      statusFixture({
+        studies: { active: [], blocked: [], completed: ['STUDY-001'], closed: [] },
+      }),
+      [{ study_id: 'STUDY-001', task_id: 'TASK-001', status: 'completed' } as TaskRecord]
+    ),
+    { phase: 'close', target: 'STUDY-001', command: 'qdd-close' }
+  );
+});
+
+test('qdd auto reports invalid_state for mixed-schema evolution.yaml', async () => {
+  const projectRoot = await createTempProject('qdd-auto-invalid-evolution-');
+
+  await writeYamlFile(projectRoot, 'evolution.yaml', {
+    studies: [
+      {
+        study_id: 'STUDY-001',
+        status: 'completed',
+        outcome: 'refinement',
+      },
+    ],
+    boundaries: [],
+  });
+
+  const statusRead = await safeReadAutoStatus(projectRoot);
+  assert.equal(statusRead.ok, false);
+  if (!statusRead.ok) {
+    assert.equal(statusRead.invalidState.likelyPath, 'evolution.yaml');
+    assert.match(statusRead.invalidState.message, /invalid id/);
+  }
+
+  const result = await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: 1,
+    dryRun: true,
+  });
+  assert.equal(result.terminalCode, 'invalid_state');
+  assert.match(result.terminalReason, /evolution\.yaml/);
+});
+
+test('qdd auto reports invalid_state for old artifact-candidates.yaml manifest shape', async () => {
+  const projectRoot = await createTempProject('qdd-auto-invalid-candidates-');
+  const { studyId } = await createStudy(projectRoot, {
+    question: 'Can old candidate manifests be detected?',
+    hypothesis: 'Old top-level candidates should be invalid for auto continuation.',
+  });
+  const { taskId } = await createTask(projectRoot, studyId, {
+    goal: 'Create a completed task with old candidate manifest shape.',
+    skills: ['singlecell/scrna/sc-batch-integration'],
+  });
+  await setTaskCompleted(projectRoot, studyId, taskId);
+  await writeYamlFile(projectRoot, `studies/${studyId}/output/artifact-candidates.yaml`, {
+    candidates: [
+      {
+        artifact_id: 'ART-001',
+        path: `studies/${studyId}/output/code/old.py`,
+        promotion_note: 'old shape',
+        promoted: false,
+      },
+    ],
+  });
+
+  const statusRead = await safeReadAutoStatus(projectRoot);
+  assert.equal(statusRead.ok, false);
+  if (!statusRead.ok) {
+    assert.equal(statusRead.invalidState.likelyPath, `studies/${studyId}/output/artifact-candidates.yaml`);
+    assert.match(statusRead.invalidState.message, /Invalid artifact candidate/);
+  }
+
+  const result = await runAuto(projectRoot, {
+    model: 'dry-run-model',
+    maxIterations: 1,
+    maxTurnsPerAgent: 1,
+    dryRun: true,
+  });
+  assert.equal(result.terminalCode, 'invalid_state');
+  assert.match(result.terminalReason, /artifact-candidates\.yaml/);
+});
+
+test('auto phase drift flags qdd-start study and evolution writes', async () => {
+  const projectRoot = await createTempProject('qdd-auto-drift-');
+  const startPhase = { phase: 'start' as const, target: 'PROJECT', command: 'qdd-start' as const };
+  const snapshotBefore = await captureManagedPathSnapshot(projectRoot);
+  await createStudy(projectRoot, {
+    question: 'Did start overreach?',
+    hypothesis: 'Drift diagnostics should flag study writes.',
+  });
+  await writeYamlFile(projectRoot, 'evolution.yaml', {
+    studies: [],
+    boundaries: [],
+  });
+  const drift = await inspectAutoPhaseDrift(projectRoot, startPhase, snapshotBefore);
+  assert.ok(drift.unexpectedPaths.some((entry) => entry.startsWith('studies/')));
+  assert.ok(drift.unexpectedPaths.includes('evolution.yaml'));
+});
+
+test('auto phase drift flags direct evolution writes during propose and apply', async () => {
+  const projectRoot = await createTempProject('qdd-auto-study-drift-');
+  const { studyId } = await createStudy(projectRoot, {
+    question: 'Can study phases mutate evolution directly?',
+    hypothesis: 'Direct evolution writes should be phase drift before close.',
+  });
+
+  for (const phase of ['propose', 'apply'] as const) {
+    const snapshotBefore = await captureManagedPathSnapshot(projectRoot);
+    await writeYamlFile(projectRoot, 'evolution.yaml', {
+      studies: [
+        {
+          id: studyId,
+          question: 'Can study phases mutate evolution directly?',
+          kind: 'refinement',
+          resolves: [],
+          opens: [],
+          candidates: [`This write is only for ${phase} drift detection.`],
+          ts: new Date().toISOString(),
+        },
+      ],
+      boundaries: [],
+    });
+
+    const drift = await inspectAutoPhaseDrift(
+      projectRoot,
+      { phase, target: studyId, command: phase === 'propose' ? 'qdd-propose' : 'qdd-apply' },
+      snapshotBefore
+    );
+    assert.ok(drift.unexpectedPaths.includes('evolution.yaml'));
+  }
 });
 
 test('Claude settings parser reads Claude Code env block', () => {
@@ -930,27 +1098,34 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
   assert.match(startCommand, /contract\.yaml/);
   assert.match(startCommand, /context\/resources\.md/);
   assert.match(startCommand, /artifacts\/data\//);
+  assert.match(startCommand, /Managed schema source/);
+  assert.match(startCommand, /creating files under `studies\/`/);
+  assert.match(startCommand, /mutating `evolution\.yaml`, `artifacts\/index\.yaml`, or study-local `artifact-candidates\.yaml`/);
   assert.doesNotMatch(startCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(startCommand, /qdd boundaries apply --file/);
   assert.doesNotMatch(startCommand, /boundaries\.yaml/);
+  assert.doesNotMatch(startCommand, /question_delta|evolution_trail/);
 
   const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
   assert.match(proposeCommand, /evolution\.yaml/);
   assert.match(proposeCommand, /context\/memory/);
   assert.doesNotMatch(proposeCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(proposeCommand, /qdd boundaries score/);
-  assert.doesNotMatch(proposeCommand, /question_delta/);
+  assert.doesNotMatch(proposeCommand, /question_delta|evolution_trail/);
 
   const applyCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md'), 'utf-8');
   assert.doesNotMatch(applyCommand, /Auto Mode: Fork Next Agent/);
+  assert.doesNotMatch(applyCommand, /question_delta|evolution_trail/);
 
   const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
   assert.match(closeCommand, /context\/memory/);
   assert.match(closeCommand, /research-map\.html/);
+  assert.match(closeCommand, /Do not hand-write `evolution\.yaml`/);
+  assert.match(closeCommand, /qdd close-study/);
   assert.doesNotMatch(closeCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(closeCommand, /Get human approval before running `qdd close-study`\./);
   assert.doesNotMatch(closeCommand, /boundary-updates\.yaml/);
-  assert.doesNotMatch(closeCommand, /question_delta/);
+  assert.doesNotMatch(closeCommand, /question_delta|evolution_trail/);
 
   const autoSkill = await fs.readFile(path.join(projectRoot, '.claude', 'skills', 'qdd-auto', 'SKILL.md'), 'utf-8');
   assert.match(autoSkill, /qdd auto/);
@@ -991,6 +1166,11 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
   assert.ok(projectInstructions.read.includes('context/memory/STUDY-000.md'));
   assert.ok(projectInstructions.write.includes('context/resources.md'));
   assert.ok(projectInstructions.write.includes('research-map.html'));
+  assert.ok(
+    projectInstructions.rules.includes(
+      'Do not mutate evolution.yaml, studies/**, artifacts/index.yaml, or study-local artifact-candidates.yaml during qdd-start; those are later workflow surfaces.'
+    )
+  );
   assert.ok(!projectInstructions.read.includes('boundaries.yaml'));
   assert.ok(!projectInstructions.write.includes('boundaries.yaml'));
 
@@ -1009,6 +1189,11 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
   assert.ok(
     studyInstructions.rules.includes(
       'If close preflight passes, run qdd close-study directly instead of waiting for an extra manual confirmation gate.'
+    )
+  );
+  assert.ok(
+    studyInstructions.rules.includes(
+      'qdd-close must write evolution state through qdd close-study; do not hand-edit evolution.yaml.'
     )
   );
   assert.ok(!studyInstructions.write.includes(`studies/${studyId}/output/boundary-updates.yaml`));

@@ -2,7 +2,7 @@ import type { QddCommand, QddRole, StatusJson, TaskRecord } from '../types.js';
 import type { AgentRunEvents, AgentRunResult } from './agent-runner.js';
 export type OrchestratorPhase = 'start' | 'propose' | 'apply' | 'close';
 export type AutoCommand = Extract<QddCommand, 'qdd-start' | 'qdd-propose' | 'qdd-apply' | 'qdd-close'>;
-export type AutoStopCode = 'terminal_state' | 'max_iterations' | 'phase_incomplete' | 'agent_failed' | 'missing_auth';
+export type AutoStopCode = 'terminal_state' | 'max_iterations' | 'phase_incomplete' | 'agent_failed' | 'missing_auth' | 'invalid_state';
 export interface AutoOptions {
     model: string;
     maxIterations: number;
@@ -18,10 +18,21 @@ export interface PhaseTarget {
     target: string;
     command: AutoCommand;
 }
+export interface AutoInvalidState {
+    message: string;
+    likelyPath?: string;
+}
+export interface AutoPhaseDrift {
+    changedPaths: string[];
+    unexpectedPaths: string[];
+}
 export interface AutoPhaseResult extends PhaseTarget {
     role: QddRole;
     dryRun: boolean;
     result: AgentRunResult;
+    invalidState?: AutoInvalidState;
+    drift?: AutoPhaseDrift;
+    nextPhase?: PhaseTarget | null;
 }
 export interface AutoResult {
     iterations: number;
@@ -87,6 +98,21 @@ interface TerminationCheck {
     shouldTerminate: boolean;
     reason: string;
 }
+interface AutoStatusReadOk {
+    ok: true;
+    status: StatusJson;
+    taskRecords: Pick<TaskRecord, 'study_id' | 'task_id' | 'status'>[];
+}
+interface AutoStatusReadInvalid {
+    ok: false;
+    invalidState: AutoInvalidState;
+}
+type AutoStatusRead = AutoStatusReadOk | AutoStatusReadInvalid;
+type ManagedPathSnapshot = Map<string, string>;
+export declare function captureManagedPathSnapshot(projectRoot: string): Promise<ManagedPathSnapshot>;
+export declare function safeReadAutoStatus(projectRoot: string): Promise<AutoStatusRead>;
+export declare function computeNextPhaseAfterCompletedPhase(current: PhaseTarget, status: StatusJson, taskRecords?: Pick<TaskRecord, 'study_id' | 'task_id' | 'status'>[]): PhaseTarget | null;
+export declare function inspectAutoPhaseDrift(projectRoot: string, phase: PhaseTarget, before: ManagedPathSnapshot): Promise<AutoPhaseDrift>;
 export declare function determineNextStudyId(status: StatusJson): string;
 export declare function checkTermination(status: StatusJson): TerminationCheck;
 export declare function computeInitialPhase(status: StatusJson, taskRecords?: Pick<TaskRecord, 'study_id' | 'task_id' | 'status'>[]): PhaseTarget | null;

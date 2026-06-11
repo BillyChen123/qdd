@@ -3,6 +3,8 @@
 **Version:** 1.0  
 **Date:** 2026-05-26
 
+> Historical note: this prototype document predates the current managed-file contracts and may show retired schemas such as `evolution_trail` and `question_delta`. For current schemas, use `.qdd/schema-reference.md`, `.qdd/examples/*`, and `src/file-contracts/*`.
+
 ---
 
 ## Architecture Overview

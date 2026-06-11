@@ -8,6 +8,8 @@ Turn scaffold placeholders into usable shared project context. The goal is to ma
 
 **This is onboarding, not study planning.** Do not create `STUDY-XXX` or `TASK-XXX` artifacts here unless the user explicitly redirects into `qdd-propose`.
 
+**Managed schema source:** If you edit YAML or Markdown managed by QDD, use `.qdd/schema-reference.md` and the matching `.qdd/examples/*` file as the current schema reference. Do not infer current schemas from older PRD or prototype documents.
+
 ---
 
 ## What Start Owns
@@ -25,6 +27,8 @@ Turn scaffold placeholders into usable shared project context. The goal is to ma
 - creating the first task graph
 - executing analysis code
 - closing a study
+- creating files under `studies/`
+- mutating `evolution.yaml`, `artifacts/index.yaml`, or study-local `artifact-candidates.yaml`
 
 ---
 

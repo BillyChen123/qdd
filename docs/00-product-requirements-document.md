@@ -2,7 +2,9 @@
 
 **Version:** 1.0  
 **Date:** 2026-05-26  
-**Status:** Draft
+**Status:** Historical draft
+
+> Historical note: this document preserves early product thinking and contains retired schema examples such as `question_delta` and `evolution_trail`. For current managed-file schemas, use `.qdd/schema-reference.md`, `.qdd/examples/*`, and `src/file-contracts/*`.
 
 ---
 

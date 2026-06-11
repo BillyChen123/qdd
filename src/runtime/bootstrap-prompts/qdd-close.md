@@ -4,6 +4,8 @@ Use closure to decide what the study taught you, how the question changed, what 
 
 **IMPORTANT: Close is not just a summary.** It is the workflow step that decides whether the study is ready to write one sparse event into `evolution.yaml`, which outputs deserve promotion, and which uncertainties remain open.
 
+**Do not hand-write `evolution.yaml`.** Decide the close event in reasoning, then write it through `qdd close-study`. The current managed-file schema source is `.qdd/schema-reference.md` plus `.qdd/examples/*`, not older PRD or prototype documents.
+
 ---
 
 ## Input

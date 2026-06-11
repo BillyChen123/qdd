@@ -5,9 +5,19 @@ import { buildStatus } from './status.js';
 import { buildInstructions } from './instructions.js';
 import { createStudy } from './lifecycle.js';
 import { discoverTasks } from './discovery.js';
+import { getStudyArtifactCandidatesPath } from './evidence.js';
+import { PATHS } from './constants.js';
 import { hasClaudeCredentials, runAgent } from './agent-runner.js';
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const bootstrapPromptDir = path.join(moduleDir, 'bootstrap-prompts');
+const MANAGED_SNAPSHOT_ROOTS = [
+    PATHS.contract,
+    PATHS.evolution,
+    PATHS.researchMapHtml,
+    PATHS.contextDir,
+    PATHS.studiesDir,
+    PATHS.artifactsDir,
+];
 async function readPromptFile(name) {
     return fs.readFile(path.join(bootstrapPromptDir, `${name}.md`), 'utf-8');
 }
@@ -96,6 +106,189 @@ function summarizeStatus(status) {
         `promotion pending=${status.tasks.promotion_pending.join(',') || '-'} candidate_recorded=${status.tasks.candidate_recorded.join(',') || '-'} registered=${status.tasks.registered.join(',') || '-'}`,
         `close ready=${status.close_preflight.ready.join(',') || '-'} blocked=${status.close_preflight.blocked.map((entry) => `${entry.study_id}(${entry.reasons.join('; ')})`).join(', ') || '-'}`,
     ].join(' | ');
+}
+function normalizeProjectPath(relativePath) {
+    return relativePath.split(path.sep).join('/');
+}
+function isManagedPath(relativePath) {
+    const normalized = normalizeProjectPath(relativePath);
+    return normalized === PATHS.contract
+        || normalized === PATHS.evolution
+        || normalized === PATHS.researchMapHtml
+        || normalized === PATHS.artifactIndex
+        || normalized === PATHS.contextResources
+        || normalized.startsWith(`${PATHS.contextDir}/`)
+        || normalized.startsWith(`${PATHS.studiesDir}/`)
+        || normalized.startsWith(`${PATHS.artifactsDir}/`);
+}
+async function collectManagedPathEntries(projectRoot, relativeDir = '') {
+    const absoluteDir = path.join(projectRoot, relativeDir);
+    let entries;
+    try {
+        entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+    }
+    catch {
+        return [];
+    }
+    const results = [];
+    for (const entry of entries) {
+        const relativePath = normalizeProjectPath(relativeDir ? path.join(relativeDir, entry.name) : entry.name);
+        if (entry.isDirectory()) {
+            results.push(...(await collectManagedPathEntries(projectRoot, relativePath)));
+            continue;
+        }
+        if (entry.isFile() || entry.isSymbolicLink()) {
+            if (isManagedPath(relativePath)) {
+                results.push(relativePath);
+            }
+        }
+    }
+    return results.sort((left, right) => left.localeCompare(right));
+}
+async function collectManagedRootEntries(projectRoot, relativePath) {
+    const normalized = normalizeProjectPath(relativePath);
+    const absolutePath = path.join(projectRoot, normalized);
+    try {
+        const stats = await fs.lstat(absolutePath);
+        if (stats.isDirectory()) {
+            return collectManagedPathEntries(projectRoot, normalized);
+        }
+        if (stats.isFile() || stats.isSymbolicLink()) {
+            return [normalized];
+        }
+    }
+    catch {
+        return [];
+    }
+    return [];
+}
+async function fileFingerprint(projectRoot, relativePath) {
+    try {
+        const stats = await fs.lstat(path.join(projectRoot, relativePath));
+        return `${stats.size}:${Math.trunc(stats.mtimeMs)}`;
+    }
+    catch {
+        return 'missing';
+    }
+}
+export async function captureManagedPathSnapshot(projectRoot) {
+    const snapshot = new Map();
+    const relativePaths = (await Promise.all(MANAGED_SNAPSHOT_ROOTS.map((relativePath) => collectManagedRootEntries(projectRoot, relativePath)))).flat();
+    for (const relativePath of [...new Set(relativePaths)].sort((left, right) => left.localeCompare(right))) {
+        snapshot.set(relativePath, await fileFingerprint(projectRoot, relativePath));
+    }
+    return snapshot;
+}
+function listChangedManagedPaths(before, after) {
+    const allPaths = new Set([...before.keys(), ...after.keys()]);
+    return [...allPaths]
+        .filter((relativePath) => before.get(relativePath) !== after.get(relativePath))
+        .sort((left, right) => left.localeCompare(right));
+}
+function pathMatchesPattern(relativePath, pattern) {
+    if (pattern.endsWith('/**')) {
+        const prefix = pattern.slice(0, -3);
+        return relativePath === prefix || relativePath.startsWith(`${prefix}/`);
+    }
+    return relativePath === pattern;
+}
+function expectedWritePatternsForPhase(phase, target) {
+    switch (phase) {
+        case 'start':
+            return [
+                PATHS.contract,
+                PATHS.contextResources,
+                `${PATHS.contextDir}/**`,
+                `${PATHS.artifactDataDir}/**`,
+                PATHS.layerPolicy,
+                PATHS.researchMapHtml,
+            ];
+        case 'propose':
+            return [
+                `${PATHS.studiesDir}/${target}/study.md`,
+                `${PATHS.studiesDir}/${target}/tasks/**`,
+                `${PATHS.studiesDir}/${target}/output/**`,
+            ];
+        case 'apply':
+            return [
+                `${PATHS.studiesDir}/${target}/study.md`,
+                `${PATHS.studiesDir}/${target}/tasks/**`,
+                `${PATHS.studiesDir}/${target}/output/**`,
+                PATHS.artifactIndex,
+            ];
+        case 'close':
+            return [
+                `${PATHS.studiesDir}/${target}/study.md`,
+                `${PATHS.studiesDir}/${target}/tasks/**`,
+                `${PATHS.studiesDir}/${target}/output/**`,
+                PATHS.artifactIndex,
+                `${PATHS.artifactsDir}/**`,
+                PATHS.evolution,
+                PATHS.contextResources,
+                `${PATHS.contextMemoryDir}/**`,
+                PATHS.researchMapHtml,
+            ];
+    }
+}
+function unexpectedWritesForPhase(phase, target, changedPaths) {
+    const patterns = expectedWritePatternsForPhase(phase, target);
+    return changedPaths.filter((relativePath) => !patterns.some((pattern) => pathMatchesPattern(relativePath, pattern)));
+}
+function inferLikelyInvalidStatePath(message) {
+    if (/artifact-candidates\.yaml|artifact_candidates|artifact candidate/i.test(message)) {
+        const studyMatch = message.match(/STUDY-\d{3}/);
+        return studyMatch ? getStudyArtifactCandidatesPath(studyMatch[0]) : `studies/STUDY-XXX/output/${PATHS.artifactCandidatesFileName}`;
+    }
+    if (/evolution\.yaml|boundaries#|studies#/i.test(message)) {
+        return PATHS.evolution;
+    }
+    if (/artifacts\/index\.yaml|artifact index/i.test(message)) {
+        return PATHS.artifactIndex;
+    }
+    if (/contract\.yaml/i.test(message)) {
+        return PATHS.contract;
+    }
+    return undefined;
+}
+export async function safeReadAutoStatus(projectRoot) {
+    try {
+        const status = await buildStatus(projectRoot);
+        if (status.output_review.studies_with_invalid_candidate_paths.length > 0) {
+            const studyId = status.output_review.studies_with_invalid_candidate_paths[0] ?? 'STUDY-XXX';
+            return {
+                ok: false,
+                invalidState: {
+                    message: `Invalid artifact candidate paths detected for ${studyId}.`,
+                    likelyPath: getStudyArtifactCandidatesPath(studyId),
+                },
+            };
+        }
+        return { ok: true, status, taskRecords: await discoverTasks(projectRoot) };
+    }
+    catch (error) {
+        const message = error.message;
+        return {
+            ok: false,
+            invalidState: {
+                message,
+                likelyPath: inferLikelyInvalidStatePath(message),
+            },
+        };
+    }
+}
+export function computeNextPhaseAfterCompletedPhase(current, status, taskRecords = []) {
+    if (current.phase === 'start' && allStudyIds(status).length === 0) {
+        return { phase: 'propose', target: determineNextStudyId(status), command: 'qdd-propose' };
+    }
+    return computeInitialPhase(status, taskRecords);
+}
+export async function inspectAutoPhaseDrift(projectRoot, phase, before) {
+    const after = await captureManagedPathSnapshot(projectRoot);
+    const changedPaths = listChangedManagedPaths(before, after);
+    return {
+        changedPaths,
+        unexpectedPaths: unexpectedWritesForPhase(phase.phase, phase.target, changedPaths),
+    };
 }
 export function determineNextStudyId(status) {
     let maxNum = 0;
@@ -307,6 +500,11 @@ async function ensureProposeTargetExists(projectRoot, current, log, events) {
 function formatSummary(iterations, studiesCompleted, terminalReason) {
     return `Auto mode completed: ${iterations} iterations, ${studiesCompleted} studies closed. Stop reason: ${terminalReason}`;
 }
+function formatInvalidStateReason(invalidState) {
+    return invalidState.likelyPath
+        ? `Invalid managed file state at ${invalidState.likelyPath}: ${invalidState.message}`
+        : `Invalid managed file state: ${invalidState.message}`;
+}
 function formatLogExcerpt(message, maxLength = 1000) {
     const compact = message.replace(/\s+/g, ' ').trim();
     if (compact.length <= maxLength)
@@ -342,18 +540,35 @@ export async function runAuto(projectRoot, options) {
     let studiesCompleted = 0;
     let terminalCode = 'max_iterations';
     let terminalReason = `Reached max iterations (${options.maxIterations}).`;
-    let status = await buildStatus(projectRoot);
-    let taskRecords = await discoverTasks(projectRoot);
-    let current = computeInitialPhase(status, taskRecords);
+    let statusRead = await safeReadAutoStatus(projectRoot);
+    const initialPhase = statusRead.ok ? computeInitialPhase(statusRead.status, statusRead.taskRecords) : null;
     options.events?.runStart?.({
         projectRoot,
-        phase: current,
+        phase: initialPhase,
         model: options.model,
         maxIterations: options.maxIterations,
         maxTurnsPerAgent: options.maxTurnsPerAgent,
         dryRun: options.dryRun,
         prompt: options.prompt,
     });
+    if (!statusRead.ok) {
+        terminalCode = 'invalid_state';
+        terminalReason = formatInvalidStateReason(statusRead.invalidState);
+        log(`Cannot start auto mode: ${terminalReason}`);
+        options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
+        return {
+            iterations,
+            studiesCompleted,
+            finalPhase: 'none',
+            terminalCode,
+            terminalReason,
+            summary: formatSummary(iterations, studiesCompleted, terminalReason),
+            phases,
+        };
+    }
+    let status = statusRead.status;
+    let taskRecords = statusRead.taskRecords;
+    let current = initialPhase;
     if (options.verbose)
         options.events?.initialState?.({ summary: summarizeStatus(status) });
     if (!current) {
@@ -424,6 +639,7 @@ export async function runAuto(projectRoot, options) {
             current = nextDryRunPhase(current, status);
             continue;
         }
+        const beforePhaseSnapshot = await captureManagedPathSnapshot(projectRoot);
         current = await ensureProposeTargetExists(projectRoot, current, log, options.events);
         const instructions = await buildInstructions(projectRoot, current.target, {
             command: current.command,
@@ -450,12 +666,13 @@ export async function runAuto(projectRoot, options) {
             verbose: options.verbose ?? false,
             events: options.events?.agent,
         });
-        phases.push({
+        const phaseEntry = {
             ...current,
             role: instructions.role,
             dryRun: false,
             result,
-        });
+        };
+        phases.push(phaseEntry);
         log(`  Turns: ${result.turns}, Tool calls: ${result.toolCalls}`);
         log(`  Status: ${result.status}`);
         if (result.failureReason)
@@ -471,8 +688,22 @@ export async function runAuto(projectRoot, options) {
             options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
             break;
         }
-        status = await buildStatus(projectRoot);
-        taskRecords = await discoverTasks(projectRoot);
+        const drift = await inspectAutoPhaseDrift(projectRoot, current, beforePhaseSnapshot);
+        phaseEntry.drift = drift;
+        if (drift.unexpectedPaths.length > 0) {
+            log(`  Phase drift: unexpected writes ${drift.unexpectedPaths.join(', ')}`);
+        }
+        statusRead = await safeReadAutoStatus(projectRoot);
+        if (!statusRead.ok) {
+            phaseEntry.invalidState = statusRead.invalidState;
+            terminalCode = 'invalid_state';
+            terminalReason = formatInvalidStateReason(statusRead.invalidState);
+            log(`Stopping: ${terminalReason}`);
+            options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
+            break;
+        }
+        status = statusRead.status;
+        taskRecords = statusRead.taskRecords;
         if (options.verbose) {
             log(`  State after phase: ${summarizeStatus(status)}`);
         }
@@ -492,7 +723,8 @@ export async function runAuto(projectRoot, options) {
         }
         if (current.phase === 'close')
             studiesCompleted++;
-        const next = nextPhase(current, status);
+        const next = computeNextPhaseAfterCompletedPhase(current, status, taskRecords);
+        phaseEntry.nextPhase = next;
         if (!next) {
             const term = checkTermination(status);
             terminalCode = 'terminal_state';

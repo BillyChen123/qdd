@@ -159,6 +159,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Read .qdd/schema-reference.md and the relevant .qdd/examples/* files before editing managed files by hand.',
             'Keep contract.yaml concise and machine-readable.',
             'Treat evolution.yaml as the sparse project truth source for current project question state and boundaries.',
+            'Do not mutate evolution.yaml, studies/**, artifacts/index.yaml, or study-local artifact-candidates.yaml during qdd-start; those are later workflow surfaces.',
             'Treat research-map.html as a derived report, not a truth source.',
             'Keep durable shared context in context/resources.md and optional context sidecars; keep narrative study history in context/memory/*.md.',
             'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
@@ -284,6 +285,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push('qdd-close must register missing reusable outputs from artifact-candidates.yaml before final closure.');
             rules.push('qdd-close must reject artifact candidates that still point into studies/STUDY-XXX/output/tmp/ or other scratch-only paths.');
             rules.push('qdd-close must write one sparse study event into evolution.yaml, one narrative memory file into context/memory/, and refresh research-map.html.');
+            rules.push('qdd-close must write evolution state through qdd close-study; do not hand-edit evolution.yaml.');
             rules.push('Prefer candidate-driven promotion through qdd-close over ad hoc direct registration.');
             rules.push('Refuse closure when any completed task still has promotion_status pending.');
             rules.push('Refuse closure when non-canonical top-level study output material still remains unpackaged.');
