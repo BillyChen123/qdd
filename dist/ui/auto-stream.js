@@ -1,10 +1,17 @@
 import * as fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { getBearArt } from './tui-home-art.js';
 const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MARKER_TAIL_LENGTH = COMPLETION_MARKER.length + 16;
 const SYNC_START = '\x1b[?2026h';
 const SYNC_END = '\x1b[?2026l';
-const INTRO_FRAME_DELAY_MS = 55;
+const INTRO_FRAME_DELAY_MS = 140;
+const FOOTER_ROWS = 2;
+const RESULT_INLINE_LINE_LIMIT = 2;
+const RESULT_INLINE_CHAR_LIMIT = 180;
+const require = createRequire(import.meta.url);
+const { version: packageVersion } = require('../../package.json');
 const text = {
     en: {
         command: 'command',
@@ -83,18 +90,165 @@ const ansi = {
     reset: '\x1b[0m',
     bold: '\x1b[1m',
     dim: '\x1b[2m',
+    reverse: '\x1b[7m',
     blue: '\x1b[34m',
     cyan: '\x1b[36m',
     magenta: '\x1b[35m',
     green: '\x1b[32m',
     yellow: '\x1b[33m',
     red: '\x1b[31m',
+    coral: '\x1b[38;5;210m',
+    violet: '\x1b[38;5;141m',
+    mint: '\x1b[38;5;115m',
 };
+function phaseAliasForRole(role) {
+    if (role === 'study-brain')
+        return { alias: 'Study Brain', tone: 'violet' };
+    if (role === 'executor')
+        return { alias: 'Executor', tone: 'mint' };
+    return { alias: 'Thesis Manager', tone: 'coral' };
+}
+function phaseIcon(alias) {
+    if (alias === 'Study Brain')
+        return '🟣';
+    if (alias === 'Executor')
+        return '🟢';
+    return '🔴';
+}
+function rowPrefix(state) {
+    if (state === 'complete')
+        return '✔';
+    if (state === 'failed')
+        return '✖';
+    if (state === 'active')
+        return '▶';
+    return '○';
+}
+function statusTone(status) {
+    if (status === 'EXECUTING' || status === 'COMPLETE')
+        return 'mint';
+    if (status === 'FAILED')
+        return 'coral';
+    if (status === 'THINKING')
+        return 'violet';
+    return 'yellow';
+}
+function paintValue(name, value, color) {
+    if (!color)
+        return value;
+    return `${ansi[name]}${value}${ansi.reset}`;
+}
+function visibleLength(value) {
+    return value.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').length;
+}
+function truncateCells(value, maxLength) {
+    if (visibleLength(value) <= maxLength)
+        return value;
+    if (maxLength <= 3)
+        return value.slice(0, maxLength);
+    const clean = value.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+    return `${clean.slice(0, maxLength - 3)}...`;
+}
+function padRightCells(value, width) {
+    const length = visibleLength(value);
+    if (length >= width)
+        return value;
+    return `${value}${' '.repeat(width - length)}`;
+}
+function timerLabel(seconds) {
+    const bounded = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(bounded / 60);
+    const remainder = bounded % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+export function renderAutoConsoleHeader(screen, options = {}) {
+    const width = Math.max(60, screen.width);
+    const color = options.color ?? false;
+    const logo = getBearArt(screen.logoStatus, screen.logoDensity);
+    const meta = `v${screen.version}  up ${timerLabel(screen.uptimeSeconds)}  ${screen.globalStatus}`;
+    const title = paintValue('bold', 'QDD AUTO', color);
+    const subtitle = paintValue('dim', 'modern multi-agent research loop', color);
+    const lines = [];
+    const contentWidth = width - 2;
+    for (let index = 0; index < logo.length; index++) {
+        const left = `  ${logo[index] ?? ''}`;
+        const right = index === 0
+            ? `${title} ${subtitle}`
+            : index === 1
+                ? paintValue('dim', meta, color)
+                : index === 2 && screen.projectRoot
+                    ? paintValue('dim', `project ${screen.projectRoot}`, color)
+                    : index === 3 && screen.model
+                        ? paintValue('dim', `model ${screen.model}  mode ${screen.mode ?? 'live'}`, color)
+                        : '';
+        lines.push(truncateCells(padRightCells(`${left}  ${right}`, contentWidth), contentWidth));
+    }
+    lines.push(paintValue('dim', '┄'.repeat(Math.min(width, 120)), color));
+    return lines;
+}
+export function renderAutoConsoleBody(screen, options = {}) {
+    const width = Math.max(60, screen.width);
+    const color = options.color ?? false;
+    const lines = [];
+    for (const phase of screen.phases) {
+        const title = `${phaseIcon(phase.alias)} [Phase: ${phase.alias}]`;
+        lines.push(`  ${paintValue(phase.tone, title, color)} ${paintValue('dim', `${phase.command} ${phase.target}`, color)}`);
+        if (phase.rows.length === 0) {
+            lines.push(`   └─ ${paintValue('dim', '○ pending', color)}`);
+            continue;
+        }
+        phase.rows.forEach((row, index) => {
+            const branch = index === phase.rows.length - 1 ? '└─' : '├─';
+            const prefix = rowPrefix(row.state);
+            const rowText = row.state === 'complete'
+                ? paintValue('dim', `${prefix} ${row.text}`, color)
+                : row.state === 'active'
+                    ? paintValue('bold', `${prefix} ${row.text}`, color)
+                    : row.state === 'failed'
+                        ? paintValue('coral', `${prefix} ${row.text}`, color)
+                        : `${prefix} ${row.text}`;
+            lines.push(truncateCells(`   ${branch} ${rowText}`, width));
+            if (row.detail)
+                lines.push(truncateCells(`      ⌙ ${paintValue('dim', row.detail, color)}`, width));
+        });
+        lines.push('');
+    }
+    return lines;
+}
+export function renderAutoConsoleFooter(screen, options = {}) {
+    const width = Math.max(60, screen.width);
+    const color = options.color ?? false;
+    const proposeLabel = paintValue('reverse', ' PROPOSE ', color);
+    const statusLabel = paintValue('reverse', ` ${screen.actionStatus.padEnd(9)} `, color);
+    const status = paintValue(statusTone(screen.actionStatus), screen.actionStatus === 'THINKING' ? '⠹' : '▶', color);
+    const propose = truncateCells(`${proposeLabel} ${screen.propose || 'Awaiting current research question...'}`, width);
+    const action = truncateCells(`${statusLabel} ${status} ${screen.action || 'Waiting for next event'} [${timerLabel(screen.timerSeconds)}]`, width);
+    return [
+        padRightCells(propose, width),
+        padRightCells(action, width),
+    ];
+}
+export function renderAutoConsoleFrame(screen, options = {}) {
+    return [
+        ...renderAutoConsoleHeader(screen, options),
+        '',
+        ...renderAutoConsoleBody(screen, options),
+        paintValue('dim', '┄'.repeat(Math.min(screen.width, 120)), options.color ?? false),
+        ...renderAutoConsoleFooter(screen, options),
+    ].join('\n');
+}
 function compact(value, maxLength = 140) {
     const normalized = value.replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxLength)
         return normalized;
     return `${normalized.slice(0, maxLength - 3)}...`;
+}
+function normalizedLines(value) {
+    return value
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => line.trim().length > 0);
 }
 function stripCompletionMarker(value) {
     return value.replace(new RegExp(`(?:\\r?\\n)?\\s*${COMPLETION_MARKER}\\s*$`, 'i'), '');
@@ -112,12 +266,18 @@ function terminalTone(code) {
 function isToolFailure(result) {
     return result.startsWith('Error') || result.includes('[exit code:') || result.includes('[killed by timeout]');
 }
+function toolDisplayName(name) {
+    if (name === 'bash')
+        return 'command';
+    return name;
+}
 function timestampForFile(date = new Date()) {
     return date.toISOString().replace(/[:.]/g, '-');
 }
 export class AutoConsoleRenderer {
     events;
     stdout;
+    stdin;
     locale;
     useColor;
     useIntro;
@@ -138,8 +298,26 @@ export class AutoConsoleRenderer {
     phaseWrites = 0;
     logPath = null;
     projectRoot = null;
+    runStartedAt = Date.now();
+    currentProposal = '';
+    currentAction = '';
+    actionStatus = 'WAITING';
+    globalStatus = 'WAITING';
+    runModel = '';
+    runMode = 'live';
+    phaseDisplays = [];
+    activePhaseIndex = -1;
+    footerActive = false;
+    collapsedTranscripts = [];
+    transcriptCursor = -1;
+    expandedTranscriptIndex = -1;
+    transcriptPanelRows = 0;
+    keyboardActive = false;
+    inputWasRaw = false;
+    inputListener = (chunk) => this.handleInput(chunk);
     constructor(options = {}) {
         this.stdout = options.stdout ?? process.stdout;
+        this.stdin = options.stdin ?? process.stdin;
         this.locale = resolveLocale(options.locale);
         this.useColor = options.color ?? Boolean(this.stdout.isTTY && !process.env.NO_COLOR);
         this.useSpinner = Boolean(this.stdout.isTTY);
@@ -149,20 +327,26 @@ export class AutoConsoleRenderer {
             runStart: (event) => this.runStart(event),
             initialState: (event) => {
                 this.logLine(`initial state: ${event.summary}`);
+                this.currentAction = event.summary;
+                this.actionStatus = 'WAITING';
+                this.renderStickyFooter();
                 if (this.verbose)
                     this.line(this.dim(`initial  ${event.summary}`));
             },
             phaseStart: (event) => this.phaseStart(event),
             dryRunPhase: (event) => {
                 this.logLine(`dry-run system prompt: ${event.systemPrompt}`);
+                this.addPhaseRow('active', `${this.t('dryRun')} ${this.t('systemPrompt')}`, event.systemPrompt);
                 this.line(`${this.bullet()} ${this.yellow(this.t('dryRun'))} ${this.dim(this.t('systemPrompt'))} ${event.systemPrompt}`);
             },
             studyScaffold: (event) => {
                 this.logLine(`study scaffold: requested=${event.requested} created=${event.created}`);
+                this.currentProposal = event.requested;
                 this.compactAction(`${this.t('createdStudy')} ${event.created}`);
             },
             instructions: (event) => {
                 this.logLine(`instructions: role=${event.role} read=${event.readCount} write=${event.writeCount} skills=${event.requiredSkillCount}`);
+                this.addPhaseRow('complete', `instructions read=${event.readCount} write=${event.writeCount}`, `skills=${event.requiredSkillCount}`);
                 if (this.verbose) {
                     this.line(this.dim(`  context read=${event.readCount} write=${event.writeCount} skills=${event.requiredSkillCount}`));
                 }
@@ -175,6 +359,9 @@ export class AutoConsoleRenderer {
             },
             phaseIncomplete: (event) => {
                 this.stopSpinner();
+                this.actionStatus = 'FAILED';
+                this.globalStatus = 'FAILED';
+                this.addPhaseRow('failed', this.t('phaseIncomplete'), event.reason);
                 this.logLine(`phase incomplete: ${event.reason}`);
                 for (const detail of event.details)
                     this.logLine(`phase incomplete detail: ${detail}`);
@@ -191,6 +378,9 @@ export class AutoConsoleRenderer {
                     this.logLine(`turn ${event.turn}`);
                     if (this.verbose)
                         this.line(this.dim(`  turn ${event.turn}`));
+                    this.actionStatus = 'THINKING';
+                    this.currentAction = `Brain is modeling the logic chains for turn ${event.turn}`;
+                    this.addPhaseRow('active', `[Thinking] turn ${event.turn}`, '正在尝试寻找逻辑链路的最优解...');
                     this.startSpinner(`thinking turn ${event.turn}`);
                 },
                 textDelta: (event) => {
@@ -218,6 +408,8 @@ export class AutoConsoleRenderer {
                     this.endAssistantText();
                     this.stopSpinner();
                     this.logLine(`tool use: ${event.tool.name} ${JSON.stringify(event.tool.input)}`);
+                    this.actionStatus = 'EXECUTING';
+                    this.currentAction = this.describeTool(event.tool);
                     if (this.verbose) {
                         this.line(`${this.bullet()} ${this.cyan(this.t('tool'))} ${this.describeTool(event.tool)}`);
                     }
@@ -233,20 +425,37 @@ export class AutoConsoleRenderer {
                     if (failed)
                         this.phaseFailures++;
                     this.logBlock(`tool result: ${event.tool.name} ${failed ? 'failed' : 'ok'}`, event.result);
+                    const summary = this.summarizeToolResult(event.tool, event.result, failed);
                     const status = failed ? this.red('failed') : this.green('ok');
-                    this.stopSpinner(`  ${this.branch()} ${status} ${this.describeToolResult(event.tool, event.result)}`);
+                    this.actionStatus = failed ? 'FAILED' : 'WAITING';
+                    this.currentAction = summary.headline;
+                    this.addPhaseRow(failed ? 'failed' : 'complete', `${failed ? 'failed' : 'completed'} ${toolDisplayName(event.tool.name)}`, summary.detail);
+                    this.stopSpinner(`  ${this.branch()} ${status} ${summary.headline}`);
+                    if (summary.omittedLines > 0) {
+                        this.registerCollapsedTranscript(event.tool, event.result, summary.omittedLines);
+                        this.line(this.dim(`    … +${summary.omittedLines} lines (ctrl + t to view transcript)`));
+                    }
+                    this.compactGap();
                 },
                 completionMarkerMissing: (event) => {
                     this.stopSpinner();
+                    this.actionStatus = 'WAITING';
+                    this.currentAction = `${this.t('waitingCompletion')} ${event.attempt}/${event.maxAttempts}`;
                     this.logLine(`completion marker missing: ${event.attempt}/${event.maxAttempts}`);
                     this.line(`${this.bullet()} ${this.yellow(`${this.t('waitingCompletion')} ${event.attempt}/${event.maxAttempts}`)}`);
                 },
             },
         };
+        this.setupKeyboardShortcuts();
     }
     finish(result) {
         this.stopSpinner();
         this.endAssistantText();
+        this.actionStatus = result.terminalCode === 'terminal_state' ? 'COMPLETE' : 'FAILED';
+        this.globalStatus = this.actionStatus;
+        this.currentAction = result.terminalReason;
+        this.renderStickyFooter();
+        this.clearStickyFooter();
         if (!this.headerPrinted) {
             this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
         }
@@ -262,9 +471,16 @@ export class AutoConsoleRenderer {
         if (this.logPath)
             this.field(this.t('log'), this.relativeLogPath());
         this.field(this.t('next'), result.terminalCode === 'terminal_state' ? 'qdd status --json' : this.t('nextInspect'));
+        this.restoreKeyboardShortcuts();
     }
     runStart(event) {
         this.projectRoot = event.projectRoot;
+        this.runModel = event.model;
+        this.runMode = event.dryRun ? this.t('dryRun') : this.t('live');
+        this.currentProposal = event.prompt?.trim() || (event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
+        this.currentAction = event.phase ? `${event.phase.command} ${event.phase.target}` : this.t('terminalState');
+        this.actionStatus = 'WAITING';
+        this.globalStatus = 'WAITING';
         this.openLog(event.projectRoot);
         this.logLine(`qdd auto start project=${event.projectRoot}`);
         this.logLine(`model=${event.model} maxIterations=${event.maxIterations} maxTurns=${maxTurnsLabel(event.maxTurnsPerAgent)} dryRun=${event.dryRun}`);
@@ -272,6 +488,7 @@ export class AutoConsoleRenderer {
             this.logBlock('prompt', event.prompt);
         this.headerPrinted = true;
         this.playIntroAnimation(event);
+        this.renderModernHeader();
         this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
         this.field(this.t('project'), event.projectRoot);
         this.field(this.t('model'), event.model);
@@ -282,6 +499,7 @@ export class AutoConsoleRenderer {
             this.field(this.t('log'), this.relativeLogPath(event.projectRoot));
         if (event.prompt?.trim())
             this.field(this.t('prompt'), compact(event.prompt, 100));
+        this.renderStickyFooter();
     }
     phaseStart(event) {
         this.stopSpinner();
@@ -291,12 +509,35 @@ export class AutoConsoleRenderer {
         this.lastModelNote = '';
         this.phaseFailures = 0;
         this.phaseWrites = 0;
+        const alias = phaseAliasForRole(event.role);
+        this.phaseDisplays.push({
+            alias: alias.alias,
+            tone: alias.tone,
+            role: event.role,
+            target: event.phase.target,
+            command: event.phase.command,
+            state: 'active',
+            rows: [
+                {
+                    state: 'active',
+                    text: `${event.label}`,
+                    detail: `${this.t('phase')} ${event.phase.phase}  ${this.t('command')} ${event.phase.command}  ${this.t('role')} ${event.role}`,
+                },
+            ],
+        });
+        this.activePhaseIndex = this.phaseDisplays.length - 1;
+        this.currentProposal = `${event.label} -> ${event.phase.target}`;
+        this.currentAction = `${event.phase.command} ${event.phase.target}`;
+        this.actionStatus = 'THINKING';
+        this.globalStatus = 'THINKING';
         this.logLine(`phase ${event.iteration}: ${event.phase.command} target=${event.phase.target} role=${event.role}`);
         if (this.headerPrinted || this.phaseCount > 0)
             this.line('');
         this.phaseCount++;
-        this.line(`${this.bullet()} ${this.blue(`[${event.iteration}]`)} ${this.bold(event.label)} ${this.dim(event.phase.target)}`);
-        this.line(`  ${this.branch()} ${this.dim(this.t('phase'))} ${event.phase.phase}  ${this.dim(this.t('command'))} ${this.cyan(event.phase.command)}  ${this.dim(this.t('role'))} ${this.magenta(event.role)}`);
+        this.line(`${this.phaseBullet(alias.alias, alias.tone)} ${this.paint(alias.tone, `[Phase: ${alias.alias}]`)} ${this.dim(event.phase.target)}`);
+        this.line(`  ${this.treeBranch(false)} ${this.bold(`▶ ${event.label}`)}`);
+        this.line(`     ${this.dim('⌙')} ${this.dim(this.t('phase'))} ${event.phase.phase}  ${this.dim(this.t('command'))} ${this.cyan(event.phase.command)}  ${this.dim(this.t('role'))} ${this.magenta(event.role)}`);
+        this.renderStickyFooter();
     }
     phaseResult(result) {
         this.stopSpinner();
@@ -311,16 +552,185 @@ export class AutoConsoleRenderer {
             this.phaseWrites > 0 ? `writes=${this.phaseWrites}` : '',
             this.phaseFailures > 0 ? `failures=${this.phaseFailures}` : '',
         ].filter(Boolean).join(' ');
-        this.line(`  ${this.branch()} ${status} ${this.dim(details)}`);
+        if (this.activePhaseIndex >= 0) {
+            this.phaseDisplays[this.activePhaseIndex].state = result.terminatedNormally ? 'complete' : 'failed';
+            this.addPhaseRow(result.terminatedNormally ? 'complete' : 'failed', `${result.status} ${details}`, result.failureReason ?? undefined);
+        }
+        this.actionStatus = result.terminatedNormally ? 'WAITING' : 'FAILED';
+        this.currentAction = `${result.status} ${details}`;
+        this.line(`  ${this.treeBranch(true)} ${result.terminatedNormally ? this.dim(`✔ ${result.status}`) : this.red(`✖ ${result.status}`)} ${this.dim(details)}`);
         if (result.failureReason)
-            this.line(`  ${this.branch()} ${this.red(`failure ${result.failureReason}`)}`);
+            this.line(`  ${this.treeBranch(true)} ${this.red(`failure ${result.failureReason}`)}`);
         if (this.verbose && result.finalMessage.trim()) {
             this.line(this.dim(`  final ${compact(stripCompletionMarker(result.finalMessage), 300)}`));
         }
+        this.renderStickyFooter();
     }
     field(label, value) {
         const labelText = label.padEnd(8);
         this.line(`${this.dim(labelText)}${this.truncate(value, Math.max(20, this.termWidth() - labelText.length))}`);
+    }
+    currentScreen() {
+        return {
+            width: this.termWidth(),
+            version: packageVersion ?? '0.0.0',
+            uptimeSeconds: (Date.now() - this.runStartedAt) / 1000,
+            globalStatus: this.globalStatus,
+            logoStatus: this.logoStatus(),
+            logoDensity: this.logoDensity(),
+            projectRoot: this.projectRoot ?? undefined,
+            model: this.runModel || undefined,
+            mode: this.runMode,
+            phases: this.phaseDisplays,
+            propose: this.currentProposal,
+            actionStatus: this.actionStatus,
+            action: this.currentAction,
+            timerSeconds: (Date.now() - this.runStartedAt) / 1000,
+        };
+    }
+    logoStatus() {
+        if (this.globalStatus === 'COMPLETE')
+            return 'happy';
+        if (this.globalStatus === 'THINKING' || this.actionStatus === 'THINKING')
+            return 'thinking';
+        return 'idle';
+    }
+    logoDensity() {
+        return this.termWidth() < 72 || this.termRows() < 18 ? 'compact' : 'full';
+    }
+    renderModernHeader() {
+        if (!this.stdout.isTTY)
+            return;
+        this.writeRaw(`${renderAutoConsoleHeader(this.currentScreen(), { color: this.useColor }).join('\n')}\n\n`);
+    }
+    renderStickyFooter() {
+        if (!this.canUseStickyFooter())
+            return;
+        const rows = this.termRows();
+        const footer = renderAutoConsoleFooter(this.currentScreen(), { color: this.useColor });
+        const firstFooterRow = rows - FOOTER_ROWS + 1;
+        this.footerActive = true;
+        this.writeRaw([
+            SYNC_START,
+            '\x1b7',
+            `\x1b[${firstFooterRow};1H\x1b[2K${footer[0]}`,
+            `\x1b[${firstFooterRow + 1};1H\x1b[2K${footer[1]}`,
+            '\x1b8',
+            SYNC_END,
+        ].join(''));
+    }
+    clearStickyFooter() {
+        if (!this.footerActive || !this.canUseStickyFooter()) {
+            this.footerActive = false;
+            return;
+        }
+        const rows = this.termRows();
+        const firstFooterRow = rows - FOOTER_ROWS + 1;
+        this.writeRaw([
+            SYNC_START,
+            '\x1b7',
+            `\x1b[${firstFooterRow};1H\x1b[2K`,
+            `\x1b[${firstFooterRow + 1};1H\x1b[2K`,
+            '\x1b8',
+            SYNC_END,
+        ].join(''));
+        this.footerActive = false;
+    }
+    canUseStickyFooter() {
+        return Boolean(this.stdout.isTTY && this.termRows() >= 8);
+    }
+    setupKeyboardShortcuts() {
+        if (this.verbose || process.env.CI || !this.stdout.isTTY || !this.stdin?.isTTY)
+            return;
+        try {
+            this.inputWasRaw = Boolean(this.stdin.isRaw);
+            this.stdin.setRawMode?.(true);
+            this.stdin.resume?.();
+            this.stdin.on('data', this.inputListener);
+            this.keyboardActive = true;
+        }
+        catch {
+            this.keyboardActive = false;
+        }
+    }
+    restoreKeyboardShortcuts() {
+        if (!this.keyboardActive || !this.stdin)
+            return;
+        this.stdin.off?.('data', this.inputListener);
+        this.stdin.removeListener?.('data', this.inputListener);
+        try {
+            if (!this.inputWasRaw)
+                this.stdin.setRawMode?.(false);
+        }
+        catch {
+            // Best effort only; the process may already be exiting.
+        }
+        this.keyboardActive = false;
+    }
+    handleInput(chunk) {
+        const value = Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : chunk;
+        if (value.includes('\u0003')) {
+            this.restoreKeyboardShortcuts();
+            process.kill(process.pid, 'SIGINT');
+            return;
+        }
+        if (!value.includes('\u0014'))
+            return;
+        this.showCollapsedTranscript();
+    }
+    registerCollapsedTranscript(tool, content, omittedLines) {
+        this.collapsedTranscripts.push({
+            title: this.describeTool(tool),
+            content,
+            omittedLines,
+        });
+        this.transcriptCursor = this.collapsedTranscripts.length - 1;
+    }
+    showCollapsedTranscript() {
+        const index = this.transcriptCursor < 0 ? this.collapsedTranscripts.length - 1 : this.transcriptCursor;
+        if (this.expandedTranscriptIndex === index && this.transcriptPanelRows > 0) {
+            this.clearTranscriptPanel();
+            this.renderStickyFooter();
+            return;
+        }
+        this.clearTranscriptPanel();
+        this.clearStickyFooter();
+        if (this.collapsedTranscripts.length === 0) {
+            this.line(`${this.bullet()} ${this.dim('No collapsed transcript available')}`);
+            this.renderStickyFooter();
+            return;
+        }
+        const transcript = this.collapsedTranscripts[index];
+        const panelLines = [
+            '',
+            this.dim('─'.repeat(Math.min(120, this.termWidth()))),
+            `${this.bullet()} ${this.bold(`Transcript ${index + 1}/${this.collapsedTranscripts.length}`)} ${this.dim(transcript.title)}`,
+            this.dim(`  expanded ${transcript.omittedLines} folded lines`),
+            ...transcript.content
+                .replace(/\r\n/g, '\n')
+                .split('\n')
+                .map((line) => `  ${this.dim('│')} ${this.truncate(line, Math.max(20, this.termWidth() - 6))}`),
+            this.dim('─'.repeat(Math.min(120, this.termWidth()))),
+        ];
+        for (const line of panelLines)
+            this.line(line);
+        this.expandedTranscriptIndex = index;
+        this.transcriptPanelRows = panelLines.length;
+        this.renderStickyFooter();
+    }
+    clearTranscriptPanel() {
+        if (this.transcriptPanelRows <= 0)
+            return;
+        const clearLines = Array.from({ length: this.transcriptPanelRows }, () => '\r\x1b[2K').join('\n');
+        this.writeRaw(`${SYNC_START}\x1b[${this.transcriptPanelRows}A${clearLines}\r\x1b[2K${SYNC_END}`);
+        this.expandedTranscriptIndex = -1;
+        this.transcriptPanelRows = 0;
+    }
+    addPhaseRow(state, text, detail) {
+        if (this.activePhaseIndex < 0)
+            return;
+        this.phaseDisplays[this.activePhaseIndex].rows.push({ state, text: compact(text, 180), detail: detail ? compact(detail, 220) : undefined });
+        this.renderStickyFooter();
     }
     line(value) {
         this.writeWithSpinnerCleared(`${value}\n`);
@@ -336,19 +746,30 @@ export class AutoConsoleRenderer {
             return;
         const target = event.phase ? `${event.phase.phase}:${event.phase.target}` : 'terminal';
         const frames = [
-            { bar: '[=         ]', label: 'booting autonomous loop', tone: 'cyan' },
-            { bar: '[===       ]', label: 'loading qdd protocol', tone: 'blue' },
-            { bar: '[=====     ]', label: `syncing target ${target}`, tone: 'magenta' },
-            { bar: '[=======   ]', label: 'starting agent runtime', tone: 'cyan' },
-            { bar: '[========= ]', label: 'opening run log', tone: 'blue' },
-            { bar: '[==========]', label: 'ready', tone: 'green' },
+            { bar: '[=         ]', label: 'booting autonomous loop', tone: 'cyan', bear: 'idle' },
+            { bar: '[===       ]', label: 'loading qdd protocol', tone: 'blue', bear: 'thinking' },
+            { bar: '[=====     ]', label: `syncing target ${target}`, tone: 'magenta', bear: 'thinking' },
+            { bar: '[=======   ]', label: 'starting agent runtime', tone: 'cyan', bear: 'idle' },
+            { bar: '[========= ]', label: 'opening run log', tone: 'blue', bear: 'thinking' },
+            { bar: '[==========]', label: 'ready', tone: 'green', bear: 'happy' },
         ];
+        let renderedRows = 0;
         for (const frame of frames) {
-            const line = `  ${this.title('qdd auto')} ${this.paint(frame.tone, frame.bar)} ${this.truncate(frame.label, Math.max(18, this.termWidth() - 26))}`;
-            this.writeRaw(`${SYNC_START}\r\x1b[K${line}${SYNC_END}`);
+            const bear = getBearArt(frame.bear, 'compact');
+            const status = `${this.title('qdd auto')} ${this.paint(frame.tone, frame.bar)} ${this.truncate(frame.label, Math.max(18, this.termWidth() - 26))}`;
+            const block = [
+                ...bear.map((line, index) => `  ${this.paint(frame.tone, line.padEnd(13))}${index === 1 ? `  ${status}` : ''}`),
+                `  ${this.dim('┄'.repeat(Math.min(54, this.termWidth())))}`,
+            ];
+            const rewind = renderedRows > 0 ? `\x1b[${renderedRows}A` : '';
+            this.writeRaw(`${SYNC_START}${rewind}${block.map((line) => `\r\x1b[K${line}`).join('\n')}\n${SYNC_END}`);
+            renderedRows = block.length;
             this.sleepSync(INTRO_FRAME_DELAY_MS);
         }
-        this.writeRaw(`${SYNC_START}\r\x1b[K${SYNC_END}`);
+        const clear = renderedRows > 0
+            ? `\x1b[${renderedRows}A${Array.from({ length: renderedRows }, () => '\r\x1b[K').join('\n')}\r\x1b[K`
+            : '\r\x1b[K';
+        this.writeRaw(`${SYNC_START}${clear}${SYNC_END}`);
     }
     sleepSync(ms) {
         const buffer = new SharedArrayBuffer(4);
@@ -388,6 +809,7 @@ export class AutoConsoleRenderer {
         this.lastModelNote = note;
         this.line(`${this.bullet()} ${this.magenta(this.t('modelEvent'))}`);
         this.line(`  ${this.branch()} ${this.truncate(note, Math.max(20, this.termWidth() - 6))}`);
+        this.compactGap();
     }
     extractModelNote(text) {
         const cleaned = stripCompletionMarker(text)
@@ -474,6 +896,48 @@ export class AutoConsoleRenderer {
             return compact(result, 180);
         return compact(result, this.verbose ? 500 : 180) || 'no output';
     }
+    summarizeToolResult(tool, result, failed) {
+        if (this.verbose) {
+            return {
+                headline: this.describeToolResult(tool, result),
+                omittedLines: 0,
+            };
+        }
+        if (tool.name === 'read' && !failed) {
+            return {
+                headline: `read ${String(tool.input.path ?? '')} (${result.length} chars)`,
+                detail: `${result.length} chars`,
+                omittedLines: 0,
+            };
+        }
+        if (tool.name === 'write' && !failed) {
+            return {
+                headline: compact(result, RESULT_INLINE_CHAR_LIMIT),
+                detail: compact(result, RESULT_INLINE_CHAR_LIMIT),
+                omittedLines: 0,
+            };
+        }
+        const lines = normalizedLines(result);
+        const prefix = failed ? `${this.describeTool(tool)} :: ` : '';
+        const firstLines = lines.slice(0, RESULT_INLINE_LINE_LIMIT);
+        const visibleText = firstLines.length > 0 ? firstLines.join(' ') : 'no output';
+        const omittedLines = Math.max(0, lines.length - firstLines.length);
+        const headline = `${prefix}${compact(visibleText, RESULT_INLINE_CHAR_LIMIT)}`;
+        if (failed && tool.name === 'read' && result.includes('outside the allowed project/package roots')) {
+            return {
+                headline: `${this.describeTool(tool)} :: blocked outside project/package roots; full error in log`,
+                detail: 'blocked outside project/package roots; full error in log',
+                omittedLines,
+            };
+        }
+        return {
+            headline,
+            detail: omittedLines > 0
+                ? `${compact(visibleText, RESULT_INLINE_CHAR_LIMIT)} … +${omittedLines} lines`
+                : headline,
+            omittedLines,
+        };
+    }
     describeCompactAction(tool) {
         if (tool.name === 'read') {
             const targetPath = String(tool.input.path ?? '');
@@ -503,7 +967,17 @@ export class AutoConsoleRenderer {
         if (this.verbose || action === this.currentCompactAction)
             return;
         this.currentCompactAction = action;
+        this.currentAction = action;
+        this.actionStatus = 'WAITING';
+        this.addPhaseRow('active', action);
         this.line(`${this.bullet()} ${this.blue(this.truncate(action, Math.max(20, this.termWidth() - 2)))}`);
+        this.compactGap();
+        this.renderStickyFooter();
+    }
+    compactGap() {
+        if (this.verbose)
+            return;
+        this.line('');
     }
     describeFailure(tool, result) {
         if (tool.name === 'read' && result.includes('outside the allowed project/package roots')) {
@@ -520,8 +994,14 @@ export class AutoConsoleRenderer {
     bullet() {
         return this.cyan('•');
     }
+    phaseBullet(alias, tone) {
+        return this.paint(tone, phaseIcon(alias));
+    }
     branch() {
         return this.dim('└');
+    }
+    treeBranch(last) {
+        return this.dim(last ? '└─' : '├─');
     }
     separator() {
         this.line(this.dim('─'.repeat(Math.min(120, this.termWidth()))));
@@ -617,15 +1097,19 @@ export class AutoConsoleRenderer {
         if (this.spinnerTimer === null)
             return;
         this.writeRaw(`${SYNC_START}${this.formatSpinnerFrame()}${SYNC_END}`);
+        this.renderStickyFooter();
     }
     formatSpinnerFrame() {
-        const frames = ['|', '/', '-', '\\'];
+        const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'];
         const frame = frames[this.spinnerFrameIndex % frames.length];
         this.spinnerFrameIndex++;
         return `\r${this.bullet()} ${this.dim(frame)} ${this.spinnerText}\x1b[K`;
     }
     termWidth() {
         return this.stdout.columns && this.stdout.columns > 0 ? this.stdout.columns : 100;
+    }
+    termRows() {
+        return this.stdout.rows && this.stdout.rows > 0 ? this.stdout.rows : 30;
     }
     truncate(value, maxLength) {
         if (value.length <= maxLength)

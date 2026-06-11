@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
+import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
@@ -16,11 +17,22 @@ import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
 import { createStudy } from '../services/studies.js';
 import { createTask } from '../services/tasks.js';
-import { createAutoConsoleRenderer } from '../ui/auto-stream.js';
+import { autoCommand } from '../commands/auto.js';
+import { createAutoConsoleRenderer, renderAutoConsoleFrame } from '../ui/auto-stream.js';
 async function createTempProject(prefix, options = {}) {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
     await initCommand(projectRoot, { tools: options.tools ?? ['claude'] });
     return projectRoot;
+}
+class TestInputStream extends EventEmitter {
+    isTTY = true;
+    isRaw = false;
+    setRawMode(mode) {
+        this.isRaw = mode;
+    }
+    resume() {
+        // Test stream has no paused state.
+    }
 }
 async function setTaskCompleted(projectRoot, studyId, taskId) {
     const relativePath = `studies/${studyId}/tasks/${taskId}.md`;
@@ -259,11 +271,209 @@ test('qdd auto console renderer emits compact non-tty output', async () => {
     assert.match(output, /qdd auto autonomous research loop/);
     assert.match(output, /mode    dry-run/);
     assert.match(output, /limits  1 phases, unlimited turns\/session/);
-    assert.match(output, /\[1\] Thesis Manager \(qdd-start\) PROJECT/);
+    assert.match(output, /🔴 \[Phase: Thesis Manager\] PROJECT/);
+    assert.match(output, /├─ ▶ Thesis Manager \(qdd-start\)/);
+    assert.match(output, /⌙ phase start  command qdd-start  role thesis-manager/);
     assert.match(output, /dry-run system prompt qdd-start\.md/);
     assert.match(output, /Result max_iterations/);
     assert.match(output, /log     \.qdd\/runs\/auto-/);
     assert.doesNotMatch(output, /\x1b\[/);
+});
+test('qdd auto console frame renders modern header phases and footer', () => {
+    const output = renderAutoConsoleFrame({
+        width: 92,
+        version: '0.1.0',
+        uptimeSeconds: 12,
+        globalStatus: 'THINKING',
+        logoStatus: 'thinking',
+        logoDensity: 'compact',
+        projectRoot: '/tmp/project',
+        model: 'test-model',
+        mode: 'live',
+        propose: '评估当前研究方法是否包含潜在的循环论证风险？',
+        actionStatus: 'THINKING',
+        action: 'Brain is modeling the logic chains...',
+        timerSeconds: 12,
+        phases: [
+            {
+                alias: 'Thesis Manager',
+                tone: 'coral',
+                role: 'thesis-manager',
+                target: 'PROJECT',
+                command: 'qdd-start',
+                state: 'complete',
+                rows: [
+                    { state: 'complete', text: '已解析当前 Prompt 的上下文结构' },
+                    { state: 'complete', text: '任务拆解完成，已移交 Study Brain' },
+                ],
+            },
+            {
+                alias: 'Study Brain',
+                tone: 'violet',
+                role: 'study-brain',
+                target: 'STUDY-001',
+                command: 'qdd-propose',
+                state: 'active',
+                rows: [
+                    { state: 'complete', text: '检索已有知识库完成 (100% Match)' },
+                    { state: 'active', text: '[Thinking] 正在构建多维特征关联图谱...', detail: '正在尝试寻找逻辑链路的最优解...' },
+                ],
+            },
+            {
+                alias: 'Executor',
+                tone: 'mint',
+                role: 'executor',
+                target: 'TASK-001',
+                command: 'qdd-apply',
+                state: 'pending',
+                rows: [],
+            },
+        ],
+    }, { color: false });
+    assert.match(output, /QDD AUTO modern multi-agent research loop/);
+    assert.match(output, /v0\.1\.0  up 00:12  THINKING/);
+    assert.match(output, /🔴 \[Phase: Thesis Manager\]/);
+    assert.match(output, /🟣 \[Phase: Study Brain\]/);
+    assert.match(output, /🟢 \[Phase: Executor\]/);
+    assert.match(output, /├─ ✔ 已解析当前 Prompt 的上下文结构/);
+    assert.match(output, /└─ ▶ \[Thinking\] 正在构建多维特征关联图谱/);
+    assert.match(output, /⌙ 正在尝试寻找逻辑链路的最优解/);
+    assert.match(output, / PROPOSE  评估当前研究方法/);
+    assert.match(output, / THINKING   ⠹ Brain is modeling the logic chains... \[00:12\]/);
+});
+test('qdd auto console renderer anchors sticky footer for tty output', () => {
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        intro: false,
+        stdout: {
+            columns: 88,
+            rows: 24,
+            isTTY: true,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    renderer.events.runStart?.({
+        projectRoot: '/tmp/qdd-project',
+        phase: { phase: 'start', target: 'PROJECT', command: 'qdd-start' },
+        model: 'test-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: 3,
+        dryRun: false,
+        prompt: 'Investigate the current hypothesis.',
+    });
+    renderer.events.phaseStart?.({
+        iteration: 1,
+        phase: { phase: 'propose', target: 'STUDY-001', command: 'qdd-propose' },
+        label: 'Study Brain (qdd-propose)',
+        role: 'study-brain',
+    });
+    const output = chunks.join('');
+    assert.match(output, /QDD AUTO modern multi-agent research loop/);
+    assert.match(output, / PROPOSE  Investigate the current hypothesis\./);
+    assert.match(output, /\x1b\[23;1H\x1b\[2K/);
+    assert.match(output, /🟣 \[Phase: Study Brain\]/);
+});
+test('qdd auto console renderer collapses long tool transcripts in compact mode', () => {
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        stdout: {
+            columns: 100,
+            isTTY: false,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    renderer.events.runStart?.({
+        projectRoot: '/tmp/qdd-project',
+        phase: { phase: 'apply', target: 'TASK-001', command: 'qdd-apply' },
+        model: 'test-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: 3,
+        dryRun: false,
+        prompt: 'Inspect data.',
+    });
+    renderer.events.phaseStart?.({
+        iteration: 1,
+        phase: { phase: 'apply', target: 'TASK-001', command: 'qdd-apply' },
+        label: 'Executor (qdd-apply)',
+        role: 'executor',
+    });
+    renderer.events.agent?.toolUse?.({
+        turn: 1,
+        tool: { id: 'tool-1', name: 'bash', input: { command: 'python inspect.py' } },
+    });
+    renderer.events.agent?.toolResult?.({
+        turn: 1,
+        tool: { id: 'tool-1', name: 'bash', input: { command: 'python inspect.py' } },
+        result: ['line 1', 'line 2', 'line 3', 'line 4', 'line 5'].join('\n'),
+    });
+    const output = chunks.join('');
+    assert.match(output, /Ran python inspect\.py/);
+    assert.match(output, /└ ok line 1 line 2/);
+    assert.match(output, /… \+3 lines \(ctrl \+ t to view transcript\)/);
+    assert.doesNotMatch(output, /line 5/);
+});
+test('qdd auto console renderer toggles latest collapsed transcript with ctrl+t', () => {
+    const chunks = [];
+    const stdin = new TestInputStream();
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        intro: false,
+        stdin,
+        stdout: {
+            columns: 100,
+            rows: 24,
+            isTTY: true,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    renderer.events.runStart?.({
+        projectRoot: '/tmp/qdd-project',
+        phase: { phase: 'apply', target: 'TASK-001', command: 'qdd-apply' },
+        model: 'test-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: 3,
+        dryRun: false,
+        prompt: 'Inspect data.',
+    });
+    renderer.events.phaseStart?.({
+        iteration: 1,
+        phase: { phase: 'apply', target: 'TASK-001', command: 'qdd-apply' },
+        label: 'Executor (qdd-apply)',
+        role: 'executor',
+    });
+    renderer.events.agent?.toolUse?.({
+        turn: 1,
+        tool: { id: 'tool-1', name: 'bash', input: { command: 'python inspect.py' } },
+    });
+    renderer.events.agent?.toolResult?.({
+        turn: 1,
+        tool: { id: 'tool-1', name: 'bash', input: { command: 'python inspect.py' } },
+        result: ['line 1', 'line 2', 'line 3', 'line 4', 'line 5'].join('\n'),
+    });
+    const beforeShortcut = chunks.join('');
+    assert.doesNotMatch(beforeShortcut, /│ line 5/);
+    stdin.emit('data', Buffer.from('\u0014'));
+    const output = chunks.join('');
+    assert.equal(stdin.isRaw, true);
+    assert.match(output, /Transcript 1\/1 \$ python inspect\.py/);
+    assert.match(output, /expanded 3 folded lines/);
+    assert.match(output, /│ line 5/);
+    const chunkCountAfterExpand = chunks.length;
+    stdin.emit('data', Buffer.from('\u0014'));
+    const collapseOutput = chunks.slice(chunkCountAfterExpand).join('');
+    assert.match(collapseOutput, /\x1b\[[0-9]+A/);
+    assert.match(collapseOutput, /\x1b\[2K/);
 });
 test('qdd auto console renderer shows visible model notes without completion marker', async () => {
     const projectRoot = await createTempProject('qdd-auto-model-note-');
@@ -341,8 +551,36 @@ test('qdd auto console renderer supports Chinese labels', async () => {
     const output = chunks.join('');
     assert.match(output, /qdd auto 自主研究循环/);
     assert.match(output, /项目\s+\//);
-    assert.match(output, /└ 阶段 start  命令 qdd-start  角色 thesis-manager/);
+    assert.match(output, /🔴 \[Phase: Thesis Manager\]/);
+    assert.match(output, /⌙ 阶段 start  命令 qdd-start  角色 thesis-manager/);
     assert.match(output, /• 结果 max_iterations/);
+});
+test('qdd auto json command stays machine-readable without tui fields', async () => {
+    const projectRoot = await createTempProject('qdd-auto-json-');
+    const writes = [];
+    const originalLog = console.log;
+    console.log = (value) => {
+        writes.push(String(value));
+    };
+    try {
+        await autoCommand(projectRoot, undefined, {
+            model: 'dry-run-model',
+            maxIterations: '1',
+            maxTurns: 'none',
+            dryRun: true,
+            json: true,
+        });
+    }
+    finally {
+        console.log = originalLog;
+    }
+    const output = writes.join('\n');
+    const parsed = JSON.parse(output);
+    assert.equal(parsed.terminalCode, 'max_iterations');
+    assert.equal(Array.isArray(parsed.phases), true);
+    assert.doesNotMatch(output, /\x1b\[/);
+    assert.doesNotMatch(output, /PROPOSE/);
+    assert.doesNotMatch(output, /QDD AUTO/);
 });
 test('qdd init creates the new protocol scaffold and bootstrap assets', async () => {
     const projectRoot = await createTempProject('qdd-init-');
