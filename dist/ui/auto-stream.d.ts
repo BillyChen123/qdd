@@ -1,8 +1,20 @@
 import type { AutoResult, AutoRunEvents } from '../runtime/orchestrator.js';
+import { type HomeHeroDensity, type TuiShellStatus } from './tui-home-art.js';
 interface OutputStream {
     columns?: number;
+    rows?: number;
     isTTY?: boolean;
     write(chunk: string): boolean;
+}
+interface InputStream {
+    isTTY?: boolean;
+    isRaw?: boolean;
+    setRawMode?: (mode: boolean) => void;
+    resume?: () => void;
+    pause?: () => void;
+    on(event: 'data', listener: (chunk: Buffer | string) => void): unknown;
+    off?: (event: 'data', listener: (chunk: Buffer | string) => void) => unknown;
+    removeListener?: (event: 'data', listener: (chunk: Buffer | string) => void) => unknown;
 }
 declare const text: {
     readonly en: {
@@ -75,14 +87,56 @@ declare const text: {
 export type AutoConsoleLocale = keyof typeof text;
 export interface AutoConsoleRendererOptions {
     stdout?: OutputStream;
+    stdin?: InputStream;
     color?: boolean;
     intro?: boolean;
     locale?: AutoConsoleLocale;
     verbose?: boolean;
 }
+type PhaseAlias = 'Thesis Manager' | 'Study Brain' | 'Executor';
+type PhaseTone = 'coral' | 'violet' | 'mint';
+type RowState = 'complete' | 'active' | 'pending' | 'failed';
+type FooterStatus = 'THINKING' | 'EXECUTING' | 'WAITING' | 'COMPLETE' | 'FAILED';
+interface PhaseDisplay {
+    alias: PhaseAlias;
+    tone: PhaseTone;
+    role: string;
+    target: string;
+    command: string;
+    state: RowState;
+    rows: Array<{
+        state: RowState;
+        text: string;
+        detail?: string;
+    }>;
+}
+interface AutoConsoleScreen {
+    width: number;
+    version: string;
+    uptimeSeconds: number;
+    globalStatus: FooterStatus;
+    logoStatus: TuiShellStatus;
+    logoDensity: HomeHeroDensity;
+    projectRoot?: string;
+    model?: string;
+    mode?: string;
+    phases: PhaseDisplay[];
+    propose: string;
+    actionStatus: FooterStatus;
+    action: string;
+    timerSeconds: number;
+}
+export interface AutoConsoleFrameOptions {
+    color?: boolean;
+}
+export declare function renderAutoConsoleHeader(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string[];
+export declare function renderAutoConsoleBody(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string[];
+export declare function renderAutoConsoleFooter(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string[];
+export declare function renderAutoConsoleFrame(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string;
 export declare class AutoConsoleRenderer {
     readonly events: AutoRunEvents;
     private readonly stdout;
+    private readonly stdin;
     private readonly locale;
     private readonly useColor;
     private readonly useIntro;
@@ -103,12 +157,43 @@ export declare class AutoConsoleRenderer {
     private phaseWrites;
     private logPath;
     private projectRoot;
+    private readonly runStartedAt;
+    private currentProposal;
+    private currentAction;
+    private actionStatus;
+    private globalStatus;
+    private runModel;
+    private runMode;
+    private phaseDisplays;
+    private activePhaseIndex;
+    private footerActive;
+    private readonly collapsedTranscripts;
+    private transcriptCursor;
+    private expandedTranscriptIndex;
+    private transcriptPanelRows;
+    private keyboardActive;
+    private inputWasRaw;
+    private readonly inputListener;
     constructor(options?: AutoConsoleRendererOptions);
     finish(result: AutoResult): void;
     private runStart;
     private phaseStart;
     private phaseResult;
     private field;
+    private currentScreen;
+    private logoStatus;
+    private logoDensity;
+    private renderModernHeader;
+    private renderStickyFooter;
+    private clearStickyFooter;
+    private canUseStickyFooter;
+    private setupKeyboardShortcuts;
+    private restoreKeyboardShortcuts;
+    private handleInput;
+    private registerCollapsedTranscript;
+    private showCollapsedTranscript;
+    private clearTranscriptPanel;
+    private addPhaseRow;
     private line;
     private write;
     private writeRaw;
@@ -126,13 +211,17 @@ export declare class AutoConsoleRenderer {
     private describeToolStart;
     private toolStart;
     private describeToolResult;
+    private summarizeToolResult;
     private describeCompactAction;
     private compactAction;
+    private compactGap;
     private describeFailure;
     private bold;
     private t;
     private bullet;
+    private phaseBullet;
     private branch;
+    private treeBranch;
     private separator;
     private title;
     private dim;
@@ -152,6 +241,7 @@ export declare class AutoConsoleRenderer {
     private renderSpinner;
     private formatSpinnerFrame;
     private termWidth;
+    private termRows;
     private truncate;
     private relativeLogPath;
 }
