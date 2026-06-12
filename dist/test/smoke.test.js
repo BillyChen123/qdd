@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
-import { executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
+import { executeAgentToolForTest, executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
 import { captureManagedPathSnapshot, checkTermination, computeInitialPhase, computeNextPhaseAfterCompletedPhase, inferAutoVisibleLanguage, inspectAutoPhaseDrift, runAuto, safeReadAutoStatus, } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
@@ -306,6 +306,90 @@ test('agent bash tool rejects commands that leave the project root', async () =>
     const blockedSubshellOutput = await executeProjectBashForTest(projectRoot, `(cd ${JSON.stringify(outsideRoot)} && pwd -P)`);
     assert.match(blockedSubshellOutput, /left QDD project root/);
     assert.match(blockedSubshellOutput, /\[exit code: 125\]/);
+});
+test('agent write tool rejects invalid managed Markdown without overwriting existing content', async () => {
+    const projectRoot = await createTempProject('qdd-managed-write-md-');
+    const { studyId } = await createStudy(projectRoot, {
+        question: 'Can managed writes reject invalid frontmatter?',
+        hypothesis: 'Invalid managed Markdown should be rejected before disk mutation.',
+    });
+    const { taskId } = await createTask(projectRoot, studyId, {
+        goal: 'Produce one valid task before attempting an invalid overwrite.',
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const relativePath = `studies/${studyId}/tasks/${taskId}.md`;
+    const before = await fs.readFile(path.join(projectRoot, relativePath), 'utf-8');
+    const invalidContent = [
+        '---',
+        `task_id: ${taskId}`,
+        `study_id: ${studyId}`,
+        'goal: Produce one valid task before attempting an invalid overwrite.',
+        'status: completed',
+        'expected_outputs: []',
+        'depends_on: []',
+        'skills: []',
+        'promotion_status: candidate-recorded',
+        'artifact_ids: []',
+        'result_summary: 32 publications captured. Key related work: Nature 2024 atlas.',
+        '---',
+        '',
+        '## Result Summary',
+        '',
+        'Invalid frontmatter should never land on disk.',
+        '',
+    ].join('\n');
+    const result = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-1',
+        name: 'write',
+        input: {
+            path: relativePath,
+            content: invalidContent,
+        },
+    });
+    assert.match(result, /invalid YAML frontmatter/);
+    assert.match(result, /Nested mappings are not allowed|bad indentation|implicit map keys/i);
+    assert.equal(await fs.readFile(path.join(projectRoot, relativePath), 'utf-8'), before);
+});
+test('agent write tool rejects invalid managed YAML and allows non-managed outputs', async () => {
+    const projectRoot = await createTempProject('qdd-managed-write-yaml-');
+    const { studyId } = await createStudy(projectRoot, {
+        question: 'Can managed YAML writes be guarded?',
+        hypothesis: 'Invalid managed YAML should be rejected while normal outputs stay writable.',
+    });
+    const candidatePath = `studies/${studyId}/output/artifact-candidates.yaml`;
+    const before = await fs.readFile(path.join(projectRoot, candidatePath), 'utf-8');
+    const invalidYamlResult = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-1',
+        name: 'write',
+        input: {
+            path: candidatePath,
+            content: [
+                'artifact_candidates:',
+                '  - path: studies/STUDY-001/output/tables/a.csv',
+                '    type: table',
+                '    description: Key related work: Nature 2024 atlas',
+            ].join('\n'),
+        },
+    });
+    assert.match(invalidYamlResult, /Managed YAML file/);
+    assert.equal(await fs.readFile(path.join(projectRoot, candidatePath), 'utf-8'), before);
+    const outputPath = `studies/${studyId}/output/reports/freeform.md`;
+    const outputResult = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-2',
+        name: 'write',
+        input: {
+            path: outputPath,
+            content: [
+                '# Freeform Report',
+                '',
+                'This ordinary output can contain malformed YAML-looking prose:',
+                'result_summary: Key related work: Nature 2024 atlas',
+                '',
+            ].join('\n'),
+        },
+    });
+    assert.match(outputResult, /File written:/);
+    assert.match(await fs.readFile(path.join(projectRoot, outputPath), 'utf-8'), /Key related work: Nature 2024 atlas/);
 });
 test('qdd auto dry-run sequences two cycles without mutating project state', async () => {
     const projectRoot = await createTempProject('qdd-auto-dry-run-');
@@ -907,6 +991,10 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     const schemaReference = await fs.readFile(path.join(projectRoot, '.qdd', 'schema-reference.md'), 'utf-8');
     assert.match(schemaReference, /contract\.yaml/);
     assert.match(schemaReference, /task\.example\.md/);
+    assert.match(schemaReference, /Global YAML And Frontmatter Safety/);
+    assert.match(schemaReference, /Keep managed Markdown frontmatter short and machine-readable/);
+    assert.match(schemaReference, /block scalar such as `>-`/);
+    assert.match(schemaReference, /Result Summary/);
     assert.match(schemaReference, /Optional human-readable descriptions may follow/);
     assert.match(schemaReference, /Use type=table for reusable tabular outputs/);
     const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
@@ -927,6 +1015,8 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.doesNotMatch(proposeCommand, /qdd boundaries score/);
     assert.doesNotMatch(proposeCommand, /question_delta|evolution_trail/);
     const applyCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md'), 'utf-8');
+    assert.match(applyCommand, /Keep managed Markdown frontmatter short and machine-readable/);
+    assert.match(applyCommand, /Result Summary/);
     assert.doesNotMatch(applyCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(applyCommand, /question_delta|evolution_trail/);
     const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
@@ -994,6 +1084,8 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.equal(proposeInstructions.role, 'study-brain');
     assert.ok(proposeInstructions.required_skills.includes('brain/singlecell/scrna-planning'));
     assert.ok(proposeInstructions.rules.includes('Keep human propose as the highest semantic authority; treat prior candidates in evolution.yaml only as suggestions.'));
+    assert.ok(proposeInstructions.rules.includes('Keep managed Markdown frontmatter short and machine-readable; put long natural-language rationale, blockers, evidence, and result summaries in Markdown body sections.'));
+    assert.ok(proposeInstructions.rules.includes('When hand-writing natural-language YAML values in managed frontmatter or artifact-candidates.yaml, quote them or use a block scalar such as `>-`.'));
     const taskInstructions = await buildInstructions(projectRoot, taskId, { command: 'qdd-apply' });
     assert.equal(taskInstructions.role, 'executor');
     assert.ok(taskInstructions.read.includes('.qdd/schema-reference.md'));
@@ -1002,6 +1094,8 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(taskInstructions.read.includes(`studies/${studyId}/tasks/${taskId}.md`));
     assert.ok(taskInstructions.rules.includes('You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.'));
     assert.ok(taskInstructions.rules.includes('Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.'));
+    assert.ok(taskInstructions.rules.includes('Keep task frontmatter short and machine-readable; put long task outcomes in the Markdown body `Result Summary` section.'));
+    assert.ok(taskInstructions.rules.includes('When hand-writing natural-language YAML values in task frontmatter or artifact-candidates.yaml, quote them or use a block scalar such as `>-`.'));
     assert.ok(!taskInstructions.read.includes('boundaries.yaml'));
 });
 test('qdd closeStudy promotes candidates and writes evolution, memory, and research-map', async () => {
@@ -1149,6 +1243,7 @@ test('generated managed-file examples stay aligned with validation and task skil
     const parsedSkillSection = parseTaskSkillSection(taskDocument.body);
     assert.equal(parsedSkillSection.present, true);
     assert.deepEqual(parsedSkillSection.skillIds, ['singlecell/scrna/sc-batch-integration']);
+    assert.match(taskDocument.body, /## Result Summary/);
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, true);
 });

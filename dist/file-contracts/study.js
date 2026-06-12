@@ -95,6 +95,8 @@ export const studyFileContract = {
     ],
     notes: [
         'Frontmatter remains the machine-readable truth source.',
+        'Keep frontmatter concise. Long question rationale, hypothesis context, blocker detail, and evidence prose belong in the matching Markdown body sections.',
+        'If hand-written frontmatter must include natural language, quote it or use a YAML block scalar such as `>-`.',
         'The body should stay aligned with the frontmatter, not drift into a separate plan.',
     ],
     renderExample: () => renderStudyMarkdown(createExampleStudyRecord()),

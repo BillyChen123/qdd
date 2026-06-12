@@ -51,6 +51,7 @@ export interface AgentRunEvents {
     }) => void;
 }
 export declare function executeProjectBashForTest(cwd: string, command: string, timeoutMs?: number): Promise<string>;
+export declare function executeAgentToolForTest(cwd: string, tool: AgentToolCall): Promise<string>;
 interface ClaudeSettings {
     ANTHROPIC_AUTH_TOKEN?: string;
     ANTHROPIC_API_KEY?: string;

@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { parseYaml } from '../utils/yaml.js';
 
 export interface AgentRunnerOptions {
   model: string;
@@ -90,6 +91,7 @@ const TOOLS: Tool[] = [BASH_TOOL, READ_TOOL, WRITE_TOOL];
 const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MAX_COMPLETION_MARKER_RETRIES = 2;
 const VERBOSE_RESULT_EXCERPT_LENGTH = 600;
+const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 function normalizeRoot(root: string): string {
   return path.resolve(root);
@@ -121,6 +123,47 @@ function resolvePathForWrite(cwd: string, inputPath: string): string {
     throw new Error(`Write path '${inputPath}' is outside the project root.`);
   }
   return resolved;
+}
+
+function toProjectRelativePath(cwd: string, filePath: string): string {
+  return path.relative(cwd, filePath).split(path.sep).join('/');
+}
+
+function isManagedMarkdownPath(relativePath: string): boolean {
+  return /^studies\/STUDY-\d{3}\/study\.md$/.test(relativePath)
+    || /^studies\/STUDY-\d{3}\/tasks\/TASK-\d{3}\.md$/.test(relativePath);
+}
+
+function isManagedYamlPath(relativePath: string): boolean {
+  return relativePath === 'contract.yaml'
+    || relativePath === 'evolution.yaml'
+    || relativePath === 'artifacts/index.yaml'
+    || /^studies\/STUDY-\d{3}\/output\/artifact-candidates\.yaml$/.test(relativePath);
+}
+
+function validateManagedWriteContent(cwd: string, filePath: string, content: string): void {
+  const relativePath = toProjectRelativePath(cwd, filePath);
+
+  if (isManagedMarkdownPath(relativePath)) {
+    const match = content.match(FRONTMATTER_PATTERN);
+    if (!match) {
+      throw new Error(`Managed Markdown file '${relativePath}' is missing YAML frontmatter.`);
+    }
+    try {
+      parseYaml(match[1]);
+    } catch (error) {
+      throw new Error(`Managed Markdown file '${relativePath}' has invalid YAML frontmatter: ${(error as Error).message}`);
+    }
+    return;
+  }
+
+  if (isManagedYamlPath(relativePath)) {
+    try {
+      parseYaml(content);
+    } catch (error) {
+      throw new Error(`Managed YAML file '${relativePath}' is invalid: ${(error as Error).message}`);
+    }
+  }
 }
 
 function shellQuote(value: string): string {
@@ -218,6 +261,7 @@ async function executeToolCall(cwd: string, tool: AgentToolCall): Promise<string
       case 'write': {
         const filePath = resolvePathForWrite(cwd, String(tool.input.path ?? ''));
         const content = String(tool.input.content ?? '');
+        validateManagedWriteContent(cwd, filePath, content);
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, content, 'utf-8');
         return `File written: ${filePath}`;
@@ -228,6 +272,10 @@ async function executeToolCall(cwd: string, tool: AgentToolCall): Promise<string
   } catch (error) {
     return `Error executing tool '${tool.name}': ${(error as Error).message}`;
   }
+}
+
+export async function executeAgentToolForTest(cwd: string, tool: AgentToolCall): Promise<string> {
+  return executeToolCall(cwd, tool);
 }
 
 function hasCompletionMarker(text: string): boolean {

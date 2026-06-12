@@ -93,6 +93,13 @@ export function renderSchemaReferenceMarkdown(contracts: ManagedFileContract[]):
     '> Generated from `src/file-contracts/*` by `qdd init`.',
     '> Treat this file and `.qdd/examples/*` as refreshable references, not as protocol truth sources.',
     '',
+    '## Global YAML And Frontmatter Safety',
+    '',
+    '- Keep managed Markdown frontmatter short and machine-readable; put long narrative, evidence, and result summaries in Markdown body sections when a section exists.',
+    '- If a hand-written YAML value must contain natural language, quote it or use a block scalar such as `>-`.',
+    '- Avoid unquoted YAML strings that contain `: `, leading `- `, `#`, or multiline prose; those are common causes of parser failures.',
+    '- Generated QDD serializers already handle this safely. These rules apply when an agent edits managed YAML or frontmatter by hand.',
+    '',
   ];
 
   for (const contract of contracts) {

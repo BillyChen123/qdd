@@ -14,7 +14,7 @@ export function createExampleArtifactCandidateManifest() {
                 task_id: 'TASK-001',
                 reusable: true,
                 scope: 'study',
-                description: 'Main executed integration script for the study.',
+                description: 'Main executed integration script for the study; safe to reuse for audit and reruns.',
                 schema: 'python-script',
             },
             {
@@ -23,7 +23,7 @@ export function createExampleArtifactCandidateManifest() {
                 task_id: 'TASK-001',
                 reusable: true,
                 scope: 'study',
-                description: 'Reusable integration summary table preserved for downstream comparison.',
+                description: 'Reusable integration summary table preserved for downstream comparison; includes batch and cluster-level metrics.',
                 schema: 'csv-table',
             },
         ],
@@ -62,6 +62,7 @@ export const artifactCandidateFileContract = {
         'Only promotion-worthy outputs belong here; not every study-local file is an artifact candidate.',
         'Task-scoped candidates should also declare task_id.',
         'Candidate paths must point to canonical study outputs, never to output/tmp scratch files.',
+        'When editing by hand, quote natural-language `description` and `schema` values or use YAML block scalars such as `>-` for longer prose.',
     ],
     renderExample: () => renderYamlDocument(createExampleArtifactCandidateManifest()),
 };

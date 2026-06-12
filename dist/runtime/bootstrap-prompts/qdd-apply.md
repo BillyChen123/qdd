@@ -194,6 +194,8 @@ Update the task file when progress changes.
 
 Update the study file when blockers, evidence state, or task status materially change.
 
+Keep managed Markdown frontmatter short and machine-readable. Put long result prose in the task body `## Result Summary` section and long study rationale in the matching study body section. If you hand-write natural-language YAML values in frontmatter or `artifact-candidates.yaml`, quote them or use a block scalar such as `>-`.
+
 ### 4. Write outputs into the study output directory
 
 Keep outputs inside:
@@ -233,6 +235,7 @@ When an output is genuinely reusable, either:
 - add it to `studies/STUDY-XXX/output/artifact-candidates.yaml` so `qdd-close` can promote it later
 
 When one task clearly produced the output, include that `task_id` in the candidate entry so provenance survives promotion.
+When editing `artifact-candidates.yaml` by hand, quote natural-language `description` and `schema` values or use `>-` for longer prose.
 
 Before you leave a task in `completed`, set its `promotion_status` explicitly:
 

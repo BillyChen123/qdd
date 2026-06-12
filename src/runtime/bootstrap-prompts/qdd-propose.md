@@ -97,6 +97,7 @@ If the user asks for something too large, keep that as the long-range target and
 Use `qdd add-study` to create the next `STUDY-XXX` record.
 
 Then edit `studies/STUDY-XXX/study.md` directly so it records a complete first pass, not placeholders.
+Keep frontmatter short and machine-readable. Put long rationale, evidence prose, and detailed blockers in the Markdown body sections. If frontmatter must contain natural-language text, quote it or use a YAML block scalar such as `>-`.
 
 At minimum, fill in:
 
@@ -114,6 +115,7 @@ At minimum, fill in:
 Use `qdd add-task STUDY-XXX` repeatedly to create the initial task set.
 
 Then edit each `studies/STUDY-XXX/tasks/TASK-XXX.md` directly so it matches a real first-pass move.
+Use the task body `## Result Summary` section for long narrative outcomes. Keep frontmatter `result_summary` short when present, and quote it or use `>-` if it contains punctuation-heavy prose.
 
 By default, create **2-4** initial tasks.
 
@@ -146,6 +148,7 @@ When a task needs concrete executor skills:
 - then use `qdd skills suggest` with controlled `domain + stage + tag` filters
 - write one small bundle of problem-level skills into the task only after the choice is clear
 - record the chosen skills directly in task frontmatter and in the task body `## Skills` section
+- keep skill IDs machine-readable; put explanatory text in the body section after the leading skill ID
 
 If a standard stage is deliberately not placed on the main path, do not pretend it disappeared.
 State whether that stage is being skipped because it is outside the answer contract or because the current evidence says it is unnecessary, and add a bounded sensitivity task when that omitted stage could plausibly change the final answer.

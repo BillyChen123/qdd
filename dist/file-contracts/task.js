@@ -59,6 +59,10 @@ export function renderTaskBody(record, studyId, inputs) {
         '- [ ] Set promotion review explicitly to none, candidate-recorded, or registered before leaving the task as completed',
         '- [ ] Register reusable artifacts only if this task produced them and immediate registration is warranted',
         '',
+        '## Result Summary',
+        '',
+        '- Not completed yet.',
+        '',
         '## Skills',
         '',
         TASK_SKILLS_SECTION_COMMENT,
@@ -121,7 +125,7 @@ export const taskFileContract = {
         },
         { path: 'artifact_ids', type: 'ART-XXX[]', required: false, description: 'Registered artifact IDs tied to this task.' },
         { path: 'blocker_reason', type: 'string', required: false, description: 'Why the task is blocked.' },
-        { path: 'result_summary', type: 'string', required: false, description: 'Compact task result summary.' },
+        { path: 'result_summary', type: 'string', required: false, description: 'Short optional machine-facing task result summary. Put long narrative evidence in the Markdown body `Result Summary` section.' },
         { path: 'updated_at', type: 'ISO datetime', required: false, description: 'Last update timestamp.' },
     ],
     sections: [
@@ -129,6 +133,7 @@ export const taskFileContract = {
         { name: 'Input', required: true, description: 'Concrete input files or context for the task.' },
         { name: 'Expected Output', required: true, description: 'Concrete outputs expected from the task.' },
         { name: 'Checklist', required: true, description: 'Execution checklist that should be rewritten into task-specific steps.' },
+        { name: 'Result Summary', required: true, description: 'Human-readable task outcome. Prefer this body section for long prose instead of expanding frontmatter `result_summary`.' },
         {
             name: 'Skills',
             required: true,
@@ -143,6 +148,7 @@ export const taskFileContract = {
     notes: [
         'Do not list qdd/* workflow skills or brain/* planning skills in task frontmatter or body skills.',
         'Descriptions in the body are allowed, but the leading skill ID must stay machine-readable.',
+        'Keep frontmatter values short. If hand-written frontmatter must include natural language, quote it or use a YAML block scalar such as `>-`.',
     ],
     renderExample: () => createExampleTaskMarkdown(),
 };
