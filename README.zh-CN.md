@@ -9,6 +9,8 @@
 
   <p><strong>快速导航</strong></p>
   <p>
+    <a href="#快速开始">快速开始</a>
+    ·
     <a href="#五大关键流程">五大流程</a>
     ·
     <a href="#auto-模式">Auto 模式</a>
@@ -16,6 +18,37 @@
     <a href="#领域-skill-注入">领域 Skill</a>
   </p>
 </div>
+
+## 快速开始
+
+要求：
+
+- Node `>=20.19.0`
+- Auto 模式需要配置 Anthropic-compatible 模型
+
+本地安装：
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+初始化研究项目：
+
+```bash
+mkdir my-qdd-project
+cd my-qdd-project
+qdd init .
+```
+
+之后可以手动运行五大流程，也可以直接启动 Auto 模式：
+
+```bash
+qdd auto --max-turns unlimited
+```
+
+更多安装细节见 [docs/04-installation-guide.md](docs/04-installation-guide.md)。
 
 ## QDD 能提供什么
 
@@ -149,34 +182,3 @@ external source -> fetch/capture skill -> local artifact -> domain executor -> s
 - 不是每个分支都提前写死的传统 workflow engine。
 
 QDD 是人和 agent 共同推进科研项目的协议层：本地文件、显式证据、可复用 artifact，以及持续演化的问题。
-
-## 快速开始
-
-要求：
-
-- Node `>=20.19.0`
-- Auto 模式需要配置 Anthropic-compatible 模型
-
-本地安装：
-
-```bash
-npm install
-npm run build
-npm install -g .
-```
-
-初始化研究项目：
-
-```bash
-mkdir my-qdd-project
-cd my-qdd-project
-qdd init .
-```
-
-之后可以手动运行五大流程，也可以直接启动 Auto 模式：
-
-```bash
-qdd auto --max-turns unlimited
-```
-
-更多安装细节见 [docs/04-installation-guide.md](docs/04-installation-guide.md)。

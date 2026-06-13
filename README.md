@@ -9,6 +9,8 @@
 
   <p><strong>Quick Links</strong></p>
   <p>
+    <a href="#quick-start">Quick Start</a>
+    ·
     <a href="#the-five-core-flows">Core Flows</a>
     ·
     <a href="#auto-mode">Auto Mode</a>
@@ -16,6 +18,37 @@
     <a href="#domain-skill-injection">Skills</a>
   </p>
 </div>
+
+## Quick Start
+
+Requirements:
+
+- Node `>=20.19.0`
+- An Anthropic-compatible model configuration for Auto Mode
+
+Install locally:
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+Initialize a research project:
+
+```bash
+mkdir my-qdd-project
+cd my-qdd-project
+qdd init .
+```
+
+Then either run the five flows manually through your agent workflow, or start Auto Mode:
+
+```bash
+qdd auto --max-turns unlimited
+```
+
+More installation details are in [docs/04-installation-guide.md](docs/04-installation-guide.md).
 
 ## What QDD Gives You
 
@@ -149,34 +182,3 @@ That means an agent can first find or validate a dataset, then hand a normalized
 - It is not a rigid workflow engine where every branch is pre-scripted.
 
 QDD is a protocol layer for human-agent research: local files, explicit evidence, reusable artifacts, and question evolution.
-
-## Quick Start
-
-Requirements:
-
-- Node `>=20.19.0`
-- An Anthropic-compatible model configuration for Auto Mode
-
-Install locally:
-
-```bash
-npm install
-npm run build
-npm install -g .
-```
-
-Initialize a research project:
-
-```bash
-mkdir my-qdd-project
-cd my-qdd-project
-qdd init .
-```
-
-Then either run the five flows manually through your agent workflow, or start Auto Mode:
-
-```bash
-qdd auto --max-turns unlimited
-```
-
-More installation details are in [docs/04-installation-guide.md](docs/04-installation-guide.md).
