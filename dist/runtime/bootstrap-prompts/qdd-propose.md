@@ -71,6 +71,17 @@ Use this order explicitly:
 2. read recent evolution and memory to understand what changed recently
 3. only then define the current study slice
 
+If the latest close event is `dissolution`, do not repeat or hard-dig the rejected premise. Treat it as a local-hypothesis failure unless the thesis frontier has no executable continuation. Build the next study around one of these continuation shapes:
+
+- `validation`: test the replacement model in an existing or newly selected dataset
+- `robustness`: stress-test the method or preprocessing limitation that constrained the dissolved study
+- `pivot`: move to a better-supported signal already observed in prior evidence
+- `data feasibility`: verify whether a candidate dataset has the required metadata, labels, modality, and sample fit before full analysis
+
+When a next candidate names a dataset, such as a GEO accession, first create a metadata/label-fit verification task unless the required fit has already been proven in a recent artifact. Do not jump directly to downstream mechanism analysis if cohort membership, response labels, tissue, or modality are still uncertain.
+
+Prefer existing recorded resources before reopening broad public-data search. Check `evolution.yaml`, recent `context/memory/*.md`, `context/resources.md`, `artifacts/index.yaml`, and relevant candidate tables or reports for previously discovered datasets. Create a new public-data candidate-capture task only when existing resources cannot answer the next question or their fit is unknown.
+
 Keep two layers distinct when needed:
 
 - `Long-range target`: the user's larger scientific goal
@@ -253,7 +264,7 @@ Write them concretely:
 - `## Expected Output`: the specific evidence this task should produce
 - `## Checklist`: rewrite the scaffold into task-specific executable steps
 - `## Skills`: only list concrete problem-level executor skills that genuinely matter, already exist under the QDD root `domain-skills/` library, and are valid in `.qdd/skills-catalog.json`
-- never write `qdd/*` workflow skills or `brain/*` planning skills into a task record
+- never write `qdd/*` workflow skills or `thesis/*` or `brain/*` planning skills into a task record
 - if the task clearly belongs to a known problem class, assign the executor skill during propose instead of deferring that choice to apply
 - if the task is a dataset-style public-data acquisition task, finalize `studies/STUDY-XXX/output/public_data_request.yaml` during planning so apply only downloads the selected targets
 - if the task is a lightweight public-data capture task, write the intended source and bounded search terms directly into the task so apply can materialize a local CSV/TSV without inventing a new YAML contract

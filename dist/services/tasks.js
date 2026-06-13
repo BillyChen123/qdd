@@ -81,7 +81,7 @@ export async function createTask(projectRoot, studyId, options = {}) {
         throw new Error(`Task skills must not include workflow skills: ${resolvedSkills.disallowedWorkflow.join(', ')}. Use concrete domain skills instead.`);
     }
     if (resolvedSkills.planningOnly.length > 0) {
-        throw new Error(`Task skills must not include planning-only brain skills: ${resolvedSkills.planningOnly.join(', ')}. Move them to study planning and keep task skills executor-facing.`);
+        throw new Error(`Task skills must not include planning-only skills: ${resolvedSkills.planningOnly.join(', ')}. Move them to role-level planning and keep task skills executor-facing.`);
     }
     if (resolvedSkills.missing.length > 0) {
         throw new Error(`Task skills must already exist under the QDD root domain-skills/ library before they are referenced: ${resolvedSkills.missing.join(', ')}.`);

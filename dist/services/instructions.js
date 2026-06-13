@@ -102,6 +102,16 @@ async function resolveSkillSet(projectRoot, skillIds, allowPlanningOnly = false)
         planningOnly: uniqueSortedValues(localSkills.planningOnly),
     };
 }
+function allowedPlanningCategoriesForRole(role) {
+    switch (role) {
+        case 'thesis-manager':
+            return ['thesis'];
+        case 'study-brain':
+            return ['brain'];
+        case 'executor':
+            return [];
+    }
+}
 async function collectAvailableSkillReadPaths(projectRoot) {
     const availableSkills = await listLocalSkills(projectRoot);
     return uniqueSortedValues(availableSkills.map((entry) => entry.path));
@@ -126,8 +136,8 @@ function appendRoleSkillIssues(rules, subject, roleSkills) {
     if (disallowed.length > 0) {
         rules.push(`${subject} role policy must not include workflow skills: ${disallowed.join(', ')}.`);
     }
-    if (planningOnly.length > 0 && subject !== 'Study') {
-        rules.push(`${subject} role policy must not include planning-only brain skills: ${planningOnly.join(', ')}.`);
+    if (planningOnly.length > 0) {
+        rules.push(`${subject} role policy includes planning-only skills outside this role namespace: ${planningOnly.join(', ')}.`);
     }
     if (missingDefault.length > 0) {
         rules.push(`${subject} default domain skills are missing from the QDD root domain-skills/ library: ${missingDefault.join(', ')}.`);
@@ -137,7 +147,16 @@ function buildInstructionHeader(command, role) {
     return { command, role };
 }
 async function resolveRoleSkillSet(projectRoot, role, policy) {
-    return resolveSkillSet(projectRoot, getDefaultSkillsForRole(policy, role), role === 'study-brain');
+    const localSkills = await resolveLocalSkills(projectRoot, getDefaultSkillsForRole(policy, role), {
+        allowedPlanningOnlyCategories: allowedPlanningCategoriesForRole(role),
+    });
+    return {
+        matchedPaths: uniqueSortedValues(localSkills.matched.map((entry) => entry.path)),
+        missing: uniqueSortedValues(localSkills.missing),
+        disallowedWorkflow: uniqueSortedValues(localSkills.disallowedWorkflow),
+        matchedIds: uniqueSortedValues(localSkills.matched.map((entry) => entry.id)),
+        planningOnly: uniqueSortedValues(localSkills.planningOnly),
+    };
 }
 export async function buildInstructions(projectRoot, id, options = {}) {
     const command = options.command ?? null;
@@ -164,6 +183,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Keep durable shared context in context/resources.md and optional context sidecars; keep narrative study history in context/memory/*.md.',
             'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
             'Treat .qdd/layer-policy.yaml as the editable source for command roles and role-level default skills.',
+            'Use thesis/* role skills only for thesis-manager project-frontier planning; do not treat them as study-brain or executor skills.',
             'Treat domain skills as read from the QDD root domain-skills/ library, while local workflow skills remain bootstrapped under .codex/skills/qdd/ and .claude/skills/qdd/.',
         ];
         appendRoleSkillIssues(rules, 'Project', roleSkillSet);
@@ -250,7 +270,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Use the current mode contract from .qdd/instructions.md before reshaping the study or task set.',
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
             'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
-            'Treat brain/* as planning-only domain-prior skills. They may guide study planning, but must not be written into task skills or treated as executor skills.',
+            'Treat thesis/* and brain/* as planning-only skills. thesis/* belongs to thesis-manager; brain/* belongs to study-brain; neither may be written into task skills or treated as executor skills.',
             'Read evolution.yaml and recent context/memory/*.md before making study-level decisions that depend on prior project state.',
             'qdd-propose owns the first-pass study and task-graph creation.',
             'In human or assist mode, qdd-explore must discuss and confirm before modifying study/task artifacts.',
@@ -284,6 +304,9 @@ export async function buildInstructions(projectRoot, id, options = {}) {
         }
         if (command === 'qdd-close') {
             rules.push('For qdd-close, the target is the study but the final promotion and carry-forward judgment belongs to the thesis-manager role.');
+            rules.push('Use thesis/frontier-planning before qdd close-study to choose continue, stop, or needs-human at the project frontier.');
+            rules.push('qdd-close must keep only 1-3 next candidates, and each candidate must include an expected signal and strategy in the candidate text or memory.');
+            rules.push('Project-level stop should leave no executable next candidates; if a real candidate remains, close as continue-compatible by preserving it in evolution.yaml.');
             rules.push('qdd-close must register missing reusable outputs from artifact-candidates.yaml before final closure.');
             rules.push('qdd-close must reject artifact candidates that still point into studies/STUDY-XXX/output/tmp/ or other scratch-only paths.');
             rules.push('qdd-close must write one sparse study event into evolution.yaml, one narrative memory file into context/memory/, and refresh research-map.html.');
@@ -300,7 +323,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push(`Task skill lists must not include workflow skills: ${studyTaskSkills.disallowedWorkflow.join(', ')}.`);
         }
         if (studyTaskSkills.planningOnly.length > 0) {
-            rules.push(`Task skill lists must not include planning-only brain skills: ${studyTaskSkills.planningOnly.join(', ')}.`);
+            rules.push(`Task skill lists must not include planning-only skills: ${studyTaskSkills.planningOnly.join(', ')}.`);
         }
         if (studyTaskSkills.missing.length > 0) {
             rules.push(`Missing domain skills referenced by this study's tasks: ${studyTaskSkills.missing.join(', ')}.`);
@@ -346,7 +369,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'You may read the current project evolution state for alignment, but you must not mutate project-level evolution state from task-level apply.',
             'Treat .qdd/layer-policy.yaml as the command-to-role contract for this instruction surface.',
             'Only rely on domain task skills that exist under the QDD root domain-skills/ library.',
-            'Do not add qdd/* workflow skills or brain/* planning skills to task skill lists.',
+            'Do not add qdd/* workflow skills or thesis/* or brain/* planning skills to task skill lists.',
             'qdd-apply consumes the declared task-local problem-level skills only; it must not reopen broad skill search.',
             'If task-local executor skills are present, read them first and use them as the primary execution guidance for this task.',
             'Do not bypass declared task-local executor skills with unconstrained ad hoc coding unless you make the gap explicit.',
@@ -384,7 +407,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             rules.push(`Task skill lists must not include workflow skills: ${taskSkillSet.disallowedWorkflow.join(', ')}.`);
         }
         if (taskSkillSet.planningOnly.length > 0) {
-            rules.push(`Task skill lists must not include planning-only brain skills: ${taskSkillSet.planningOnly.join(', ')}.`);
+            rules.push(`Task skill lists must not include planning-only skills: ${taskSkillSet.planningOnly.join(', ')}.`);
         }
         if (taskSkillSet.missing.length > 0) {
             rules.push(`Missing domain skills referenced by this task: ${taskSkillSet.missing.join(', ')}. qdd-apply must hard-block until the skill exists under the QDD root domain-skills/ library or the task is rewritten.`);

@@ -26,6 +26,15 @@ function pushIssue(issues, issue) {
 function hasOwnProperty(value, key) {
     return typeof value === 'object' && value !== null && Object.prototype.hasOwnProperty.call(value, key);
 }
+function allowedPlanningCategoriesForRole(roleName) {
+    if (roleName === 'thesis-manager') {
+        return ['thesis'];
+    }
+    if (roleName === 'study-brain') {
+        return ['brain'];
+    }
+    return [];
+}
 function validateResearchContract(contract, issues) {
     if (!contract.theme) {
         pushIssue(issues, {
@@ -486,7 +495,9 @@ export async function validateProject(projectRoot) {
         const layerPolicy = await readLayerPolicy(projectRoot);
         checked.layerPolicy = true;
         for (const [roleName, config] of Object.entries(layerPolicy.roles)) {
-            const defaultSkills = await resolveLocalSkills(projectRoot, config.default_skills, { allowPlanningOnly: roleName === 'study-brain' });
+            const defaultSkills = await resolveLocalSkills(projectRoot, config.default_skills, {
+                allowedPlanningOnlyCategories: allowedPlanningCategoriesForRole(roleName),
+            });
             for (const workflowSkillId of defaultSkills.disallowedWorkflow) {
                 pushIssue(issues, {
                     level: 'error',
@@ -495,15 +506,13 @@ export async function validateProject(projectRoot) {
                     message: `Role policy for '${roleName}' references workflow skill '${workflowSkillId}'.`,
                 });
             }
-            if (roleName !== 'study-brain') {
-                for (const planningSkillId of defaultSkills.planningOnly) {
-                    pushIssue(issues, {
-                        level: 'error',
-                        code: 'planning_skill_not_allowed_in_role_policy',
-                        path: PATHS.layerPolicy,
-                        message: `Role policy for '${roleName}' references planning-only brain skill '${planningSkillId}'.`,
-                    });
-                }
+            for (const planningSkillId of defaultSkills.planningOnly) {
+                pushIssue(issues, {
+                    level: 'error',
+                    code: 'planning_skill_not_allowed_in_role_policy',
+                    path: PATHS.layerPolicy,
+                    message: `Role policy for '${roleName}' references planning-only skill outside this role namespace: '${planningSkillId}'.`,
+                });
             }
             for (const missingSkillId of defaultSkills.missing) {
                 pushIssue(issues, {
@@ -585,7 +594,7 @@ export async function validateProject(projectRoot) {
     const controlledTags = new Set(listControlledSkillTags());
     const localSkills = await listLocalSkills(projectRoot);
     for (const skill of localSkills) {
-        if (skill.id.startsWith('qdd/') || skill.id.startsWith('brain/')) {
+        if (skill.id.startsWith('qdd/') || skill.id.startsWith('brain/') || skill.id.startsWith('thesis/')) {
             continue;
         }
         const skillDocument = await readMarkdownDocument(projectRoot, skill.path);
@@ -677,7 +686,7 @@ export async function validateProject(projectRoot) {
                 level: 'error',
                 code: 'planning_skill_not_allowed_in_task',
                 path: taskRelativePath,
-                message: `Task references planning-only brain skill '${planningSkillId}'.`,
+                message: `Task references planning-only skill '${planningSkillId}'.`,
             });
         }
         for (const missingSkillId of resolvedSkills.missing) {
@@ -689,7 +698,7 @@ export async function validateProject(projectRoot) {
             });
         }
         for (const skillId of normalizeTaskSkillIds(task.skills ?? [])) {
-            if (skillId.startsWith('qdd/') || skillId.startsWith('brain/')) {
+            if (skillId.startsWith('qdd/') || skillId.startsWith('brain/') || skillId.startsWith('thesis/')) {
                 continue;
             }
             if (!problemSkillIds.has(skillId)) {

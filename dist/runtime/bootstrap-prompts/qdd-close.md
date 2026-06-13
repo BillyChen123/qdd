@@ -4,6 +4,8 @@ Use closure to decide what the study taught you, how the question changed, what 
 
 **IMPORTANT: Close is not just a summary.** It is the workflow step that decides whether the study is ready to write one sparse event into `evolution.yaml`, which outputs deserve promotion, and which uncertainties remain open.
 
+Use `thesis/frontier-planning` during close. The thesis-manager must decide whether the project frontier should `continue`, `stop`, or exceptionally `needs-human` before calling `qdd close-study`.
+
 **Do not hand-write `evolution.yaml`.** Decide the close event in reasoning, then write it through `qdd close-study`. The current managed-file schema source is `.qdd/schema-reference.md` plus `.qdd/examples/*`, not older PRD or prototype documents.
 
 ---
@@ -24,6 +26,7 @@ If omitted:
 - validate project and study state before closure
 - synthesize the study evidence
 - decide whether closure is actually justified
+- decide the thesis frontier state: `continue`, `stop`, or `needs-human`
 - register any missing reusable outputs from the explicit candidate list
 - write the close event through `qdd close-study`
 - write one per-study memory file under `context/memory/`
@@ -88,11 +91,13 @@ Summarize what the study actually established, not just what work was performed.
 
 You must decide:
 
+- `decision`: `continue`, `stop`, or `needs-human`
 - the current study question to preserve in `evolution.yaml`
 - `change_type`
 - `summary`
 - `open_boundaries`
 - `next_candidates`
+- `stop_reason` when the project should stop
 
 Use these meanings:
 
@@ -100,6 +105,16 @@ Use these meanings:
 - `confirmation` - the study mainly stabilized the current question
 - `pivot` - the evidence points to a meaningfully different next question
 - `dissolution` - the study dissolved the question rather than narrowing it
+
+`dissolution` can mean the current study question or local hypothesis collapsed. It does not by itself mean the whole project frontier is terminal. If the dissolved premise has a clear follow-up through validation, robustness, pivot, or data-feasibility work, choose `continue` and write only candidates that move away from the failed premise.
+
+Use these thesis decision meanings:
+
+- `continue` - at least one executable next candidate or open boundary remains
+- `stop` - the project frontier is closed and no executable next candidate remains
+- `needs-human` - exceptional in auto mode; use only for contradictory state, unsafe action, or missing essential judgment
+
+Do not use `needs-human` for ordinary uncertainty, a normal negative result, weak confidence, or because validation would be useful. A negative result with a clear validation, robustness, pivot, or data-feasibility next candidate is a normal `continue` case.
 
 Be explicit. Do not hide uncertainty inside vague prose.
 
@@ -111,6 +126,19 @@ Use this reasoning order:
 4. write one compact study `summary` describing what the study actually established
 5. define which boundaries remain open after this study
 6. list 1-3 `next_candidates` when there are credible follow-up directions
+7. make every next candidate judgeable by including an expected signal and strategy
+
+After `dissolution`, do not keep digging in the rejected premise. Use candidates that explicitly validate a replacement model, stress-test a method limitation, pivot to a better-supported signal, or identify a better dataset.
+
+For the current implementation, `evolution.yaml` stores candidates as strings. Use compact strings in this shape:
+
+```text
+Question: ... Expected signal: ... Strategy: serial-deepen|evidence-fanout|explore-then-synthesize|validation|robustness|pivot.
+```
+
+Put richer thesis reasoning in `context/memory/STUDY-XXX.md`, not in `evolution.yaml`.
+
+Project-level `stop` should leave no executable `next_candidates`. If a real candidate or open boundary remains, preserve it and choose `continue`.
 
 ---
 
@@ -161,6 +189,7 @@ If something is useful only for this study, do not promote it as cross-study con
 - Close directly when the evidence and study state justify it.
 - Refinement-style closure is valid in auto mode when the study meaningfully narrowed the next question.
 - Preserve explicit open boundaries instead of pretending the study is cleaner than it is.
+- Prefer `continue` or `stop`; reserve `needs-human` for contradictory, unsafe, or not-judgeable frontier state.
 
 ---
 
@@ -219,6 +248,7 @@ Your closure report should make these points legible:
 - what remains open
 - what artifacts or context were carried forward
 - what next study direction is most defensible
+- whether the thesis frontier decision is `continue`, `stop`, or `needs-human`
 
 There is no rigid output template, but the reasoning must be explicit.
 
@@ -245,6 +275,9 @@ There is no rigid output template, but the reasoning must be explicit.
 
 - Run `qdd validate --json` before closure or handoff.
 - Make the resulting study event explicit: current study question, change type, summary, open boundaries, and next candidates.
+- Use `thesis/frontier-planning` to make the project frontier decision before `qdd close-study`.
+- Preserve only 1-3 next candidates, each with expected signal and strategy.
+- If the project frontier decision is `stop`, leave no executable next candidates.
 - Refuse closure when completed tasks still have `promotion_status: pending`.
 - Refuse closure when non-canonical top-level study output material still remains unpackaged.
 - Refuse closure when artifact candidates still point into `output/tmp/` scratch space.

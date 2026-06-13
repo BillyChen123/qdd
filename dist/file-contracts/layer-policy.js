@@ -10,7 +10,7 @@ export function createDefaultLayerPolicy() {
         },
         roles: {
             'thesis-manager': {
-                default_skills: [],
+                default_skills: ['thesis/frontier-planning'],
             },
             'study-brain': {
                 default_skills: [
@@ -46,7 +46,8 @@ export const layerPolicyFileContract = {
     ],
     notes: [
         'This is not the same as task skills.',
-        'Planning-only brain skills belong here, not in task frontmatter.',
+        'Planning-only thesis/* and brain/* skills belong here, not in task frontmatter.',
+        'Use thesis/* only for thesis-manager role defaults and brain/* only for study-brain role defaults.',
     ],
     renderExample: () => renderYamlDocument(createExampleLayerPolicy()),
 };

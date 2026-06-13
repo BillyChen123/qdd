@@ -146,7 +146,7 @@ export const taskFileContract = {
         },
     ],
     notes: [
-        'Do not list qdd/* workflow skills or brain/* planning skills in task frontmatter or body skills.',
+        'Do not list qdd/* workflow skills or thesis/* or brain/* planning skills in task frontmatter or body skills.',
         'Descriptions in the body are allowed, but the leading skill ID must stay machine-readable.',
         'Keep frontmatter values short. If hand-written frontmatter must include natural language, quote it or use a YAML block scalar such as `>-`.',
     ],

@@ -193,11 +193,29 @@ test('auto orchestrator termination conditions are explicit', () => {
     checkTermination(statusFixture({
       question_state: { last_kind: 'confirmation', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
     })).shouldTerminate,
-    true
+    false
   );
   assert.equal(
     checkTermination(statusFixture({
       question_state: { last_kind: 'dissolution', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
+    })).shouldTerminate,
+    false
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'dissolution', next_candidates: ['validate in an independent cohort'], open_boundary_ids: [] },
+    })).shouldTerminate,
+    false
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: ['B001'] },
+    })).shouldTerminate,
+    false
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: [] },
     })).shouldTerminate,
     true
   );
@@ -205,21 +223,43 @@ test('auto orchestrator termination conditions are explicit', () => {
     checkTermination(statusFixture({
       question_state: { last_kind: 'refinement', next_candidates: ['possible follow-up'], open_boundary_ids: [] },
     })).shouldTerminate,
-    true
+    false
   );
   assert.equal(
     checkTermination(statusFixture({
       question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: ['B001'] },
     })).shouldTerminate,
+    false
+  );
+  assert.equal(
+    checkTermination(statusFixture({
+      question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: [] },
+    })).shouldTerminate,
     true
   );
 
-  assert.equal(
+  assert.deepEqual(
     computeInitialPhase(statusFixture({
       studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
       question_state: { last_kind: 'confirmation', next_candidates: ['ignored'], open_boundary_ids: ['B001'] },
     })),
-    null
+    { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(statusFixture({
+      studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+      question_state: { last_kind: 'dissolution', next_candidates: ['validate the replacement model'], open_boundary_ids: [] },
+    })),
+    { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' }
+  );
+
+  assert.deepEqual(
+    computeInitialPhase(statusFixture({
+      studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+      question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: ['B001'] },
+    })),
+    { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' }
   );
 });
 
@@ -1255,6 +1295,7 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
 
   const projectInstructions = await buildInstructions(projectRoot, 'PROJECT', { command: 'qdd-start' });
   assert.equal(projectInstructions.role, 'thesis-manager');
+  assert.ok(projectInstructions.required_skills.includes('thesis/frontier-planning'));
   assert.ok(projectInstructions.read.includes('.qdd/schema-reference.md'));
   assert.ok(projectInstructions.read.includes('.qdd/examples/contract.example.yaml'));
   assert.ok(projectInstructions.read.includes('contract.yaml'));
@@ -1274,6 +1315,7 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
 
   const studyInstructions = await buildInstructions(projectRoot, studyId, { command: 'qdd-close' });
   assert.equal(studyInstructions.role, 'thesis-manager');
+  assert.ok(studyInstructions.required_skills.includes('thesis/frontier-planning'));
   assert.ok(studyInstructions.read.includes('.qdd/schema-reference.md'));
   assert.ok(studyInstructions.read.includes('.qdd/examples/study.example.md'));
   assert.ok(studyInstructions.read.includes('.qdd/examples/task.example.md'));
@@ -1294,12 +1336,18 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
       'qdd-close must write evolution state through qdd close-study; do not hand-edit evolution.yaml.'
     )
   );
+  assert.ok(
+    studyInstructions.rules.includes(
+      'Use thesis/frontier-planning before qdd close-study to choose continue, stop, or needs-human at the project frontier.'
+    )
+  );
   assert.ok(!studyInstructions.write.includes(`studies/${studyId}/output/boundary-updates.yaml`));
   assert.ok(studyInstructions.required_skills.includes('singlecell/scrna/sc-batch-integration'));
 
   const proposeInstructions = await buildInstructions(projectRoot, studyId, { command: 'qdd-propose' });
   assert.equal(proposeInstructions.role, 'study-brain');
   assert.ok(proposeInstructions.required_skills.includes('brain/singlecell/scrna-planning'));
+  assert.ok(!proposeInstructions.required_skills.includes('thesis/frontier-planning'));
   assert.ok(
     proposeInstructions.rules.includes(
       'Keep human propose as the highest semantic authority; treat prior candidates in evolution.yaml only as suggestions.'
@@ -1343,6 +1391,22 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     )
   );
   assert.ok(!taskInstructions.read.includes('boundaries.yaml'));
+});
+
+test('qdd task skills reject thesis planning skills', async () => {
+  const projectRoot = await createTempProject('qdd-task-thesis-skill-');
+  const { studyId } = await createStudy(projectRoot, {
+    question: 'Can task skills include thesis planning?',
+    hypothesis: 'They should be rejected because thesis skills are role-level only.',
+  });
+
+  await assert.rejects(
+    createTask(projectRoot, studyId, {
+      goal: 'Incorrectly try to execute a thesis planning skill.',
+      skills: ['thesis/frontier-planning'],
+    }),
+    /Task skills must not include planning-only skills: thesis\/frontier-planning/
+  );
 });
 
 test('qdd closeStudy promotes candidates and writes evolution, memory, and research-map', async () => {
@@ -1637,6 +1701,7 @@ test('qdd skills suggest returns executor-facing candidates and excludes brain s
   assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/pubmed-evidence-capture'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/public-data-planning'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/reference-planning'));
+  assert.ok(!catalog.skills.some((entry) => entry.id === 'thesis/frontier-planning'));
 
   const integration = await suggestProblemSkills(projectRoot, {
     domain: 'singlecell',

@@ -6,7 +6,7 @@ import { readBootstrapConfig } from './bootstrap.js';
 import { readMarkdownFrontmatter } from './store.js';
 const SKILL_FILE_NAME = 'SKILL.md';
 const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}-`;
-const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
+const PLANNING_ONLY_SKILL_CATEGORIES = ['brain', 'thesis'];
 const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
 const CONTROLLED_DOMAINS = ['singlecell', 'spatial', 'public-data', 'bulk', 'general'];
 const CONTROLLED_STAGES = [
@@ -61,8 +61,23 @@ export function isWorkflowSkillId(skillId) {
 function isCategorizedSkillId(skillId) {
     return normalizeSkillId(skillId).includes('/');
 }
+function getSkillCategory(skillId) {
+    return normalizeSkillId(skillId).split('/')[0] ?? '';
+}
+export function isBrainPlanningSkillId(skillId) {
+    return getSkillCategory(skillId) === 'brain';
+}
+export function isThesisPlanningSkillId(skillId) {
+    return getSkillCategory(skillId) === 'thesis';
+}
 function isPlanningOnlySkillId(skillId) {
-    return normalizeSkillId(skillId).startsWith(`${PLANNING_ONLY_SKILL_CATEGORY}/`);
+    return PLANNING_ONLY_SKILL_CATEGORIES.includes(getSkillCategory(skillId));
+}
+function getPlanningOnlySkillCategory(skillId) {
+    const category = getSkillCategory(skillId);
+    return PLANNING_ONLY_SKILL_CATEGORIES.includes(category)
+        ? category
+        : null;
 }
 export function isPlanningOnlySkillCategory(skillId) {
     return isPlanningOnlySkillId(skillId);
@@ -179,7 +194,7 @@ async function readProblemSkillMetadata(projectRoot, skillId) {
 // 枚举当前项目内可被 suggest/catalog 使用的 problem-level skills。
 // 它们必须：
 // - 不是 qdd/* workflow skill
-// - 不是 brain/* planning-only skill
+// - 不是 brain/* 或 thesis/* planning-only skill
 // - 且在 SKILL.md frontmatter 中声明 domain/stage/tags
 export async function listProblemSkills(projectRoot) {
     const localSkills = await listLocalSkills(projectRoot);
@@ -271,8 +286,18 @@ export async function resolveLocalSkills(projectRoot, requestedSkillIds, options
     const normalizedRequested = normalizeTaskSkillIds(requestedSkillIds);
     const disallowedWorkflow = normalizedRequested.filter((entry) => isWorkflowSkillId(entry));
     const allowPlanningOnly = options.allowPlanningOnly ?? false;
-    const planningOnly = allowPlanningOnly ? [] : normalizedRequested.filter((entry) => isPlanningOnlySkillId(entry));
-    const requestedDomainSkills = normalizedRequested.filter((entry) => !isWorkflowSkillId(entry) && (allowPlanningOnly || !isPlanningOnlySkillId(entry)));
+    const allowedPlanningCategories = new Set(options.allowedPlanningOnlyCategories ?? (allowPlanningOnly ? [...PLANNING_ONLY_SKILL_CATEGORIES] : []));
+    const planningOnly = normalizedRequested.filter((entry) => {
+        const category = getPlanningOnlySkillCategory(entry);
+        return category !== null && !allowedPlanningCategories.has(category);
+    });
+    const requestedDomainSkills = normalizedRequested.filter((entry) => {
+        if (isWorkflowSkillId(entry)) {
+            return false;
+        }
+        const planningCategory = getPlanningOnlySkillCategory(entry);
+        return planningCategory === null || allowedPlanningCategories.has(planningCategory);
+    });
     const available = await listLocalSkills(projectRoot);
     const availableById = new Map(available.map((entry) => [entry.id, entry]));
     const matched = requestedDomainSkills.map((entry) => availableById.get(entry)).filter((entry) => entry !== undefined);

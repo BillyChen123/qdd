@@ -308,20 +308,19 @@ function incrementStudyId(studyId) {
 }
 export function checkTermination(status) {
     const qs = status.question_state;
+    const hasNextCandidates = qs.next_candidates.length > 0;
+    const hasOpenBoundaries = qs.open_boundary_ids.length > 0;
+    const hasContinuationSignal = hasNextCandidates || hasOpenBoundaries;
     if (!qs.last_kind) {
         return { shouldTerminate: false, reason: '' };
     }
-    if (qs.last_kind === 'confirmation') {
-        return { shouldTerminate: true, reason: 'Research question has been sufficiently answered (confirmation).' };
-    }
     if (qs.last_kind === 'dissolution') {
-        return { shouldTerminate: true, reason: 'Question is undecidable within current resource boundaries (dissolution).' };
+        return hasContinuationSignal
+            ? { shouldTerminate: false, reason: '' }
+            : { shouldTerminate: true, reason: 'Question is dissolved and no executable continuation remains.' };
     }
-    if (qs.open_boundary_ids.length === 0) {
-        return { shouldTerminate: true, reason: 'No remaining open boundaries; research frontier is closed.' };
-    }
-    if (qs.next_candidates.length === 0) {
-        return { shouldTerminate: true, reason: 'No credible follow-up directions exist.' };
+    if (!hasContinuationSignal) {
+        return { shouldTerminate: true, reason: 'Thesis frontier has no next candidates or open boundaries.' };
     }
     return { shouldTerminate: false, reason: '' };
 }
@@ -329,10 +328,6 @@ export function computeInitialPhase(status, taskRecords = []) {
     const studies = allStudyIds(status);
     if (studies.length === 0) {
         return { phase: 'start', target: 'PROJECT', command: 'qdd-start' };
-    }
-    const terminal = checkTermination(status);
-    if (terminal.shouldTerminate) {
-        return null;
     }
     const activeStudy = latest(status.studies.active);
     if (activeStudy) {
@@ -351,6 +346,10 @@ export function computeInitialPhase(status, taskRecords = []) {
     const completedStudy = latest(status.studies.completed);
     if (completedStudy) {
         return { phase: 'close', target: completedStudy, command: 'qdd-close' };
+    }
+    const terminal = checkTermination(status);
+    if (terminal.shouldTerminate) {
+        return null;
     }
     return { phase: 'propose', target: determineNextStudyId(status), command: 'qdd-propose' };
 }

@@ -8,7 +8,7 @@ import { readMarkdownFrontmatter } from './store.js';
 
 const SKILL_FILE_NAME = 'SKILL.md';
 const WORKFLOW_SKILL_PREFIX = `${PATHS.workflowSkillCategory}-`;
-const PLANNING_ONLY_SKILL_CATEGORY = 'brain';
+const PLANNING_ONLY_SKILL_CATEGORIES = ['brain', 'thesis'] as const;
 const DEFAULT_DOMAIN_SKILLS_ROOT = 'domain-skills';
 const CONTROLLED_DOMAINS: readonly SkillDomain[] = ['singlecell', 'spatial', 'public-data', 'bulk', 'general'];
 const CONTROLLED_STAGES: readonly SkillStage[] = [
@@ -37,6 +37,7 @@ const CONTROLLED_TAGS: readonly SkillTag[] = [
   'structure',
   'communication',
 ];
+export type PlanningOnlySkillCategory = (typeof PLANNING_ONLY_SKILL_CATEGORIES)[number];
 
 // skill id 在 runtime 内统一用 category/name 形式。
 // 这里顺手清理多余斜杠，避免 task frontmatter 里出现路径风格不一致的问题。
@@ -71,8 +72,27 @@ function isCategorizedSkillId(skillId: string): boolean {
   return normalizeSkillId(skillId).includes('/');
 }
 
+function getSkillCategory(skillId: string): string {
+  return normalizeSkillId(skillId).split('/')[0] ?? '';
+}
+
+export function isBrainPlanningSkillId(skillId: string): boolean {
+  return getSkillCategory(skillId) === 'brain';
+}
+
+export function isThesisPlanningSkillId(skillId: string): boolean {
+  return getSkillCategory(skillId) === 'thesis';
+}
+
 function isPlanningOnlySkillId(skillId: string): boolean {
-  return normalizeSkillId(skillId).startsWith(`${PLANNING_ONLY_SKILL_CATEGORY}/`);
+  return (PLANNING_ONLY_SKILL_CATEGORIES as readonly string[]).includes(getSkillCategory(skillId));
+}
+
+function getPlanningOnlySkillCategory(skillId: string): PlanningOnlySkillCategory | null {
+  const category = getSkillCategory(skillId);
+  return (PLANNING_ONLY_SKILL_CATEGORIES as readonly string[]).includes(category)
+    ? category as PlanningOnlySkillCategory
+    : null;
 }
 
 export function isPlanningOnlySkillCategory(skillId: string): boolean {
@@ -221,7 +241,7 @@ async function readProblemSkillMetadata(projectRoot: string, skillId: string): P
 // 枚举当前项目内可被 suggest/catalog 使用的 problem-level skills。
 // 它们必须：
 // - 不是 qdd/* workflow skill
-// - 不是 brain/* planning-only skill
+// - 不是 brain/* 或 thesis/* planning-only skill
 // - 且在 SKILL.md frontmatter 中声明 domain/stage/tags
 export async function listProblemSkills(projectRoot: string): Promise<ProblemSkillEntry[]> {
   const localSkills = await listLocalSkills(projectRoot);
@@ -331,6 +351,7 @@ export async function resolveLocalSkills(
   requestedSkillIds: string[] | undefined,
   options: {
     allowPlanningOnly?: boolean;
+    allowedPlanningOnlyCategories?: readonly PlanningOnlySkillCategory[];
   } = {}
 ): Promise<{
   available: LocalSkillEntry[];
@@ -342,9 +363,21 @@ export async function resolveLocalSkills(
   const normalizedRequested = normalizeTaskSkillIds(requestedSkillIds);
   const disallowedWorkflow = normalizedRequested.filter((entry) => isWorkflowSkillId(entry));
   const allowPlanningOnly = options.allowPlanningOnly ?? false;
-  const planningOnly = allowPlanningOnly ? [] : normalizedRequested.filter((entry) => isPlanningOnlySkillId(entry));
+  const allowedPlanningCategories = new Set<PlanningOnlySkillCategory>(
+    options.allowedPlanningOnlyCategories ?? (allowPlanningOnly ? [...PLANNING_ONLY_SKILL_CATEGORIES] : [])
+  );
+  const planningOnly = normalizedRequested.filter((entry) => {
+    const category = getPlanningOnlySkillCategory(entry);
+    return category !== null && !allowedPlanningCategories.has(category);
+  });
   const requestedDomainSkills = normalizedRequested.filter(
-    (entry) => !isWorkflowSkillId(entry) && (allowPlanningOnly || !isPlanningOnlySkillId(entry))
+    (entry) => {
+      if (isWorkflowSkillId(entry)) {
+        return false;
+      }
+      const planningCategory = getPlanningOnlySkillCategory(entry);
+      return planningCategory === null || allowedPlanningCategories.has(planningCategory);
+    }
   );
   const available = await listLocalSkills(projectRoot);
   const availableById = new Map(available.map((entry) => [entry.id, entry]));

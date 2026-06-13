@@ -107,7 +107,7 @@ export async function createTask(projectRoot: string, studyId: string, options: 
 
   if (resolvedSkills.planningOnly.length > 0) {
     throw new Error(
-      `Task skills must not include planning-only brain skills: ${resolvedSkills.planningOnly.join(', ')}. Move them to study planning and keep task skills executor-facing.`
+      `Task skills must not include planning-only skills: ${resolvedSkills.planningOnly.join(', ')}. Move them to role-level planning and keep task skills executor-facing.`
     );
   }
 

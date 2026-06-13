@@ -6,6 +6,9 @@ Recommended layout:
 
 ```text
 domain-skills/
+├── thesis/
+│   └── frontier-planning/
+│       └── SKILL.md
 ├── brain/
 │   ├── public-data/
 │   │   ├── public-data-planning/
@@ -58,7 +61,8 @@ This tree is illustrative, not exhaustive. New executor skills should extend the
 
 Rules:
 
-- Planning skills live under `brain/*`
+- Thesis-manager planning skills live under `thesis/*`
+- Study-brain planning skills live under `brain/*`
 - Executor problem-level skills live under domain trees such as `singlecell/scrna/*`, `spatial/*`, or `public-data/*`
 - Not every `public-data/*` skill uses `public_data_request.yaml`; dataset acquisition and lighter public-data capture tasks are intentionally separate
 - Each skill lives at `domain-skills/<category...>/<skill-name>/`
@@ -96,4 +100,4 @@ Task files should reference the stable skill IDs, for example:
 - `public-data/lrdb-fetch`
 - `public-data/pubmed-evidence-capture`
 
-Do not use `qdd/*` workflow skills or `brain/*` planning skills in task `skills:`.
+Do not use `qdd/*` workflow skills or `thesis/*` or `brain/*` planning skills in task `skills:`.

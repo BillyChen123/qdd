@@ -39,7 +39,7 @@ If omitted:
 
 ## Execution Stance
 
-- Treat `brain/*` guidance and local domain skills as execution guidance, not as rigid pipelines that override the benchmark or task contract.
+- Treat role planning guidance and local domain skills as execution guidance, not as rigid pipelines that override the benchmark or task contract.
 - If a standard stage such as integration / batch correction is absent from the approved task graph, do not silently invent it as a new main path inside apply.
 - If that omitted stage could materially change the benchmark or study answer, either consume the already planned sensitivity path or report the gap explicitly instead of pretending the omission does not matter.
 

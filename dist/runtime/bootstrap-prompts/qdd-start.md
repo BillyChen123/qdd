@@ -6,6 +6,8 @@ Turn scaffold placeholders into usable shared project context. The goal is to ma
 
 **IMPORTANT: Start writes project truth sources.** It may update `contract.yaml`, `context/resources.md`, optional `context/*.md` sidecars, and dataset entrypoints under `artifacts/data/`.
 
+Use `thesis/frontier-planning` only to understand the project-level frontier and first sensible direction. Do not turn start into study planning.
+
 **This is onboarding, not study planning.** Do not create `STUDY-XXX` or `TASK-XXX` artifacts here unless the user explicitly redirects into `qdd-propose`.
 
 **Managed schema source:** If you edit YAML or Markdown managed by QDD, use `.qdd/schema-reference.md` and the matching `.qdd/examples/*` file as the current schema reference. Do not infer current schemas from older PRD or prototype documents.
@@ -133,7 +135,7 @@ Bad behavior:
 
 - assuming a global skill is acceptable just because your runtime knows about it
 - writing task skill references that do not exist in the project
-- writing `qdd/*` workflow skills into task `skills:`
+- writing `qdd/*`, `thesis/*`, or `brain/*` planning skills into task `skills:`
 
 ### 6. Stop when the project is ready for proposal
 
