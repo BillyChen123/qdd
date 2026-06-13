@@ -4,21 +4,16 @@
   <p><strong>面向 AI 辅助生物医学发现的 Question-Driven Discovery 编排层。</strong></p>
   <p>把长期研究组织成可审计的问题、证据、artifact 和下一步决策循环。</p>
 
+  <p><strong>语言</strong></p>
+  <p><strong>简体中文</strong> · <a href="README.md">English</a></p>
+
+  <p><strong>快速导航</strong></p>
   <p>
-    <a href="README.md">English</a>
-    ·
     <a href="#五大关键流程">五大流程</a>
     ·
     <a href="#auto-模式">Auto 模式</a>
     ·
     <a href="#领域-skill-注入">领域 Skill</a>
-  </p>
-
-  <p>
-    <img alt="Node >=20.19" src="https://img.shields.io/badge/node-%3E%3D20.19-0f172a?style=flat-square" />
-    <img alt="34 local skills" src="https://img.shields.io/badge/local%20skills-34-111827?style=flat-square" />
-    <img alt="Anthropic compatible" src="https://img.shields.io/badge/auto-Anthropic--compatible-334155?style=flat-square" />
-    <img alt="Research native" src="https://img.shields.io/badge/research-question--driven-64748b?style=flat-square" />
   </p>
 </div>
 
