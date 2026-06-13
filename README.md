@@ -1,14 +1,39 @@
-# QDD
+<div align="center">
+  <img src="logo/QDD.png" alt="QDD - Question-Driven Discovery" width="430" />
 
-**Question-Driven Discovery for AI-assisted biomedical research.**
+  <p><strong>Question-driven orchestration for AI-assisted biomedical discovery.</strong></p>
+  <p>Turn long-horizon research into an auditable loop of questions, evidence, artifacts, and next-study decisions.</p>
 
-QDD is a research orchestration layer for long-horizon discovery. It does not treat an AI agent as a one-shot script generator. Instead, it keeps the whole research process organized around evolving questions: what was asked, what evidence was produced, what changed, what should be reused, and what the next better question should be.
+  <p>
+    <a href="README.zh-CN.md">简体中文</a>
+    ·
+    <a href="#the-five-core-flows">Core Flows</a>
+    ·
+    <a href="#auto-mode">Auto Mode</a>
+    ·
+    <a href="#domain-skill-injection">Skills</a>
+  </p>
 
-[简体中文](README.zh-CN.md)
+  <p>
+    <img alt="Node >=20.19" src="https://img.shields.io/badge/node-%3E%3D20.19-0f172a?style=flat-square" />
+    <img alt="34 local skills" src="https://img.shields.io/badge/local%20skills-34-111827?style=flat-square" />
+    <img alt="Anthropic compatible" src="https://img.shields.io/badge/auto-Anthropic--compatible-334155?style=flat-square" />
+    <img alt="Research native" src="https://img.shields.io/badge/research-question--driven-64748b?style=flat-square" />
+  </p>
+</div>
 
-## One Sentence
+## What QDD Gives You
 
-**QDD turns exploratory biomedical analysis into an auditable question loop**: a stable project contract, bounded studies, executable tasks, promoted artifacts, and a sparse evolution record that both humans and agents can read.
+<table>
+  <tr>
+    <td><strong>Question governance</strong><br />Every study records how the research question changed: refinement, confirmation, pivot, or dissolution.</td>
+    <td><strong>Agent-ready memory</strong><br />Contracts, study files, task records, artifacts, and evolution history stay readable to both humans and agents.</td>
+  </tr>
+  <tr>
+    <td><strong>Domain skill injection</strong><br />34 local skills are routed by role and task instead of being dumped into every prompt.</td>
+    <td><strong>Public-data grounding</strong><br />CELLxGENE, GEO, PubMed, CellMarker, and ligand-receptor references become auditable local artifacts.</td>
+  </tr>
+</table>
 
 ## Why QDD
 

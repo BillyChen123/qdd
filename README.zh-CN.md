@@ -1,14 +1,39 @@
-# QDD
+<div align="center">
+  <img src="logo/QDD.png" alt="QDD - Question-Driven Discovery" width="430" />
 
-**面向 AI 辅助生物医学研究的 Question-Driven Discovery 框架。**
+  <p><strong>面向 AI 辅助生物医学发现的 Question-Driven Discovery 编排层。</strong></p>
+  <p>把长期研究组织成可审计的问题、证据、artifact 和下一步决策循环。</p>
 
-QDD 不是把 AI agent 当成一次性脚本生成器，而是把长期探索型研究组织成一个可审计的问题循环：问了什么、产生了什么证据、问题如何变化、哪些产物值得复用、下一步应该问什么。
+  <p>
+    <a href="README.md">English</a>
+    ·
+    <a href="#五大关键流程">五大流程</a>
+    ·
+    <a href="#auto-模式">Auto 模式</a>
+    ·
+    <a href="#领域-skill-注入">领域 Skill</a>
+  </p>
 
-[English](README.md)
+  <p>
+    <img alt="Node >=20.19" src="https://img.shields.io/badge/node-%3E%3D20.19-0f172a?style=flat-square" />
+    <img alt="34 local skills" src="https://img.shields.io/badge/local%20skills-34-111827?style=flat-square" />
+    <img alt="Anthropic compatible" src="https://img.shields.io/badge/auto-Anthropic--compatible-334155?style=flat-square" />
+    <img alt="Research native" src="https://img.shields.io/badge/research-question--driven-64748b?style=flat-square" />
+  </p>
+</div>
 
-## 一句话定义
+## QDD 能提供什么
 
-**QDD 把探索型生物医学分析变成可追踪的问题演化流程**：稳定的项目契约、边界清晰的 study、可执行 task、可复用 artifact，以及人和 agent 都能读懂的 evolution 记录。
+<table>
+  <tr>
+    <td><strong>问题治理</strong><br />每个 study 都记录问题如何变化：refinement、confirmation、pivot 或 dissolution。</td>
+    <td><strong>Agent 可读记忆</strong><br />contract、study、task、artifact 和 evolution 历史都保持人和 agent 可读。</td>
+  </tr>
+  <tr>
+    <td><strong>领域 Skill 注入</strong><br />34 个本地 skill 按角色和任务路由，而不是一次性塞进所有 prompt。</td>
+    <td><strong>公共数据证据化</strong><br />CELLxGENE、GEO、PubMed、CellMarker 和配受体 reference 都会成为可审计的本地 artifact。</td>
+  </tr>
+</table>
 
 ## 为什么需要 QDD
 
