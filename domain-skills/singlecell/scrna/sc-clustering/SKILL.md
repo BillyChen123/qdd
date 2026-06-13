@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/scrna_clustering.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -43,7 +43,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-clustering/scripts/scrna_clustering.py \
   --input outputs/integration/processed.h5ad \
   --output outputs/clustering \

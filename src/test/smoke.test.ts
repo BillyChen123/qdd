@@ -5,6 +5,7 @@ import os from 'node:os';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
+import { createDefaultResourcesMarkdown, createExampleResourcesMarkdown } from '../file-contracts/resources.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
 import { executeAgentToolForTest, executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
 import {
@@ -34,6 +35,29 @@ async function createTempProject(prefix: string, options: { tools?: string[] } =
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   await initCommand(projectRoot, { tools: options.tools ?? ['claude'] });
   return projectRoot;
+}
+
+async function collectTextFiles(root: string, ignoredSegments: string[] = []): Promise<string[]> {
+  const files: string[] = [];
+  const entries = await fs.readdir(root, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const absolutePath = path.join(root, entry.name);
+    const normalized = absolutePath.split(path.sep).join('/');
+    if (ignoredSegments.some((segment) => normalized.includes(segment))) {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      const childFiles = await collectTextFiles(absolutePath, ignoredSegments);
+      files.push(...childFiles);
+      continue;
+    }
+    if (/\.(md|ts|py|ya?ml|json|mjs|js)$/.test(entry.name)) {
+      files.push(absolutePath);
+    }
+  }
+
+  return files;
 }
 
 class TestInputStream extends EventEmitter {
@@ -261,6 +285,72 @@ test('auto orchestrator termination conditions are explicit', () => {
     })),
     { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' }
   );
+});
+
+test('public-data capture scripts keep persisted NCBI URLs credential-free', async () => {
+  const geoScript = await fs.readFile(
+    path.join(process.cwd(), 'domain-skills/public-data/geo-candidate-capture/scripts/geo_candidate_capture.py'),
+    'utf-8'
+  );
+  const pubmedScript = await fs.readFile(
+    path.join(process.cwd(), 'domain-skills/public-data/pubmed-evidence-capture/scripts/pubmed_evidence_capture.py'),
+    'utf-8'
+  );
+
+  for (const script of [geoScript, pubmedScript]) {
+    assert.match(script, /SENSITIVE_PARAM_KEYS/);
+    assert.match(script, /def public_request_params/);
+    assert.match(script, /def build_ncbi_url/);
+    assert.match(script, /credential_fields_redacted/);
+    assert.doesNotMatch(script, /ncbi_esearch_url["']:\s*f["']\{EUTILS_BASE\}\/esearch\.fcgi\?\{urlencode/);
+    assert.doesNotMatch(script, /return pmids,\s*f["']\{EUTILS_BASE\}\/esearch\.fcgi\?\{urlencode/);
+  }
+});
+
+test('default resource examples allow task-specific GPU use without personal environment assumptions', () => {
+  const defaultResources = createDefaultResourcesMarkdown();
+  const exampleResources = createExampleResourcesMarkdown();
+  const combined = `${defaultResources}\n${exampleResources}`;
+
+  assert.match(defaultResources, /CPU: unspecified; qdd-start should record logical cores/);
+  assert.match(defaultResources, /GPU: unknown; qdd-start should record only basic GPU availability/);
+  assert.match(exampleResources, /GPU may be used by task-specific deep-learning backends when available/);
+  assert.match(exampleResources, /prefer explicit `--threads`/);
+  assert.match(exampleResources, /packaged example environment/);
+  assert.doesNotMatch(combined, /GPU not required/);
+  assert.doesNotMatch(combined, new RegExp(['CellFM', '_torch'].join('')));
+  assert.doesNotMatch(combined, /CONDA_PREFIX|CUDA_VISIBLE_DEVICES=.*|sys\.executable/);
+});
+
+test('active public sources do not expose local developer paths or private project names', async () => {
+  const roots = ['src', 'docs', 'domain-skills', 'envs', 'openspec/changes'].map((relativePath) =>
+    path.join(process.cwd(), relativePath)
+  );
+  const files = (
+    await Promise.all(roots.map((root) =>
+      collectTextFiles(root, [
+        '/dist/',
+        '/node_modules/',
+        '/openspec/changes/archive/',
+      ])
+    ))
+  ).flat();
+  const forbiddenPatterns = [
+    ['/data', '/chenyz'].join(''),
+    ['panrank', '_tmp'].join(''),
+    ['CellFM', '_torch'].join(''),
+  ];
+
+  for (const file of files) {
+    const content = await fs.readFile(file, 'utf-8');
+    for (const pattern of forbiddenPatterns) {
+      assert.equal(
+        content.includes(pattern),
+        false,
+        `${path.relative(process.cwd(), file)} contains forbidden local marker ${pattern}`
+      );
+    }
+  }
 });
 
 test('auto orchestrator recomputes next real phase from persisted state after start', () => {
@@ -1217,6 +1307,8 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
   assert.match(instructions, /evolution\.yaml/);
   assert.match(instructions, /context\/memory\/STUDY-XXX\.md/);
   assert.match(instructions, /research-map\.html/);
+  assert.match(instructions, /best-effort CPU-core and basic GPU availability checks/);
+  assert.match(instructions, /never persist personal paths, private environment names, credentials, or raw environment variable values/);
   assert.doesNotMatch(instructions, /boundaries\.yaml/);
   assert.doesNotMatch(instructions, /question_delta/);
 
@@ -1237,6 +1329,10 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
   assert.match(startCommand, /Managed schema source/);
   assert.match(startCommand, /creating files under `studies\/`/);
   assert.match(startCommand, /mutating `evolution\.yaml`, `artifacts\/index\.yaml`, or study-local `artifact-candidates\.yaml`/);
+  assert.match(startCommand, /Run best-effort local compute checks/);
+  assert.match(startCommand, /nvidia-smi --query-gpu/);
+  assert.doesNotMatch(startCommand, /torch_cuda_available|torch_installed|device_count/);
+  assert.match(startCommand, /Do not record local executable paths/);
   assert.doesNotMatch(startCommand, /Auto Mode: Fork Next Agent/);
   assert.doesNotMatch(startCommand, /qdd boundaries apply --file/);
   assert.doesNotMatch(startCommand, /boundaries\.yaml/);
@@ -1308,6 +1404,16 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
   assert.ok(
     projectInstructions.rules.includes(
       'Do not mutate evolution.yaml, studies/**, artifacts/index.yaml, or study-local artifact-candidates.yaml during qdd-start; those are later workflow surfaces.'
+    )
+  );
+  assert.ok(
+    projectInstructions.rules.includes(
+      'During qdd-start, run best-effort CPU-core and basic GPU availability checks, then write only a concise capability summary into context/resources.md.'
+    )
+  );
+  assert.ok(
+    projectInstructions.rules.includes(
+      'Do not record local executable paths, home directories, usernames, raw environment variable values, API keys, tokens, or private environment names in context/resources.md.'
     )
   );
   assert.ok(!projectInstructions.read.includes('boundaries.yaml'));

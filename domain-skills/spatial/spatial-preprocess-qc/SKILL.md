@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_preprocess_qc.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -55,7 +55,7 @@ Use this skill when:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-preprocess-qc/scripts/spatial_preprocess_qc.py \
   --input data/spatial.h5ad \
   --output outputs/spatial_preprocess_qc \

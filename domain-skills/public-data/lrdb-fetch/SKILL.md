@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/lrdb_fetch.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -68,7 +68,7 @@ At least one bounded filter such as `--query`, `--category`, or `--pathway` shou
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/public-data/lrdb-fetch/scripts/lrdb_fetch.py \
   --output studies/STUDY-001/output \
   --source celltalkdb \

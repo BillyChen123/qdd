@@ -1,5 +1,5 @@
 entry_script: scripts/scatac_preprocess_lsi.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Inspect scATAC-style h5ad inputs, repair mixed RNA+ATAC feature spaces when needed, and build a reusable TF-IDF/LSI representation.
 methods:
   auto:

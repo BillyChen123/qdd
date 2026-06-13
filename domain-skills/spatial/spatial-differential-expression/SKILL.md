@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_differential_expression.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -61,7 +61,7 @@ The pseudobulk path does not fabricate p-values in Python. When `PyDESeq2` canno
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-differential-expression/scripts/spatial_differential_expression.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/de_day14_vs_sham \

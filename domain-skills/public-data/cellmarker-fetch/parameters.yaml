@@ -1,5 +1,5 @@
 entry_script: scripts/cellmarker_fetch.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Download CellMarker on demand, filter it with bounded task-specified terms, and materialize a downstream-ready marker CSV.
 actions:
   fetch:

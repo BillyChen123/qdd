@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_niche_composition.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -49,7 +49,7 @@ It is not appropriate for:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-niche-composition/scripts/spatial_niche_composition.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/cn7_composition \

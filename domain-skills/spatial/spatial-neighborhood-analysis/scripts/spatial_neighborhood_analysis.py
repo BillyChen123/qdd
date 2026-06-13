@@ -216,7 +216,7 @@ def compute_neighborhoods(
     try:
         import squidpy as sq  # noqa: F401
     except ModuleNotFoundError as error:
-        raise ModuleNotFoundError("squidpy is required for spatial neighborhood analysis in qdd-skill-core.") from error
+        raise ModuleNotFoundError("squidpy is required for spatial neighborhood analysis in the project-configured Python environment.") from error
     backend_used = "squidpy"
 
     score_rows: list[dict[str, Any]] = []

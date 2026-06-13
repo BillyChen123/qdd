@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_marker_annotation.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Compute cluster markers and perform lightweight marker-based annotation using a user-supplied marker table.
 methods:
   rank_genes_groups:

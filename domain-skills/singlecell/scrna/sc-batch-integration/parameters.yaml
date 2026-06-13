@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_integration.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run standalone scRNA batch diagnosis or integration with Scanpy-based methods and optional scIB metrics.
 methods:
   none:

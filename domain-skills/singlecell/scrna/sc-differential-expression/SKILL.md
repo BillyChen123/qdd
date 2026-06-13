@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_differential_expression.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -64,7 +64,7 @@ The pseudobulk path does not fabricate p-values in Python. When `PyDESeq2` canno
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-differential-expression/scripts/scrna_differential_expression.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/de_treated_vs_control \

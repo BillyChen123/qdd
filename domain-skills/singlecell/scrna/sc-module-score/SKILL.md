@@ -15,7 +15,7 @@ tags:
 
 - script: `scripts/scrna_module_score.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -65,7 +65,7 @@ Exhaustion,PDCD1,LAG3,TIGIT,TOX,HAVCR2
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-module-score/scripts/scrna_module_score.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/module_scores \

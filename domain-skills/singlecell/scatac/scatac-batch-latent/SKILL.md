@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_batch_latent.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -43,7 +43,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scatac/scatac-batch-latent/scripts/scatac_batch_latent.py \
   --input outputs/scatac_preprocess/processed.h5ad \
   --output outputs/scatac_batch \

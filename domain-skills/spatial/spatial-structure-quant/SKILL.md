@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_structure_quant.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -64,7 +64,7 @@ It is not appropriate for:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-structure-quant/scripts/spatial_structure_quant.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/follicle_candidates \
@@ -92,4 +92,4 @@ conda run -n qdd-skill-core python \
 - `seed-labels` are optional anchors. If provided, a component must include at least `--min-seed-count` seed observations to pass.
 - `required-labels` are optional supporting labels. If provided, each required label must appear at least `--min-required-count` times.
 - `assisted` interpretation should use the component tables and spatial plot rather than hidden manual edits.
-- This skill requires `squidpy` in `qdd-skill-core`; there is no hidden fallback graph path.
+- This skill requires `squidpy` in the project-configured Python environment; there is no hidden fallback graph path.

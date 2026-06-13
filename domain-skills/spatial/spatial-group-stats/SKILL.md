@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_group_stats.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -67,7 +67,7 @@ It is not appropriate for:
 Detection rate:
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-group-stats/scripts/spatial_group_stats.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/cd3d_detection \
@@ -78,7 +78,7 @@ conda run -n qdd-skill-core python \
 Abundance:
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-group-stats/scripts/spatial_group_stats.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/population_abundance \

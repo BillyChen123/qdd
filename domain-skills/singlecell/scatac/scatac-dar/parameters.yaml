@@ -1,5 +1,5 @@
 entry_script: scripts/scatac_dar.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run differential accessibility comparisons on matrix-style scATAC h5ad objects and emit reusable DAR ranking tables.
 methods:
   wilcoxon:

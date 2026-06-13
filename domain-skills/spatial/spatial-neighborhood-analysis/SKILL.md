@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_neighborhood_analysis.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -60,7 +60,7 @@ It is not appropriate for:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-neighborhood-analysis/scripts/spatial_neighborhood_analysis.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/fib_immune_coloc \
@@ -87,4 +87,4 @@ conda run -n qdd-skill-core python \
 - `neighbor-labels` define the positive labels for the co-localization score.
 - `target-labels` restrict which observations are summarized as focal observations. If omitted, all observations are focal observations.
 - This skill computes spatial evidence. It does not redefine annotations.
-- This skill requires `squidpy` in `qdd-skill-core`; there is no hidden fallback graph path.
+- This skill requires `squidpy` in the project-configured Python environment; there is no hidden fallback graph path.

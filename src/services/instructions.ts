@@ -234,6 +234,8 @@ export async function buildInstructions(
       'Treat research-map.html as a derived report, not a truth source.',
       'Keep durable shared context in context/resources.md and optional context sidecars; keep narrative study history in context/memory/*.md.',
       'Create dataset entrypoints under artifacts/data/ as symlinks rather than copying raw data by default.',
+      'During qdd-start, run best-effort CPU-core and basic GPU availability checks, then write only a concise capability summary into context/resources.md.',
+      'Do not record local executable paths, home directories, usernames, raw environment variable values, API keys, tokens, or private environment names in context/resources.md.',
       'Treat .qdd/layer-policy.yaml as the editable source for command roles and role-level default skills.',
       'Use thesis/* role skills only for thesis-manager project-frontier planning; do not treat them as study-brain or executor skills.',
       'Treat domain skills as read from the QDD root domain-skills/ library, while local workflow skills remain bootstrapped under .codex/skills/qdd/ and .claude/skills/qdd/.',

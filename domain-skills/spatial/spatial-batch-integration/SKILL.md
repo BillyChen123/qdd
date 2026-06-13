@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_batch_integration.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -50,7 +50,7 @@ Use this skill when:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-batch-integration/scripts/spatial_batch_integration.py \
   --input outputs/spatial_preprocess_qc/processed.h5ad \
   --output outputs/spatial_integration \

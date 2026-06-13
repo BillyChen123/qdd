@@ -163,7 +163,7 @@ def squidpy_spatial_graph(adata: sc.AnnData, coord_key: str, section_key: str | 
     try:
         import squidpy as sq
     except ModuleNotFoundError as error:
-        raise ModuleNotFoundError("squidpy is required for spatial graph construction in qdd-skill-core.") from error
+        raise ModuleNotFoundError("squidpy is required for spatial graph construction in the project-configured Python environment.") from error
 
     kwargs: dict[str, Any] = {
         "spatial_key": coord_key,

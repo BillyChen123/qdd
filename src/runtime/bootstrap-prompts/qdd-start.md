@@ -42,6 +42,7 @@ Use `thesis/frontier-planning` only to understand the project-level frontier and
 4. Run `qdd instructions PROJECT --command qdd-start --json`.
 5. Read the current `contract.yaml`, `context/resources.md`, and any existing `context/` sidecars.
 6. Inspect the QDD root `domain-skills/` library before promising any local domain skill.
+7. Run best-effort local compute checks for CPU cores and basic GPU availability before updating `context/resources.md`.
 
 If the user already filled part of the project context, preserve and refine it instead of overwriting it blindly.
 
@@ -88,6 +89,26 @@ Make sure it clearly covers:
 - which dataset entrypoints are linked under `artifacts/data/`
 - durable analyst preferences that should bias later studies
 - what local domain skills are already available
+
+### 3.1 Record a minimal compute summary
+
+Run lightweight local checks when possible, but do not let failed checks block project onboarding.
+
+Useful checks include:
+
+```bash
+nproc
+command -v nvidia-smi && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+```
+
+Write only a concise capability summary into `context/resources.md`:
+
+- CPU logical cores if detected
+- GPU availability as available / unavailable / unknown
+- GPU model and approximate VRAM if `nvidia-smi` reports them
+- a compute note that CPU threads should be used for baseline skills and GPU is only used by task-specific deep-learning backends
+
+Do not record local executable paths, home directories, usernames, full environment variables, API keys, tokens, or private environment names.
 
 Keep `resources.md` stable and readable:
 

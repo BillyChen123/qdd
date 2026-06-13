@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_clustering.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -47,7 +47,7 @@ Use this skill when:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-clustering/scripts/spatial_clustering.py \
   --input outputs/spatial_integration/processed.h5ad \
   --output outputs/spatial_clustering \
@@ -73,5 +73,5 @@ conda run -n qdd-skill-core python \
 
 - If coordinates are section-local, provide `--section-key` so spatial neighbors are built within sections.
 - Coordinate-based clustering is an operational spatial structure, not a biological annotation.
-- Spatial graph construction requires `squidpy` in `qdd-skill-core`; there is no hidden fallback backend.
+- Spatial graph construction requires `squidpy` in the project-configured Python environment; there is no hidden fallback backend.
 - This skill does not assign cell types, niches, neighborhoods, or communication labels.

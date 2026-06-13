@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_group_stats.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Compute downstream descriptive grouped statistics on spatial AnnData objects after annotation.
 methods:
   detection-rate:

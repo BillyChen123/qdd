@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_preprocess_qc.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -46,7 +46,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-preprocess-qc/scripts/scrna_preprocess_qc.py \
   --input data/input.h5ad \
   --output outputs/preprocess_qc \

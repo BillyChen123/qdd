@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_clustering.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Build expression, spatial, or combined graphs for spatial AnnData clustering with explicit backend provenance.
 methods:
   expression:

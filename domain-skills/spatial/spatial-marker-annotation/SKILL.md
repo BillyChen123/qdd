@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/spatial_marker_annotation.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -81,7 +81,7 @@ immune_like	Lyz2,C1qa,Cd3d
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/spatial/spatial-marker-annotation/scripts/spatial_marker_annotation.py \
   --input outputs/spatial_preprocess_qc/processed.h5ad \
   --output outputs/spatial_marker_annotation \

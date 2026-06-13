@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/cellxgene_discover.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -127,7 +127,7 @@ query:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
   --action search \
   --request studies/STUDY-001/output/public_data_request.yaml \
@@ -136,7 +136,7 @@ conda run -n qdd-skill-core python \
 ```
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/public-data/cellxgene-discover/scripts/cellxgene_discover.py \
   --action download \
   --request studies/STUDY-001/output/public_data_request.yaml \

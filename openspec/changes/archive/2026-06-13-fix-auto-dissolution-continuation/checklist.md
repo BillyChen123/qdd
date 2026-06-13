@@ -29,5 +29,5 @@
 - [x] 4.2 Run `npm run build`.
 - [x] 4.3 Run `npm test`.
 - [x] 4.4 Run `git diff --check`.
-- [x] 4.5 Run the UC dry-run check from `/data/chenyz/project/panrank_tmp/project/case/uc_anti_tnf_mucosal_healing`.
+- [x] 4.5 Run the UC dry-run check from `<qdd-project-root>`.
 - [x] 4.6 Confirm the UC dry run starts at `qdd-propose` targeting `STUDY-005`.

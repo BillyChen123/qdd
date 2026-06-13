@@ -1,5 +1,5 @@
 entry_script: scripts/lrdb_fetch.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Download a public ligand-receptor database on demand, filter it with bounded task-specified terms, and materialize a downstream-ready TSV.
 actions:
   fetch:

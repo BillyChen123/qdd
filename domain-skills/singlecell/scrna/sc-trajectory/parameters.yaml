@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_trajectory.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run Scanpy or scVelo trajectory analysis on a canonical scRNA AnnData object.
 methods:
   paga-dpt:

@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_marker_annotation.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -50,7 +50,7 @@ Myeloid\tLYZ,S100A8,CTSS
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-marker-annotation/scripts/scrna_marker_annotation.py \
   --input outputs/clustering/processed.h5ad \
   --output outputs/annotation \

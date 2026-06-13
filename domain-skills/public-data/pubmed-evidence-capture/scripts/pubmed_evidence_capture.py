@@ -16,6 +16,7 @@ import requests
 
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+SENSITIVE_PARAM_KEYS = {"api_key", "email", "token", "secret", "password", "auth"}
 DEFAULT_HEADERS = {
     "User-Agent": "qdd-pubmed-evidence-capture/0.1 (+https://github.com/)",
     "Accept": "application/json, text/xml;q=0.9, */*;q=0.1",
@@ -48,6 +49,28 @@ def dump_json(path: Path, payload: Any) -> None:
 
 def write_markdown(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def redacted_credential_fields(args: argparse.Namespace) -> list[str]:
+    fields = []
+    if args.api_key:
+        fields.append("api_key")
+    if args.email:
+        fields.append("email")
+    return fields
+
+
+def public_request_params(params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in params.items()
+        if key.lower() not in SENSITIVE_PARAM_KEYS
+    }
+
+
+def build_ncbi_url(endpoint: str, params: dict[str, Any]) -> str:
+    safe_params = public_request_params(params)
+    return f"{EUTILS_BASE}/{endpoint}?{urlencode(safe_params, doseq=True)}"
 
 
 def normalize_text(value: Any) -> str:
@@ -133,7 +156,7 @@ def search_pmids(args: argparse.Namespace, search_term: str) -> tuple[list[str],
     }
     payload = request_json("esearch.fcgi", params)
     pmids = payload.get("esearchresult", {}).get("idlist", [])
-    return pmids, f"{EUTILS_BASE}/esearch.fcgi?{urlencode(params, doseq=True)}"
+    return pmids, build_ncbi_url("esearch.fcgi", params)
 
 
 def fetch_pubmed_xml(args: argparse.Namespace, pmids: list[str]) -> str:
@@ -261,6 +284,7 @@ def main() -> None:
         "note": args.note,
         "search_term": search_term,
         "ncbi_esearch_url": search_url,
+        "credential_fields_redacted": redacted_credential_fields(args),
         "retrieved_at": retrieved_at,
     }
     dump_json(result_path, result_payload)
@@ -277,6 +301,7 @@ def main() -> None:
         f"- Rows captured: `{len(evidence)}`",
         f"- Output table: `{table_path}`",
         f"- Retrieved at: `{retrieved_at}`",
+        f"- Credential fields redacted: `{', '.join(redacted_credential_fields(args)) or 'none'}`",
         f"- Note: `{args.note}`",
         "",
         "## Evidence Preview",

@@ -71,8 +71,8 @@ git diff --check
 UC dry-run verification should be run when possible:
 
 ```bash
-cd /data/chenyz/project/panrank_tmp/project/case/uc_anti_tnf_mucosal_healing
-node /data/chenyz/project/qdd/dist/cli/index.js auto --dry-run --max-iterations 1 --json
+cd <qdd-project-root>
+node <qdd-repo-root>/dist/cli/index.js auto --dry-run --max-iterations 1 --json
 ```
 
 Expected dry-run outcome:

@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/pubmed_evidence_capture.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -61,7 +61,7 @@ At least one bounded signal such as `--query` or `--pmid` should normally be pro
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/public-data/pubmed-evidence-capture/scripts/pubmed_evidence_capture.py \
   --output studies/STUDY-001/output \
   --query "ulcerative colitis fibroblast inflammatory signaling" \

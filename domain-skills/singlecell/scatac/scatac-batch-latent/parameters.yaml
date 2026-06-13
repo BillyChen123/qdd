@@ -1,5 +1,5 @@
 entry_script: scripts/scatac_batch_latent.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run scATAC latent diagnosis or optional Harmony correction on an LSI-based representation, then build a graph, clusters, and UMAP.
 methods:
   none:

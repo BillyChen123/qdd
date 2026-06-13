@@ -75,6 +75,7 @@ Rules:
 - `references/` and `tests/` are optional; add them only when they materially improve reliability
 - `qdd init` records this tree as the central domain-skill source for the target project
 - `qdd init --refresh-bootstrap` refreshes local QDD workflow assets and the skill catalog, not per-project copies of every domain skill
+- Skill examples should run in the project-configured Python environment. The packaged `envs/qdd-skill-core.yml` environment is a convenience example, not a protocol requirement.
 - Executor-facing problem-level skills must declare controlled frontmatter fields:
   - `domain`
   - `stage`
@@ -101,3 +102,32 @@ Task files should reference the stable skill IDs, for example:
 - `public-data/pubmed-evidence-capture`
 
 Do not use `qdd/*` workflow skills or `thesis/*` or `brain/*` planning skills in task `skills:`.
+
+## Optional Deep-Learning Backends
+
+Only executor skills that actually call PyTorch or a comparable deep-learning library should expose device or install controls. CPU-native Scanpy, Squidpy, GSEApy, PyDESeq2, and descriptive-statistics skills should not grow unused `--device` flags.
+
+When a deep-learning backend is added, use this contract:
+
+- expose `--device auto|cpu|cuda|mps`
+- default to `--device auto`
+- for `auto`, prefer CUDA when `torch.cuda.is_available()` is true
+- use MPS only when the selected backend supports it
+- fall back to CPU when no accelerator is available
+- keep the selected algorithm stable; for example, `method=scvi` may run on CPU, but must not silently switch to Harmony because `scvi-tools` is missing
+
+Optional dependencies should be handled explicitly:
+
+- prefer already-installed packages
+- expose `--install-missing` and `--no-install-missing` only on skills that need optional deep-learning packages
+- if installation is authorized, install into the active Python environment and then re-check imports
+- if installation is not authorized or fails, stop with an actionable error instead of switching algorithms
+
+Deep-learning skill outputs must record runtime provenance in `result.json` or `report.md`:
+
+- backend name
+- package availability or installed version
+- whether installation was attempted
+- requested device
+- actual device
+- fallback reason when CPU was used instead of a requested accelerator

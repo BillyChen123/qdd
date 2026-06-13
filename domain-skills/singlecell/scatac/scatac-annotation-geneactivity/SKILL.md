@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_annotation_geneactivity.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -44,7 +44,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scatac/scatac-annotation-geneactivity/scripts/scatac_annotation_geneactivity.py \
   --input outputs/scatac_batch/processed.h5ad \
   --output outputs/scatac_annotation \

@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_marker_annotation.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Define reusable spatial annotation or population labels from marker sets, existing labels, or cluster marker evidence.
 methods:
   inspect:

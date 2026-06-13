@@ -1,5 +1,5 @@
 entry_script: scripts/pubmed_evidence_capture.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Capture a bounded PubMed evidence table with PMID-backed provenance and abstract excerpts.
 actions:
   capture:

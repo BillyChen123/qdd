@@ -13,7 +13,7 @@ tags:
 
 - script: `scripts/cellmarker_fetch.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -64,7 +64,7 @@ At least one bounded filter such as `--query`, `--tissue`, `--system`, or `--cel
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/public-data/cellmarker-fetch/scripts/cellmarker_fetch.py \
   --output studies/STUDY-001/output \
   --organism human \

@@ -35,6 +35,6 @@ dependencies:
 # Keep R out of the default env until an actual R-backed skill lands.
 
 # Intentionally excluded for now:
-# - decoupler: conflicts with the current torch/numpy-compatible stack in qdd-skill-core
+# - decoupler: conflicts with the current torch/numpy-compatible stack in the project-configured Python environment
 # - liana: not yet wired into a shipped executor skill
 # - cellrank: not yet wired into a shipped executor skill

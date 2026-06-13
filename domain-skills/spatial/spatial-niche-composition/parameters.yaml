@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_niche_composition.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Compare spatial niche or region label composition against matched background composition.
 methods:
   composition:

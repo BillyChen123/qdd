@@ -1,5 +1,5 @@
 entry_script: scripts/geo_candidate_capture.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Capture a bounded, auditable GEO candidate table without forcing immediate dataset download or conversion.
 actions:
   capture:

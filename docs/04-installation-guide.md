@@ -41,7 +41,7 @@ QDD 当前没有发布到 npm registry，所以安装方式是 **源码安装** 
 
 如果要直接运行 `domain-skills/` 里的分析脚本，除了 Node CLI 之外，还需要单独准备分析环境。
 
-仓库现在提供了一个稳定核心环境文件：
+仓库提供了一个可选的稳定核心环境文件，方便新用户快速获得当前已落地 skill 的常用依赖：
 
 ```bash
 conda env create -f envs/qdd-skill-core.yml
@@ -63,15 +63,26 @@ conda activate qdd-skill-core
 - `bbknn`
 - `scib`
 
-其中所有依赖 Leiden clustering 的 skill 都默认指向这套环境，所以实际运行时应使用：
+这不是 QDD 协议要求的唯一环境。实际运行时，应先激活你的项目分析环境；如果你使用上面的示例环境，就先 `conda activate qdd-skill-core`，然后直接运行脚本：
 
 ```bash
-conda run -n qdd-skill-core python <skill-script>.py ...
+python <skill-script>.py ...
 ```
 
-不要用系统 Python 去判断这些 skill 是否“缺依赖”，否则很容易把本地 shell 环境和 `qdd-skill-core` 混淆。
+不要用未激活的系统 Python 去判断这些 skill 是否“缺依赖”，否则很容易把本地 shell 环境和项目分析环境混淆。
 
 当前这套已发布 skill **不依赖 R 包**。如果后面真的引入 R-backed skill，再单独补 `R` 环境文件，不要提前把默认环境做重。
+
+### 可选深度学习 / GPU 后端
+
+当前默认 skill 环境不强制安装 PyTorch、scVI 或其他大型深度学习栈。后续 PyTorch-backed executor skill 应遵循这套轻量规则：
+
+- 默认设备参数使用 `--device auto`
+- `auto` 优先使用 CUDA；后端支持时可使用 MPS；没有可用加速器时回退 CPU
+- GPU 到 CPU 的回退只允许发生在同一个已选择的方法内，不能把 `method=scvi` 静默改成 Harmony 之类的其他算法
+- 缺少可选依赖时，只有任务或用户显式允许 `--install-missing` 才能自动安装
+- 如果未授权安装或安装失败，skill 应明确报错，并在报告里说明缺少的包和建议命令
+- 成功安装或设备回退都应写入 `result.json` / `report.md`
 
 ---
 

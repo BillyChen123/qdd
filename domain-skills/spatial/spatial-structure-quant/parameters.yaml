@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_structure_quant.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Identify and count section-aware coordinate-connected structures from existing spatial annotations using Squidpy graph construction.
 methods:
   knn:

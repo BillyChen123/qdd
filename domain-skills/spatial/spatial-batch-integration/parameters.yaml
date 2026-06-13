@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_batch_integration.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Diagnose or reduce batch effects in spatial AnnData using Scanpy integration backends while preserving spatial coordinates.
 methods:
   none:

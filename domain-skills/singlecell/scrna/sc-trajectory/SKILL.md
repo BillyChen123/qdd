@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_trajectory.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -54,7 +54,7 @@ It is not appropriate for:
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-trajectory/scripts/scrna_trajectory.py \
   --input outputs/annotation/annotated.h5ad \
   --output outputs/trajectory \

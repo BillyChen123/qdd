@@ -214,7 +214,7 @@ def quantify_structures(adata: AnnData, coords: pd.DataFrame, args: argparse.Nam
     try:
         import squidpy as sq  # noqa: F401
     except ModuleNotFoundError as error:
-        raise ModuleNotFoundError("squidpy is required for spatial structure quantification in qdd-skill-core.") from error
+        raise ModuleNotFoundError("squidpy is required for spatial structure quantification in the project-configured Python environment.") from error
     backend_used = "squidpy"
 
     component_rows: list[dict[str, Any]] = []

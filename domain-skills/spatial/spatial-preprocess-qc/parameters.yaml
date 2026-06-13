@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_preprocess_qc.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Inspect spatial AnnData state, coordinates, metadata, and run conservative preprocessing when raw counts are available.
 methods:
   inspect:

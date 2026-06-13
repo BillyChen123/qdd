@@ -1,5 +1,5 @@
 entry_script: scripts/cellxgene_discover.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Search CELLxGENE from a thin public-data request and download only the final selected h5ad targets.
 actions:
   search:

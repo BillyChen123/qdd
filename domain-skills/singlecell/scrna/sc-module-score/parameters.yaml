@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_module_score.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Compute curated module and signature scores on a canonical scRNA AnnData object using Scanpy score_genes.
 methods:
   scanpy-score-genes:

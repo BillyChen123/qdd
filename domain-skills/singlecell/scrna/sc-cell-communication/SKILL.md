@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_cell_communication.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## When To Use
 
@@ -70,7 +70,7 @@ Multi-gene complexes may be written with `+`, `;`, `,`, or `|`.
 ## Example
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-cell-communication/scripts/scrna_cell_communication.py \
   --input outputs/annotated/processed.h5ad \
   --output outputs/cell_communication \

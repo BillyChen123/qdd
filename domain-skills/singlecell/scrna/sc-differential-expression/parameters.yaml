@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_differential_expression.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run scRNA differential expression using Scanpy cell-level Wilcoxon or PyDESeq2-backed sample-aware pseudobulk DE when raw counts are available.
 methods:
   cell-level:

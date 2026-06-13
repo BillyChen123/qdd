@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_pathway_enrichment.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Run pathway or gene-set enrichment from ranked DE outputs or selected gene lists using GSEApy.
 methods:
   prerank:

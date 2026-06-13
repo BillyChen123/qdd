@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scrna_integration.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -29,11 +29,11 @@ tags:
 - `scanorama`：`scanpy.external.pp.scanorama_integrate`
 - `bbknn`：如果环境安装了 `bbknn`，则可用 graph-level correction
 
-当前环境中已确认：
+项目环境应提供：
 
 - `scanpy 1.10.0`
 - `scib 1.1.5`
-- `bbknn` 已纳入 `qdd-skill-core`
+- `bbknn` if the `bbknn` method is selected
 
 ## 关键参数
 
@@ -54,7 +54,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scrna/sc-batch-integration/scripts/scrna_integration.py \
   --input outputs/preprocess_qc/processed.h5ad \
   --output outputs/integration \

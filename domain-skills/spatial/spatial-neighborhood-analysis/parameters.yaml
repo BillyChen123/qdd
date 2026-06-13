@@ -1,5 +1,5 @@
 entry_script: scripts/spatial_neighborhood_analysis.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Compute section-aware spatial neighborhood scores from annotated spatial AnnData objects using Squidpy graph construction.
 methods:
   inspect:

@@ -14,7 +14,7 @@ tags:
 
 - script: `scripts/scatac_dar.py`
 - params: `parameters.yaml`
-- environment: `qdd-skill-core`
+- environment: project-configured Python environment (packaged example env `qdd-skill-core` is optional)
 
 ## 什么时候用
 
@@ -42,7 +42,7 @@ tags:
 ## 示例
 
 ```bash
-conda run -n qdd-skill-core python \
+python \
   domain-skills/singlecell/scatac/scatac-dar/scripts/scatac_dar.py \
   --input outputs/scatac_annotation/annotated.h5ad \
   --output outputs/scatac_dar \

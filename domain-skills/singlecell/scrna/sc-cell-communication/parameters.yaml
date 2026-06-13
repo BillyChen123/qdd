@@ -1,5 +1,5 @@
 entry_script: scripts/scrna_cell_communication.py
-python_env: qdd-skill-core
+python_env: project-configured
 summary: Score sender-receiver ligand-receptor interactions from an annotated AnnData object and a user-provided ligand-receptor table.
 methods:
   geometric_mean:

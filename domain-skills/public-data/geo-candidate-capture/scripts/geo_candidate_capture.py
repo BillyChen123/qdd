@@ -14,6 +14,7 @@ import requests
 
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+SENSITIVE_PARAM_KEYS = {"api_key", "email", "token", "secret", "password", "auth"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +42,28 @@ def dump_json(path: Path, payload: Any) -> None:
 
 def write_markdown(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def redacted_credential_fields(args: argparse.Namespace) -> list[str]:
+    fields = []
+    if args.api_key:
+        fields.append("api_key")
+    if args.email:
+        fields.append("email")
+    return fields
+
+
+def public_request_params(params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in params.items()
+        if key.lower() not in SENSITIVE_PARAM_KEYS
+    }
+
+
+def build_ncbi_url(endpoint: str, params: dict[str, Any]) -> str:
+    safe_params = public_request_params(params)
+    return f"{EUTILS_BASE}/{endpoint}?{urlencode(safe_params, doseq=True)}"
 
 
 def normalize_text(value: Any) -> str:
@@ -252,7 +275,8 @@ def main() -> None:
         "selected_rows": int(len(candidates)),
         "output": str(table_path),
         "note": args.note,
-        "ncbi_esearch_url": f"{EUTILS_BASE}/esearch.fcgi?{urlencode(search_params(args, search_term), doseq=True)}",
+        "ncbi_esearch_url": build_ncbi_url("esearch.fcgi", search_params(args, search_term)),
+        "credential_fields_redacted": redacted_credential_fields(args),
         "retrieved_at": retrieved_at,
     }
     dump_json(result_path, result_payload)
@@ -268,6 +292,7 @@ def main() -> None:
         f"- Rows captured: `{len(candidates)}`",
         f"- Output table: `{table_path}`",
         f"- Retrieved at: `{retrieved_at}`",
+        f"- Credential fields redacted: `{', '.join(redacted_credential_fields(args)) or 'none'}`",
         f"- Note: `{args.note}`",
         "",
         "## Candidate Preview",
