@@ -64,15 +64,29 @@ Question: Does X validate in cohort Y? Expected signal: the same compartment-lev
 
 Put richer rationale in `context/memory/STUDY-XXX.md`, not in `evolution.yaml`.
 
+## Project Lifecycle As Reasoning Guidance
+
+Use the project lifecycle as a thinking scaffold, not as a machine status field.
+Do not add a required `project_phase` schema unless the runtime explicitly supports it.
+
+- `exploration`: the project is still finding data anchors, stable signals, and tractable directions.
+- `main evidence`: a central result exists, but it still needs validation, boundary clarification, or robustness checks.
+- `story enrichment`: the central model is mostly locked. Next studies should enrich the story through validation, robustness, mechanism triage, functional consequence, or negative controls.
+- `synthesis-ready`: the story has a stable central model plus enough enrichment and boundary evidence. Remaining questions are mostly new-modality, new-data, experimental, or marginal-detail future directions.
+- `closed`: no more auto studies should be proposed.
+
+Finding a central model is not enough to stop. It usually means the project should enter story enrichment.
+Stopping becomes appropriate only after the central model is supported, enriched, and bounded well enough that more automatic studies are unlikely to substantially change or strengthen the story with current resources.
+
 ## Decision Meanings
 
-- `continue`: at least one executable next candidate or open boundary remains.
-- `stop`: no executable next candidate remains and the current project frontier is closed.
+- `continue`: at least one executable next candidate remains that is likely to validate, enrich, stress-test, or redirect the central model within available data/resources.
+- `stop`: no executable next candidate should remain for auto mode, even if unresolved boundaries are preserved as limitations or future directions.
 - `needs-human`: the state is contradictory, unsafe, or not judgeable from available evidence.
 
 In auto mode, `needs-human` is exceptional. Do not use it for ordinary uncertainty, weak confidence, or a normal need for validation. Use it when continuing would require a human value judgment, private data decision, unsafe action, or resolving contradictory persisted state.
 
-Project-level `stop` should leave no executable next candidates. If a real candidate exists, use `continue` and explain the expected signal.
+Project-level `stop` should leave no executable next candidates. It may still leave open boundaries when those boundaries are better carried as limitations, future directions, or new-modality requirements than automatic next studies.
 
 ## Change Type
 
@@ -85,7 +99,7 @@ Choose one:
 
 `confirmation` is not automatically terminal. A study can confirm the current direction and still justify validation, deeper mechanism work, or robustness checks.
 
-`dissolution` is not automatically project-terminal. It is terminal only when the whole project frontier has no executable next candidate or open boundary. If the local hypothesis dissolved but the project can still continue, the next candidate must move away from the failed premise through validation, robustness, pivot, or a data-feasibility/public-data step.
+`dissolution` is not automatically project-terminal. It is terminal only when the whole project frontier has no executable next candidate worth pursuing in auto mode. If the local hypothesis dissolved but the project can still continue, the next candidate must move away from the failed premise through validation, robustness, pivot, functional consequence, or a data-feasibility/public-data step.
 
 Do not use `needs-human` merely because a study produced a negative result. In auto mode, a negative result with a clear validation, robustness, pivot, or data-feasibility next candidate should remain `continue`.
 
@@ -100,6 +114,10 @@ Each candidate must include:
 - `strategy`: one of the allowed frontier strategies
 
 Do not write topic-only candidates. A candidate without an expected signal is not judgeable.
+
+Do not write a candidate merely because a question remains scientifically interesting.
+If the question requires a new modality, unavailable dataset, experimental perturbation, or substantial external decision, usually preserve it in memory as a limitation or future direction instead of forcing auto continuation.
+Open boundaries may remain open without becoming next candidates.
 
 ## Frontier Strategies
 
@@ -135,18 +153,26 @@ If no expected signal can be stated, the candidate is not ready for auto continu
 When closing a study:
 
 1. State what the study actually established.
-2. Decide `change_type`.
-3. Decide project-level `decision`.
-4. List unresolved open boundaries, if any.
-5. Keep 1-3 next candidates with expected signals and strategies.
-6. If `decision: stop`, explain `stop_reason` and leave no executable candidates.
-7. Persist sparse candidates into `evolution.yaml` through `qdd close-study`.
-8. Persist richer reasoning into `context/memory/STUDY-XXX.md`.
+2. Estimate the project lifecycle stage in reasoning prose.
+3. Decide `change_type`.
+4. Decide project-level `decision`.
+5. List unresolved open boundaries, if any.
+6. Keep 1-3 executable next candidates with expected signals and strategies only when they are worth automatic continuation.
+7. If `decision: stop`, explain `stop_reason` and leave no executable candidates.
+8. Persist sparse candidates into `evolution.yaml` through `qdd close-study`.
+9. Persist richer reasoning into `context/memory/STUDY-XXX.md`.
+
+## Calibration Cases
+
+- UC-like enriched central story: if a stable main model has been validated, enriched, and bounded by multiple negative mechanism studies, remaining new-modality upstream questions can be parked as future directions and the project can become synthesis-ready.
+- PD-like unresolved feasibility frontier: if the current actionable question is still whether available data can support the next core claim, continue until that feasibility verdict is known.
 
 ## Anti-Patterns
 
 - Stopping only because a study used `confirmation`.
 - Continuing with a topic-only next candidate.
+- Continuing solely because an open boundary exists.
+- Stopping immediately after the first central result before story enrichment.
 - Treating every unresolved uncertainty as `needs-human`.
 - Writing thesis planning skills into task `skills:`.
 - Expanding `evolution.yaml` into a heavy planning document.

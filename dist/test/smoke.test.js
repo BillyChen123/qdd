@@ -7,7 +7,7 @@ import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { createDefaultResourcesMarkdown, createExampleResourcesMarkdown } from '../file-contracts/resources.js';
 import { parseTaskSkillSection } from '../file-contracts/task.js';
-import { executeAgentToolForTest, executeProjectBashForTest, parseClaudeSettings, resolveClaudeModel } from '../runtime/agent-runner.js';
+import { executeAgentToolForTest, executeProjectBashForTest, parseClaudeSettings, resolveBashTimeoutForTest, resolveClaudeModel, truncateToolResultForModelForTest } from '../runtime/agent-runner.js';
 import { captureManagedPathSnapshot, checkTermination, computeInitialPhase, computeNextPhaseAfterCompletedPhase, inferAutoVisibleLanguage, inspectAutoPhaseDrift, runAuto, safeReadAutoStatus, } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
@@ -18,7 +18,7 @@ import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
 import { createStudy } from '../services/studies.js';
 import { createTask } from '../services/tasks.js';
-import { autoCommand } from '../commands/auto.js';
+import { autoCommand, parseAutoMaxIterationsForTest, parseAutoMaxTurnsForTest } from '../commands/auto.js';
 import { createAutoConsoleRenderer, renderAutoConsoleFooter, renderAutoConsoleFrame } from '../ui/auto-stream.js';
 async function createTempProject(prefix, options = {}) {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -163,7 +163,7 @@ test('auto orchestrator termination conditions are explicit', () => {
     })).shouldTerminate, false);
     assert.equal(checkTermination(statusFixture({
         question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: ['B001'] },
-    })).shouldTerminate, false);
+    })).shouldTerminate, true);
     assert.equal(checkTermination(statusFixture({
         question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: [] },
     })).shouldTerminate, true);
@@ -172,7 +172,7 @@ test('auto orchestrator termination conditions are explicit', () => {
     })).shouldTerminate, false);
     assert.equal(checkTermination(statusFixture({
         question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: ['B001'] },
-    })).shouldTerminate, false);
+    })).shouldTerminate, true);
     assert.equal(checkTermination(statusFixture({
         question_state: { last_kind: 'refinement', next_candidates: [], open_boundary_ids: [] },
     })).shouldTerminate, true);
@@ -187,7 +187,25 @@ test('auto orchestrator termination conditions are explicit', () => {
     assert.deepEqual(computeInitialPhase(statusFixture({
         studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
         question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: ['B001'] },
+    })), null);
+});
+test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
+        question_state: {
+            last_kind: 'refinement',
+            next_candidates: ['Question: validate the central model. Expected signal: matched direction. Strategy: validation.'],
+            open_boundary_ids: [],
+        },
     })), { phase: 'propose', target: 'STUDY-002', command: 'qdd-propose' });
+    assert.deepEqual(computeInitialPhase(statusFixture({
+        studies: { active: ['STUDY-002'], blocked: [], completed: [], closed: ['STUDY-001'] },
+        question_state: {
+            last_kind: 'refinement',
+            next_candidates: [],
+            open_boundary_ids: ['B001'],
+        },
+    }), [{ study_id: 'STUDY-002', task_id: 'TASK-002', status: 'pending' }]), { phase: 'apply', target: 'STUDY-002', command: 'qdd-apply' });
 });
 test('public-data capture scripts keep persisted NCBI URLs credential-free', async () => {
     const geoScript = await fs.readFile(path.join(process.cwd(), 'domain-skills/public-data/geo-candidate-capture/scripts/geo_candidate_capture.py'), 'utf-8');
@@ -295,7 +313,9 @@ test('qdd auto reports invalid_state for old artifact-candidates.yaml manifest s
     assert.equal(statusRead.ok, false);
     if (!statusRead.ok) {
         assert.equal(statusRead.invalidState.likelyPath, `studies/${studyId}/output/artifact-candidates.yaml`);
-        assert.match(statusRead.invalidState.message, /Invalid artifact candidate/);
+        assert.match(statusRead.invalidState.message, /stale schema/);
+        assert.match(statusRead.invalidState.message, /candidates/);
+        assert.match(statusRead.invalidState.message, /artifact_candidates/);
     }
     const result = await runAuto(projectRoot, {
         model: 'dry-run-model',
@@ -305,6 +325,7 @@ test('qdd auto reports invalid_state for old artifact-candidates.yaml manifest s
     });
     assert.equal(result.terminalCode, 'invalid_state');
     assert.match(result.terminalReason, /artifact-candidates\.yaml/);
+    assert.match(result.terminalReason, /stale schema|artifact_candidates/);
 });
 test('auto phase drift flags qdd-start study and evolution writes', async () => {
     const projectRoot = await createTempProject('qdd-auto-drift-');
@@ -378,19 +399,114 @@ test('Claude model resolution lets CLI override env and settings only when expli
         settings: {},
     }), 'claude-sonnet-4-6');
 });
+test('qdd auto defaults to unlimited agent turns while preserving explicit caps', () => {
+    assert.equal(parseAutoMaxTurnsForTest(undefined), null);
+    assert.equal(parseAutoMaxTurnsForTest('none'), null);
+    assert.equal(parseAutoMaxTurnsForTest('unlimited'), null);
+    assert.equal(parseAutoMaxTurnsForTest('7'), 7);
+    assert.throws(() => parseAutoMaxTurnsForTest('0x10'), /--max-turns must be a positive integer/);
+});
+test('qdd auto defaults to unlimited loop iterations while preserving explicit caps', () => {
+    assert.equal(parseAutoMaxIterationsForTest(undefined), null);
+    assert.equal(parseAutoMaxIterationsForTest('none'), null);
+    assert.equal(parseAutoMaxIterationsForTest('unlimited'), null);
+    assert.equal(parseAutoMaxIterationsForTest('7'), 7);
+    assert.throws(() => parseAutoMaxIterationsForTest('0x10'), /--max-iterations must be a positive integer/);
+});
+test('agent bash timeout presets map to bounded synchronous durations', () => {
+    assert.deepEqual(resolveBashTimeoutForTest(undefined), {
+        timeoutMs: 600_000,
+        preset: 'normal',
+        capped: false,
+    });
+    assert.equal(resolveBashTimeoutForTest('short').timeoutMs, 120_000);
+    assert.equal(resolveBashTimeoutForTest(undefined, 'long').timeoutMs, 3_600_000);
+    assert.deepEqual(resolveBashTimeoutForTest(3_700_000), {
+        timeoutMs: 3_600_000,
+        preset: 'custom',
+        requestedMs: 3_700_000,
+        capped: true,
+    });
+});
 test('agent bash tool rejects commands that leave the project root', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-root-'));
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-outside-'));
     const nestedRoot = path.join(projectRoot, 'nested');
     await fs.mkdir(nestedRoot);
     const nestedOutput = await executeProjectBashForTest(projectRoot, 'cd nested && pwd -P');
-    assert.equal(nestedOutput.trim(), await fs.realpath(nestedRoot));
+    assert.equal(nestedOutput.split('\n')[0], await fs.realpath(nestedRoot));
+    assert.match(nestedOutput, /"timed_out": false/);
     const blockedOutput = await executeProjectBashForTest(projectRoot, `cd ${JSON.stringify(outsideRoot)} && pwd -P`);
     assert.match(blockedOutput, /left QDD project root/);
     assert.match(blockedOutput, /\[exit code: 125\]/);
     const blockedSubshellOutput = await executeProjectBashForTest(projectRoot, `(cd ${JSON.stringify(outsideRoot)} && pwd -P)`);
     assert.match(blockedSubshellOutput, /left QDD project root/);
     assert.match(blockedSubshellOutput, /\[exit code: 125\]/);
+});
+test('agent bash timeout terminates descendant shell work', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-timeout-'));
+    const markerPath = path.join(projectRoot, 'child-survived.txt');
+    const command = '(sleep 1.2; echo survived > child-survived.txt) & wait';
+    const result = await executeProjectBashForTest(projectRoot, command, 100);
+    assert.match(result, /\[killed by timeout\]/);
+    assert.match(result, /"timed_out": true/);
+    assert.match(result, /"timeout_ms": 100/);
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await assert.rejects(fs.access(markerPath));
+});
+test('agent bash output is bounded with explicit truncation metadata', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-bash-output-'));
+    const script = "process.stdout.write('x'.repeat(20000)); process.stderr.write('y'.repeat(20000));";
+    const result = await executeProjectBashForTest(projectRoot, `node -e ${JSON.stringify(script)}`, 10_000);
+    assert.match(result, /\[stdout truncated to last 16000 chars\]/);
+    assert.match(result, /\[stderr\]\n\[stderr truncated to last 16000 chars\]/);
+    assert.match(result, /"stdout_truncated": true/);
+    assert.match(result, /"stderr_truncated": true/);
+    assert.equal(result.length < 40_000, true);
+});
+test('model-facing tool truncation preserves tail metadata', () => {
+    const result = [
+        'x'.repeat(20_000),
+        '[runtime]',
+        '{',
+        '  "timed_out": false,',
+        '  "stdout_truncated": true',
+        '}',
+    ].join('\n');
+    const truncated = truncateToolResultForModelForTest(result);
+    assert.match(truncated, /\[tool result truncated:/);
+    assert.match(truncated, /\[runtime\]/);
+    assert.match(truncated, /"stdout_truncated": true/);
+    assert.equal(truncated.length < 8_300, true);
+});
+test('agent read tool returns metadata for binary and oversized files', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-agent-read-'));
+    await fs.writeFile(path.join(projectRoot, 'small.txt'), 'small text\n', 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'matrix.h5ad'), Buffer.from([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a, 0]));
+    await fs.writeFile(path.join(projectRoot, 'large.txt'), 'a'.repeat(600 * 1024), 'utf-8');
+    const small = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-read-small',
+        name: 'read',
+        input: { path: 'small.txt' },
+    });
+    const binary = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-read-binary',
+        name: 'read',
+        input: { path: 'matrix.h5ad' },
+    });
+    const large = await executeAgentToolForTest(projectRoot, {
+        id: 'tool-read-large',
+        name: 'read',
+        input: { path: 'large.txt' },
+    });
+    assert.equal(small, 'small text\n');
+    assert.match(binary, /Read skipped: binary file content/);
+    assert.match(binary, /"kind": "metadata_only"/);
+    assert.match(binary, /"reason": "binary"/);
+    assert.doesNotMatch(binary, /\x00/);
+    assert.match(large, /Read skipped: too_large file content/);
+    assert.match(large, /"reason": "too_large"/);
+    assert.equal(large.length < 2000, true);
 });
 test('agent write tool rejects invalid managed Markdown without overwriting existing content', async () => {
     const projectRoot = await createTempProject('qdd-managed-write-md-');
@@ -871,6 +987,42 @@ test('qdd auto console renderer collapses long tool transcripts in compact mode'
     assert.match(output, /… \+3 lines \(ctrl \+ t to view transcript\)/);
     assert.doesNotMatch(output, /line 5/);
 });
+test('qdd auto console renderer truncates large tool results in run logs', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-auto-log-bound-'));
+    const chunks = [];
+    const renderer = createAutoConsoleRenderer({
+        color: false,
+        stdout: {
+            columns: 100,
+            isTTY: false,
+            write: (chunk) => {
+                chunks.push(chunk);
+                return true;
+            },
+        },
+    });
+    renderer.events.runStart?.({
+        projectRoot,
+        phase: { phase: 'apply', target: 'TASK-001', command: 'qdd-apply' },
+        model: 'test-model',
+        maxIterations: 1,
+        maxTurnsPerAgent: null,
+        dryRun: false,
+        prompt: 'Inspect data.',
+    });
+    renderer.events.agent?.toolResult?.({
+        turn: 1,
+        tool: { id: 'tool-1', name: 'read', input: { path: 'large.txt' } },
+        result: `head${'\0'.repeat(90_000)}tail`,
+    });
+    const runDir = path.join(projectRoot, '.qdd', 'runs');
+    const [logName] = await fs.readdir(runDir);
+    const log = await fs.readFile(path.join(runDir, logName), 'utf-8');
+    assert.match(log, /\[log block truncated: omitted/);
+    assert.match(log, /\\0/);
+    assert.doesNotMatch(log, /\0/);
+    assert.equal(log.length < 70_000, true);
+});
 test('qdd auto console renderer toggles latest collapsed transcript with ctrl+t', () => {
     const chunks = [];
     const stdin = new TestInputStream();
@@ -1071,6 +1223,8 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.match(instructions, /evolution\.yaml/);
     assert.match(instructions, /context\/memory\/STUDY-XXX\.md/);
     assert.match(instructions, /research-map\.html/);
+    assert.match(instructions, /default durable project memory for data resources, runtime environments, compute capability, and analyst preferences/);
+    assert.match(instructions, /Before running Python, R, conda, or other analysis commands, check `context\/resources\.md`/);
     assert.match(instructions, /best-effort CPU-core and basic GPU availability checks/);
     assert.match(instructions, /never persist personal paths, private environment names, credentials, or raw environment variable values/);
     assert.doesNotMatch(instructions, /boundaries\.yaml/);
@@ -1087,6 +1241,8 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     const startCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-start.md'), 'utf-8');
     assert.match(startCommand, /contract\.yaml/);
     assert.match(startCommand, /context\/resources\.md/);
+    assert.match(startCommand, /Durable resource memory/);
+    assert.match(startCommand, /Do not overwrite user-declared runtime preferences/);
     assert.match(startCommand, /artifacts\/data\//);
     assert.match(startCommand, /Managed schema source/);
     assert.match(startCommand, /creating files under `studies\/`/);
@@ -1101,16 +1257,26 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
     assert.doesNotMatch(startCommand, /question_delta|evolution_trail/);
     const proposeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-propose.md'), 'utf-8');
     assert.match(proposeCommand, /evolution\.yaml/);
+    assert.match(proposeCommand, /Durable resource memory/);
+    assert.match(proposeCommand, /context\/resources\.md/);
     assert.match(proposeCommand, /context\/memory/);
     assert.doesNotMatch(proposeCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(proposeCommand, /qdd boundaries score/);
     assert.doesNotMatch(proposeCommand, /question_delta|evolution_trail/);
     const applyCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-apply.md'), 'utf-8');
+    assert.match(applyCommand, /Durable resource memory/);
+    assert.match(applyCommand, /Before running Python, R, conda, or other analysis commands/);
     assert.match(applyCommand, /Keep managed Markdown frontmatter short and machine-readable/);
     assert.match(applyCommand, /Result Summary/);
+    assert.match(applyCommand, /artifact_candidates:/);
+    assert.match(applyCommand, /old invalid top-level key `candidates`/);
+    assert.match(applyCommand, /`judgeable` is a reasoning concept, not a legal machine status/);
+    assert.match(applyCommand, /use `status: completed`/);
     assert.doesNotMatch(applyCommand, /Auto Mode: Fork Next Agent/);
     assert.doesNotMatch(applyCommand, /question_delta|evolution_trail/);
     const closeCommand = await fs.readFile(path.join(projectRoot, '.claude', 'commands', 'qdd-close.md'), 'utf-8');
+    assert.match(closeCommand, /Durable resource memory/);
+    assert.match(closeCommand, /context\/resources\.md/);
     assert.match(closeCommand, /context\/memory/);
     assert.match(closeCommand, /research-map\.html/);
     assert.match(closeCommand, /Do not hand-write `evolution\.yaml`/);
@@ -1156,6 +1322,8 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(projectInstructions.rules.includes('Do not mutate evolution.yaml, studies/**, artifacts/index.yaml, or study-local artifact-candidates.yaml during qdd-start; those are later workflow surfaces.'));
     assert.ok(projectInstructions.rules.includes('During qdd-start, run best-effort CPU-core and basic GPU availability checks, then write only a concise capability summary into context/resources.md.'));
     assert.ok(projectInstructions.rules.includes('Do not record local executable paths, home directories, usernames, raw environment variable values, API keys, tokens, or private environment names in context/resources.md.'));
+    assert.ok(projectInstructions.rules.includes('Treat context/resources.md as the default durable project memory for data resources, runtime environments, compute capability, and analyst preferences.'));
+    assert.ok(projectInstructions.rules.includes('Before running Python, R, conda, or other analysis commands, check context/resources.md and prefer the declared project environment; if you do not use it, state why.'));
     assert.ok(!projectInstructions.read.includes('boundaries.yaml'));
     assert.ok(!projectInstructions.write.includes('boundaries.yaml'));
     const studyInstructions = await buildInstructions(projectRoot, studyId, { command: 'qdd-close' });
@@ -1173,6 +1341,10 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(studyInstructions.write.includes('research-map.html'));
     assert.ok(studyInstructions.rules.includes('If close preflight passes, run qdd close-study directly instead of waiting for an extra manual confirmation gate.'));
     assert.ok(studyInstructions.rules.includes('qdd-close must write evolution state through qdd close-study; do not hand-edit evolution.yaml.'));
+    assert.ok(studyInstructions.rules.includes('When editing artifact-candidates.yaml by hand, use top-level artifact_candidates exactly; the old top-level candidates key is invalid.'));
+    assert.ok(studyInstructions.rules.includes('Do not write status: judgeable in study.md; judgeable is reasoning prose, while completed is the legal status for a study ready for close.'));
+    assert.ok(studyInstructions.rules.includes('Treat context/resources.md as the default durable project memory for data resources, runtime environments, compute capability, and analyst preferences.'));
+    assert.ok(studyInstructions.rules.includes('Before running Python, R, conda, or other analysis commands, check context/resources.md and prefer the declared project environment; if you do not use it, state why.'));
     assert.ok(studyInstructions.rules.includes('Use thesis/frontier-planning before qdd close-study to choose continue, stop, or needs-human at the project frontier.'));
     assert.ok(!studyInstructions.write.includes(`studies/${studyId}/output/boundary-updates.yaml`));
     assert.ok(studyInstructions.required_skills.includes('singlecell/scrna/sc-batch-integration'));
@@ -1193,6 +1365,11 @@ test('qdd instructions are aligned to contract, evolution, memory, and research-
     assert.ok(taskInstructions.rules.includes('Preserve reusable summary matrices or CSV/TSV outputs under studies/STUDY-XXX/output/tables/ and treat them as type=table when promoted.'));
     assert.ok(taskInstructions.rules.includes('Keep task frontmatter short and machine-readable; put long task outcomes in the Markdown body `Result Summary` section.'));
     assert.ok(taskInstructions.rules.includes('When hand-writing natural-language YAML values in task frontmatter or artifact-candidates.yaml, quote them or use a block scalar such as `>-`.'));
+    assert.ok(taskInstructions.rules.includes('When editing artifact-candidates.yaml by hand, use top-level artifact_candidates exactly; the old top-level candidates key is invalid.'));
+    assert.ok(taskInstructions.rules.some((rule) => rule.includes('Minimal artifact-candidates.yaml shape: artifact_candidates:')));
+    assert.ok(taskInstructions.rules.includes('Do not write status: judgeable in study.md; judgeable is reasoning prose, while completed is the legal status for a study ready for close.'));
+    assert.ok(taskInstructions.rules.includes('Treat context/resources.md as the default durable project memory for data resources, runtime environments, compute capability, and analyst preferences.'));
+    assert.ok(taskInstructions.rules.includes('Before running Python, R, conda, or other analysis commands, check context/resources.md and prefer the declared project environment; if you do not use it, state why.'));
     assert.ok(!taskInstructions.read.includes('boundaries.yaml'));
 });
 test('qdd task skills reject thesis planning skills', async () => {

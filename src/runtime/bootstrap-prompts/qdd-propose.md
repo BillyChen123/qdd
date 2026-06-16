@@ -6,6 +6,8 @@ Turn a human-supplied research direction into one complete first-pass `study.md`
 
 **This is artifact creation, not long-form debate.** If the user wants to question assumptions, compare options, or revise an existing study after seeing the first pass, that belongs in `qdd-explore`.
 
+**Durable resource memory:** Treat `context/resources.md` as the default source for reusable project facts, data resources, runtime environments, compute capability, and analyst preferences. Consult it before planning tasks or reopening data/resource search.
+
 ---
 
 ## Input
@@ -51,7 +53,7 @@ Examples:
 3. Run `qdd status --json`.
 4. If project context is still placeholder-level, complete `qdd-start` first.
 5. If project context or reuse matters, inspect `qdd context --json` and `qdd artifacts:list --json`.
-6. Read `evolution.yaml` and recent `context/memory/*.md` before planning so the next study stays grounded in prior evidence.
+6. Read `context/resources.md`, `evolution.yaml`, and recent `context/memory/*.md` before planning so the next study stays grounded in prior evidence and declared resources.
 7. If the user is refining an existing study instead of creating a new one, read `qdd instructions STUDY-XXX --command qdd-propose --json` and the existing `study/task` files before writing.
 8. If task-level executor skill choice matters, inspect study-brain guidance under `domain-skills/brain/` and use `qdd skills suggest --domain <domain> --stage <stage> --tag <tag> --json`.
 9. Do not leave task `skills:` empty when the study already implies a clear executor problem class such as preprocess, integration, clustering, or annotation.

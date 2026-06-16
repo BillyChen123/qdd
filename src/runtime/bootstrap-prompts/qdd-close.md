@@ -8,6 +8,8 @@ Use `thesis/frontier-planning` during close. The thesis-manager must decide whet
 
 **Do not hand-write `evolution.yaml`.** Decide the close event in reasoning, then write it through `qdd close-study`. The current managed-file schema source is `.qdd/schema-reference.md` plus `.qdd/examples/*`, not older PRD or prototype documents.
 
+**Durable resource memory:** Treat `context/resources.md` as the default source for reusable project facts, data resources, runtime environments, compute capability, and analyst preferences. Read it before closure and update it only with stable, reusable evidence-backed changes.
+
 ---
 
 ## Input
@@ -51,7 +53,7 @@ If omitted:
 5. Read the current study, its task files, and relevant outputs.
 6. Inspect `artifacts/index.yaml` and `qdd artifacts:list --json` when reusable outputs matter.
 7. Read `studies/STUDY-XXX/output/artifact-candidates.yaml` before deciding what to promote.
-8. Read `evolution.yaml` and recent `context/memory/*.md` before deciding what should stay open after this study.
+8. Read `context/resources.md`, `evolution.yaml`, and recent `context/memory/*.md` before deciding what should stay open after this study.
 
 If validation or open task state shows the study is not ready to close, say so clearly.
 
@@ -110,11 +112,23 @@ Use these meanings:
 
 Use these thesis decision meanings:
 
-- `continue` - at least one executable next candidate or open boundary remains
-- `stop` - the project frontier is closed and no executable next candidate remains
+- `continue` - at least one executable next candidate remains that can validate, enrich, stress-test, or redirect the central model within available data/resources
+- `stop` - no executable next candidate should remain for auto mode, even if unresolved boundaries are preserved as limitations or future directions
 - `needs-human` - exceptional in auto mode; use only for contradictory state, unsafe action, or missing essential judgment
 
 Do not use `needs-human` for ordinary uncertainty, a normal negative result, weak confidence, or because validation would be useful. A negative result with a clear validation, robustness, pivot, or data-feasibility next candidate is a normal `continue` case.
+
+Use this lightweight project lifecycle as reasoning guidance only:
+
+- `exploration` - still finding data anchors, stable signals, and tractable directions
+- `main evidence` - a central result exists, but needs validation, boundary clarification, or robustness checks
+- `story enrichment` - the central model is mostly locked; next studies should enrich the story through validation, robustness, mechanism triage, functional consequence, or negative controls
+- `synthesis-ready` - the story has a stable central model plus enough enrichment and boundary evidence; remaining questions are mostly new-modality, new-data, experimental, or marginal-detail future directions
+- `closed` - no more auto studies should be proposed
+
+Finding a central model is not enough to stop. It usually means the project should enter story enrichment. Prefer at least one story-enrichment pass when available data/resources can support it.
+
+Stopping becomes appropriate when additional candidates are unlikely to substantially change or strengthen the central model with current resources. In that case, preserve unresolved boundaries in memory as limitations or future directions instead of forcing another auto study.
 
 Be explicit. Do not hide uncertainty inside vague prose.
 
@@ -125,7 +139,7 @@ Use this reasoning order:
 3. preserve the actual study question as the event `question`
 4. write one compact study `summary` describing what the study actually established
 5. define which boundaries remain open after this study
-6. list 1-3 `next_candidates` when there are credible follow-up directions
+6. list 1-3 `next_candidates` only when there are executable follow-up directions worth automatic continuation
 7. make every next candidate judgeable by including an expected signal and strategy
 
 After `dissolution`, do not keep digging in the rejected premise. Use candidates that explicitly validate a replacement model, stress-test a method limitation, pivot to a better-supported signal, or identify a better dataset.
@@ -138,7 +152,12 @@ Question: ... Expected signal: ... Strategy: serial-deepen|evidence-fanout|explo
 
 Put richer thesis reasoning in `context/memory/STUDY-XXX.md`, not in `evolution.yaml`.
 
-Project-level `stop` should leave no executable `next_candidates`. If a real candidate or open boundary remains, preserve it and choose `continue`.
+Project-level `stop` should leave no executable `next_candidates`. Open boundaries may remain when they are better carried as limitations, future directions, or new-modality requirements than automatic next studies.
+
+Calibration:
+
+- UC-like enriched central story: if the central model is stable, validated, enriched, and bounded by multiple negative mechanism studies, it can be synthesis-ready even when upstream epigenetic or experimental questions remain.
+- PD-like unresolved feasibility frontier: if the current actionable study is still deciding whether the available data can support the next core claim, continue until that feasibility verdict is known.
 
 ---
 
@@ -188,7 +207,7 @@ If something is useful only for this study, do not promote it as cross-study con
 
 - Close directly when the evidence and study state justify it.
 - Refinement-style closure is valid in auto mode when the study meaningfully narrowed the next question.
-- Preserve explicit open boundaries instead of pretending the study is cleaner than it is.
+- Preserve explicit open boundaries instead of pretending the study is cleaner than it is; do not turn every open boundary into a next candidate.
 - Prefer `continue` or `stop`; reserve `needs-human` for contradictory, unsafe, or not-judgeable frontier state.
 
 ---

@@ -50,7 +50,22 @@ export interface AgentRunEvents {
         maxAttempts: number;
     }) => void;
 }
-export declare function executeProjectBashForTest(cwd: string, command: string, timeoutMs?: number): Promise<string>;
+export declare const BASH_TIMEOUT_PRESETS: {
+    readonly short: 120000;
+    readonly normal: 600000;
+    readonly long: 3600000;
+};
+type BashTimeoutPreset = keyof typeof BASH_TIMEOUT_PRESETS;
+type BashTimeoutInput = number | string | undefined;
+interface ResolvedBashTimeout {
+    timeoutMs: number;
+    preset: BashTimeoutPreset | 'custom';
+    requestedMs?: number;
+    capped: boolean;
+}
+export declare function resolveBashTimeoutForTest(timeoutInput?: BashTimeoutInput, timeoutPresetInput?: unknown): ResolvedBashTimeout;
+export declare function executeProjectBashForTest(cwd: string, command: string, timeout?: BashTimeoutInput, timeoutPreset?: unknown): Promise<string>;
+export declare function truncateToolResultForModelForTest(result: string): string;
 export declare function executeAgentToolForTest(cwd: string, tool: AgentToolCall): Promise<string>;
 interface ClaudeSettings {
     ANTHROPIC_AUTH_TOKEN?: string;

@@ -134,6 +134,7 @@ export declare function renderAutoConsoleHeader(screen: AutoConsoleScreen, optio
 export declare function renderAutoConsoleBody(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string[];
 export declare function renderAutoConsoleFooter(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string[];
 export declare function renderAutoConsoleFrame(screen: AutoConsoleScreen, options?: AutoConsoleFrameOptions): string;
+export declare function truncateAutoLogBlockForTest(value: string, limit?: number): string;
 export declare class AutoConsoleRenderer {
     readonly events: AutoRunEvents;
     private readonly stdout;

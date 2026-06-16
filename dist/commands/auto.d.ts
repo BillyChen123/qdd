@@ -1,3 +1,5 @@
+export declare function parseAutoMaxIterationsForTest(value: string | undefined): number | null;
+export declare function parseAutoMaxTurnsForTest(value: string | undefined): number | null;
 export declare function autoCommand(projectRoot: string, promptArg: string | undefined, options: {
     model?: string;
     maxIterations?: string;

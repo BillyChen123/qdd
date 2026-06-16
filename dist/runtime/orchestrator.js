@@ -255,10 +255,12 @@ export async function safeReadAutoStatus(projectRoot) {
         const status = await buildStatus(projectRoot);
         if (status.output_review.studies_with_invalid_candidate_paths.length > 0) {
             const studyId = status.output_review.studies_with_invalid_candidate_paths[0] ?? 'STUDY-XXX';
+            const closeBlocker = status.close_preflight.blocked.find((entry) => entry.study_id === studyId);
+            const candidateReason = closeBlocker?.reasons.find((reason) => /artifact candidate|artifact_candidates|candidates:/i.test(reason));
             return {
                 ok: false,
                 invalidState: {
-                    message: `Invalid artifact candidate paths detected for ${studyId}.`,
+                    message: candidateReason ? `Invalid artifact candidates for ${studyId}: ${candidateReason}` : `Invalid artifact candidate paths detected for ${studyId}.`,
                     likelyPath: getStudyArtifactCandidatesPath(studyId),
                 },
             };
@@ -309,20 +311,13 @@ function incrementStudyId(studyId) {
 export function checkTermination(status) {
     const qs = status.question_state;
     const hasNextCandidates = qs.next_candidates.length > 0;
-    const hasOpenBoundaries = qs.open_boundary_ids.length > 0;
-    const hasContinuationSignal = hasNextCandidates || hasOpenBoundaries;
     if (!qs.last_kind) {
         return { shouldTerminate: false, reason: '' };
     }
-    if (qs.last_kind === 'dissolution') {
-        return hasContinuationSignal
-            ? { shouldTerminate: false, reason: '' }
-            : { shouldTerminate: true, reason: 'Question is dissolved and no executable continuation remains.' };
+    if (hasNextCandidates) {
+        return { shouldTerminate: false, reason: '' };
     }
-    if (!hasContinuationSignal) {
-        return { shouldTerminate: true, reason: 'Thesis frontier has no next candidates or open boundaries.' };
-    }
-    return { shouldTerminate: false, reason: '' };
+    return { shouldTerminate: true, reason: 'Thesis frontier has no executable next candidates.' };
 }
 export function computeInitialPhase(status, taskRecords = []) {
     const studies = allStudyIds(status);
@@ -513,6 +508,9 @@ function formatLogExcerpt(message, maxLength = 1000) {
 function formatMaxTurns(maxTurns) {
     return maxTurns === null ? 'unlimited' : String(maxTurns);
 }
+function formatMaxIterations(maxIterations) {
+    return maxIterations === null ? 'unlimited' : String(maxIterations);
+}
 export function inferAutoVisibleLanguage(prompt, env = process.env) {
     const requested = env.QDD_AUTO_MODEL_LANG ?? env.QDD_AUTO_LANG ?? env.QDD_LANG ?? '';
     if (/^zh(?:$|[-_])/i.test(requested))
@@ -538,7 +536,9 @@ export async function runAuto(projectRoot, options) {
     let iterations = 0;
     let studiesCompleted = 0;
     let terminalCode = 'max_iterations';
-    let terminalReason = `Reached max iterations (${options.maxIterations}).`;
+    let terminalReason = options.maxIterations === null
+        ? 'Auto loop ended unexpectedly before reaching a terminal state.'
+        : `Reached max iterations (${options.maxIterations}).`;
     let statusRead = await safeReadAutoStatus(projectRoot);
     const initialPhase = statusRead.ok ? computeInitialPhase(statusRead.status, statusRead.taskRecords) : null;
     options.events?.runStart?.({
@@ -602,13 +602,13 @@ export async function runAuto(projectRoot, options) {
     }
     log(`Auto mode starting from phase: ${phaseLabel(current.phase)}`);
     log(`Target: ${current.target}, Command: ${current.command}`);
-    log(`Model: ${options.model}, Max iterations: ${options.maxIterations}, Max turns per agent: ${formatMaxTurns(options.maxTurnsPerAgent)}`);
+    log(`Model: ${options.model}, Max iterations: ${formatMaxIterations(options.maxIterations)}, Max turns per agent: ${formatMaxTurns(options.maxTurnsPerAgent)}`);
     if (options.prompt?.trim())
         log(`Prompt: ${formatLogExcerpt(options.prompt, 300)}`);
     if (options.verbose)
         log(`Initial state: ${summarizeStatus(status)}`);
     log('');
-    while (iterations < options.maxIterations) {
+    while (options.maxIterations === null || iterations < options.maxIterations) {
         iterations++;
         log(`--- Iteration ${iterations}: ${phaseLabel(current.phase)} ---`);
         const phaseStartEvent = {
@@ -734,7 +734,7 @@ export async function runAuto(projectRoot, options) {
         }
         current = next;
     }
-    if (iterations >= options.maxIterations && terminalCode === 'max_iterations') {
+    if (options.maxIterations !== null && iterations >= options.maxIterations && terminalCode === 'max_iterations') {
         log(terminalReason);
         options.events?.terminal?.({ code: terminalCode, reason: terminalReason });
     }

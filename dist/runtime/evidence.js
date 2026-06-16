@@ -22,6 +22,18 @@ function isArtifactScope(value) {
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+export function describeArtifactCandidateManifestShapeIssue(manifest) {
+    if (!isRecord(manifest)) {
+        return 'artifact-candidates.yaml must be a YAML mapping with top-level artifact_candidates array.';
+    }
+    if (Array.isArray(manifest.artifact_candidates)) {
+        return null;
+    }
+    if (Array.isArray(manifest.candidates)) {
+        return 'stale schema: top-level candidates is invalid for artifact-candidates.yaml; use artifact_candidates instead.';
+    }
+    return 'artifact_candidates must be an array.';
+}
 function getArtifactDirectoryForType(type) {
     switch (type) {
         case 'data':
@@ -160,12 +172,13 @@ export async function readArtifactCandidateManifest(projectRoot, studyId) {
 export async function inspectArtifactCandidatePaths(projectRoot, studyId) {
     const relativePath = getStudyArtifactCandidatesPath(studyId);
     const manifest = await readArtifactCandidateManifest(projectRoot, studyId);
-    if (!Array.isArray(manifest.artifact_candidates)) {
+    const shapeIssue = describeArtifactCandidateManifestShapeIssue(manifest);
+    if (shapeIssue) {
         return [
             {
                 index: -1,
                 path: relativePath,
-                reason: 'artifact_candidates must be an array.',
+                reason: shapeIssue,
             },
         ];
     }

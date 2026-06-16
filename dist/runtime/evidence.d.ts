@@ -1,4 +1,5 @@
 import type { ArtifactCandidateEntry, ArtifactCandidateManifest, ArtifactType } from '../types.js';
+export declare function describeArtifactCandidateManifestShapeIssue(manifest: unknown): string | null;
 export declare function isCanonicalStudyOutputPath(studyId: string, relativePath: string): boolean;
 export declare function isScratchStudyOutputPath(studyId: string, relativePath: string): boolean;
 export declare function isPromotableStudyOutputPath(studyId: string, relativePath: string): boolean;

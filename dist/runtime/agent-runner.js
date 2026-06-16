@@ -15,7 +15,12 @@ const BASH_TOOL = {
         type: 'object',
         properties: {
             command: { type: 'string', description: 'The bash command to execute from the project root. Use relative paths or "$QDD_PROJECT_ROOT" instead of hard-coded project paths.' },
-            timeout: { type: 'number', description: 'Optional timeout in milliseconds (max 600000)' },
+            timeout: { type: 'number', description: 'Optional numeric timeout in milliseconds. Values are capped by the orchestrator at 3600000.' },
+            timeoutPreset: {
+                type: 'string',
+                enum: ['short', 'normal', 'long'],
+                description: 'Optional timeout preset. short=2 minutes, normal=10 minutes, long=1 hour. Prefer long only for expected heavy scientific tools.',
+            },
         },
         required: ['command'],
     },
@@ -48,6 +53,50 @@ const COMPLETION_MARKER = 'WORKFLOW_COMPLETE';
 const MAX_COMPLETION_MARKER_RETRIES = 2;
 const VERBOSE_RESULT_EXCERPT_LENGTH = 600;
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+const BASH_OUTPUT_TAIL_CHARS = 16_000;
+const BASH_TIMEOUT_GRACE_MS = 3_000;
+const BASH_TIMEOUT_FORCE_RESOLVE_MS = 1_000;
+const MODEL_TOOL_RESULT_LIMIT = 8_000;
+const READ_TEXT_MAX_BYTES = 512 * 1024;
+const READ_BINARY_SAMPLE_BYTES = 4096;
+const BINARY_READ_EXTENSIONS = new Set([
+    '.7z',
+    '.arrow',
+    '.bai',
+    '.bam',
+    '.bin',
+    '.bz2',
+    '.ckpt',
+    '.feather',
+    '.gz',
+    '.h5',
+    '.h5ad',
+    '.hdf5',
+    '.jpeg',
+    '.jpg',
+    '.loom',
+    '.npy',
+    '.npz',
+    '.onnx',
+    '.parquet',
+    '.pdf',
+    '.png',
+    '.pt',
+    '.pth',
+    '.rda',
+    '.rds',
+    '.tar',
+    '.tgz',
+    '.tif',
+    '.tiff',
+    '.xz',
+    '.zip',
+]);
+export const BASH_TIMEOUT_PRESETS = {
+    short: 120_000,
+    normal: 600_000,
+    long: 3_600_000,
+};
 function normalizeRoot(root) {
     return path.resolve(root);
 }
@@ -142,47 +191,252 @@ function buildProjectRootGuardScript(projectRoot) {
         '__qdd_guard_pwd',
     ].join('\n');
 }
-async function executeBash(cwd, command, timeoutMs) {
+function isBashTimeoutPreset(value) {
+    return typeof value === 'string' && value in BASH_TIMEOUT_PRESETS;
+}
+export function resolveBashTimeoutForTest(timeoutInput, timeoutPresetInput) {
+    if (isBashTimeoutPreset(timeoutPresetInput)) {
+        return {
+            timeoutMs: BASH_TIMEOUT_PRESETS[timeoutPresetInput],
+            preset: timeoutPresetInput,
+            capped: false,
+        };
+    }
+    if (isBashTimeoutPreset(timeoutInput)) {
+        return {
+            timeoutMs: BASH_TIMEOUT_PRESETS[timeoutInput],
+            preset: timeoutInput,
+            capped: false,
+        };
+    }
+    if (typeof timeoutInput === 'number' && Number.isFinite(timeoutInput) && timeoutInput > 0) {
+        const requestedMs = Math.floor(timeoutInput);
+        return {
+            timeoutMs: Math.min(requestedMs, BASH_TIMEOUT_PRESETS.long),
+            preset: 'custom',
+            requestedMs,
+            capped: requestedMs > BASH_TIMEOUT_PRESETS.long,
+        };
+    }
+    return {
+        timeoutMs: BASH_TIMEOUT_PRESETS.normal,
+        preset: 'normal',
+        capped: false,
+    };
+}
+function appendBoundedText(current, chunk) {
+    const combined = `${current.text}${chunk.toString('utf-8')}`;
+    if (combined.length <= BASH_OUTPUT_TAIL_CHARS) {
+        return { text: combined, truncated: current.truncated };
+    }
+    return {
+        text: combined.slice(-BASH_OUTPUT_TAIL_CHARS),
+        truncated: true,
+    };
+}
+function formatBoundedStream(label, value) {
+    const trimmed = value.text.trim();
+    if (!trimmed)
+        return null;
+    const prefix = value.truncated ? `[${label} truncated to last ${BASH_OUTPUT_TAIL_CHARS} chars]\n` : '';
+    if (label === 'stderr')
+        return `[stderr]\n${prefix}${trimmed}`;
+    return `${prefix}${trimmed}`;
+}
+function killProcessBoundary(pid, signal) {
+    if (!pid)
+        return false;
+    try {
+        if (process.platform === 'win32') {
+            process.kill(pid, signal);
+        }
+        else {
+            process.kill(-pid, signal);
+        }
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function formatBashRuntimeMetadata(metadata) {
+    return [
+        '[runtime]',
+        JSON.stringify({
+            pid: metadata.pid ?? null,
+            pgid: metadata.pgid ?? null,
+            started_at: metadata.startedAt,
+            ended_at: metadata.endedAt,
+            elapsed_ms: metadata.elapsedMs,
+            timeout_ms: metadata.timeout.timeoutMs,
+            timeout_preset: metadata.timeout.preset,
+            requested_timeout_ms: metadata.timeout.requestedMs ?? null,
+            timeout_capped: metadata.timeout.capped,
+            timed_out: metadata.timedOut,
+            exit_code: metadata.exitCode,
+            signal: metadata.signal,
+            stdout_truncated: metadata.stdoutTruncated,
+            stderr_truncated: metadata.stderrTruncated,
+            force_resolved: metadata.forceResolved,
+        }, null, 2),
+    ].join('\n');
+}
+async function executeBash(cwd, command, timeoutInput, timeoutPresetInput) {
     const projectRoot = await resolvePhysicalRoot(cwd);
     const guardedCommand = `${buildProjectRootGuardScript(projectRoot)}\n${command}`;
     return new Promise((resolve) => {
-        const timeout = Math.min(timeoutMs ?? 120_000, 600_000);
-        let stdout = '';
-        let stderr = '';
-        let killed = false;
+        const timeout = resolveBashTimeoutForTest(timeoutInput, timeoutPresetInput);
+        const startedAtMs = Date.now();
+        const startedAt = new Date(startedAtMs).toISOString();
+        let stdout = { text: '', truncated: false };
+        let stderr = { text: '', truncated: false };
+        let timedOut = false;
+        let forceResolved = false;
+        let settled = false;
+        let forceKillTimer = null;
+        let forceResolveTimer = null;
         const proc = spawn('bash', ['-c', guardedCommand], {
             cwd: projectRoot,
             env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', QDD_PROJECT_ROOT: projectRoot, PWD: projectRoot },
             stdio: ['ignore', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
         });
-        const timer = setTimeout(() => {
-            killed = true;
-            proc.kill('SIGTERM');
-            setTimeout(() => proc.kill('SIGKILL'), 3000);
-        }, timeout);
-        proc.stdout.on('data', (data) => { stdout += data.toString(); });
-        proc.stderr.on('data', (data) => { stderr += data.toString(); });
-        proc.on('close', (code) => {
+        const finish = (code, signal, forceResolve = false) => {
+            if (settled)
+                return;
+            settled = true;
             clearTimeout(timer);
+            if (forceKillTimer)
+                clearTimeout(forceKillTimer);
+            if (forceResolveTimer)
+                clearTimeout(forceResolveTimer);
+            forceResolved = forceResolve;
+            const endedAtMs = Date.now();
             const parts = [];
-            if (stdout.trim())
-                parts.push(stdout.trim());
-            if (stderr.trim())
-                parts.push(`[stderr]\n${stderr.trim()}`);
-            if (killed)
+            const stdoutPart = formatBoundedStream('stdout', stdout);
+            const stderrPart = formatBoundedStream('stderr', stderr);
+            if (stdoutPart)
+                parts.push(stdoutPart);
+            if (stderrPart)
+                parts.push(stderrPart);
+            if (timedOut)
                 parts.push('[killed by timeout]');
-            if (code !== 0 && !killed)
+            if (code !== 0 && !timedOut)
                 parts.push(`[exit code: ${code}]`);
+            parts.push(formatBashRuntimeMetadata({
+                pid: proc.pid,
+                pgid: process.platform === 'win32' ? undefined : proc.pid,
+                startedAt,
+                endedAt: new Date(endedAtMs).toISOString(),
+                elapsedMs: endedAtMs - startedAtMs,
+                timeout,
+                timedOut,
+                exitCode: code,
+                signal,
+                stdoutTruncated: stdout.truncated,
+                stderrTruncated: stderr.truncated,
+                forceResolved,
+            }));
             resolve(parts.join('\n') || `Command completed with exit code ${code}`);
-        });
+        };
+        const timer = setTimeout(() => {
+            timedOut = true;
+            killProcessBoundary(proc.pid, 'SIGTERM');
+            forceKillTimer = setTimeout(() => {
+                killProcessBoundary(proc.pid, 'SIGKILL');
+                forceResolveTimer = setTimeout(() => finish(null, 'SIGKILL', true), BASH_TIMEOUT_FORCE_RESOLVE_MS);
+            }, BASH_TIMEOUT_GRACE_MS);
+        }, timeout.timeoutMs);
+        proc.stdout.on('data', (data) => { stdout = appendBoundedText(stdout, data); });
+        proc.stderr.on('data', (data) => { stderr = appendBoundedText(stderr, data); });
+        proc.on('close', (code, signal) => finish(code, signal));
         proc.on('error', (err) => {
+            if (settled)
+                return;
+            settled = true;
             clearTimeout(timer);
+            if (forceKillTimer)
+                clearTimeout(forceKillTimer);
+            if (forceResolveTimer)
+                clearTimeout(forceResolveTimer);
             resolve(`Error executing command: ${err.message}`);
         });
     });
 }
-export async function executeProjectBashForTest(cwd, command, timeoutMs) {
-    return executeBash(cwd, command, timeoutMs);
+export async function executeProjectBashForTest(cwd, command, timeout, timeoutPreset) {
+    return executeBash(cwd, command, timeout, timeoutPreset);
+}
+function hasMetadataOnlyExtension(filePath) {
+    return BINARY_READ_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+function looksBinary(buffer) {
+    if (buffer.length === 0)
+        return false;
+    if (buffer.includes(0))
+        return true;
+    let suspicious = 0;
+    for (const byte of buffer) {
+        const isAllowedControl = byte === 9 || byte === 10 || byte === 12 || byte === 13;
+        if (byte < 32 && !isAllowedControl)
+            suspicious++;
+    }
+    return suspicious / buffer.length > 0.05;
+}
+function formatReadMetadataOnly(inputPath, filePath, stat, reason) {
+    return [
+        `Read skipped: ${reason} file content is not loaded into model context.`,
+        JSON.stringify({
+            kind: 'metadata_only',
+            path: inputPath,
+            resolved_path: filePath,
+            size_bytes: stat.size,
+            mtime: stat.mtime.toISOString(),
+            reason,
+            hint: 'Use a domain-aware inspection script or a concise shell summary instead of direct read for this artifact.',
+        }, null, 2),
+    ].join('\n');
+}
+async function readFileForTool(cwd, inputPath) {
+    const filePath = resolvePathForRead(cwd, inputPath);
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+        throw new Error(`Read path '${inputPath}' is not a file.`);
+    }
+    if (hasMetadataOnlyExtension(filePath)) {
+        return formatReadMetadataOnly(inputPath, filePath, stat, 'binary');
+    }
+    const handle = await fs.open(filePath, 'r');
+    try {
+        const sampleSize = Math.min(READ_BINARY_SAMPLE_BYTES, stat.size);
+        const sample = Buffer.alloc(sampleSize);
+        if (sampleSize > 0) {
+            await handle.read(sample, 0, sampleSize, 0);
+        }
+        if (looksBinary(sample)) {
+            return formatReadMetadataOnly(inputPath, filePath, stat, 'binary');
+        }
+    }
+    finally {
+        await handle.close();
+    }
+    if (stat.size > READ_TEXT_MAX_BYTES) {
+        return formatReadMetadataOnly(inputPath, filePath, stat, 'too_large');
+    }
+    return fs.readFile(filePath, 'utf-8');
+}
+export function truncateToolResultForModelForTest(result) {
+    if (result.length <= MODEL_TOOL_RESULT_LIMIT)
+        return result;
+    const marker = `[tool result truncated: omitted ${result.length - MODEL_TOOL_RESULT_LIMIT} chars; full bounded result is in the auto run log]`;
+    const available = MODEL_TOOL_RESULT_LIMIT - marker.length - '[... omitted middle ...]'.length - 4;
+    const headLength = Math.max(1000, Math.floor(available * 0.6));
+    const tailLength = Math.max(1000, available - headLength);
+    return [
+        marker,
+        result.slice(0, headLength),
+        '[... omitted middle ...]',
+        result.slice(-tailLength),
+    ].join('\n');
 }
 async function executeToolCall(cwd, tool) {
     try {
@@ -191,12 +445,13 @@ async function executeToolCall(cwd, tool) {
                 const command = String(tool.input.command ?? '');
                 if (!command.trim())
                     return 'Error: empty command';
-                const timeout = typeof tool.input.timeout === 'number' ? tool.input.timeout : undefined;
-                return executeBash(cwd, command, timeout);
+                const timeout = typeof tool.input.timeout === 'number' || typeof tool.input.timeout === 'string'
+                    ? tool.input.timeout
+                    : undefined;
+                return executeBash(cwd, command, timeout, tool.input.timeoutPreset);
             }
             case 'read': {
-                const filePath = resolvePathForRead(cwd, String(tool.input.path ?? ''));
-                return await fs.readFile(filePath, 'utf-8');
+                return readFileForTool(cwd, String(tool.input.path ?? ''));
             }
             case 'write': {
                 const filePath = resolvePathForWrite(cwd, String(tool.input.path ?? ''));
@@ -427,7 +682,7 @@ export async function runAgent(options) {
             toolResults.push({
                 type: 'tool_result',
                 tool_use_id: toolUse.id,
-                content: result.slice(0, 8000),
+                content: truncateToolResultForModelForTest(result),
             });
         }
         messages.push({ role: 'user', content: toolResults });

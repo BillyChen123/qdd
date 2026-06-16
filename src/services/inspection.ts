@@ -21,7 +21,12 @@ import { STUDY_STATUS_VALUES } from '../file-contracts/study.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from '../runtime/constants.js';
 import { discoverStudies, discoverTasks } from '../runtime/discovery.js';
-import { getStudyArtifactCandidatesPath, inspectArtifactCandidatePaths, listNonCanonicalStudyOutputEntries } from '../runtime/evidence.js';
+import {
+  describeArtifactCandidateManifestShapeIssue,
+  getStudyArtifactCandidatesPath,
+  inspectArtifactCandidatePaths,
+  listNonCanonicalStudyOutputEntries,
+} from '../runtime/evidence.js';
 import { listStudyMemoryPaths, readEvolutionState } from '../runtime/evolution.js';
 import { readLayerPolicy } from '../runtime/layer-policy.js';
 import {
@@ -364,12 +369,13 @@ function validateTaskSkillSection(relativePath: string, task: TaskRecord, body: 
 
 function validateArtifactCandidateManifest(studyId: string, manifest: ArtifactCandidateManifest, issues: ValidationIssue[]): void {
   const manifestPath = getStudyArtifactCandidatesPath(studyId);
-  if (!Array.isArray(manifest.artifact_candidates)) {
+  const shapeIssue = describeArtifactCandidateManifestShapeIssue(manifest);
+  if (shapeIssue) {
     pushIssue(issues, {
       level: 'error',
       code: 'invalid_artifact_candidates_array',
       path: manifestPath,
-      message: `${manifestPath} must define an artifact_candidates array.`,
+      message: `${manifestPath} ${shapeIssue}`,
     });
     return;
   }

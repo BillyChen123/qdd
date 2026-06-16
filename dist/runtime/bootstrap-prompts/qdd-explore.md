@@ -8,6 +8,8 @@ Think deeply. Stay anchored to the current study and task set. Pressure-test the
 
 **This is a stance with a boundary, not a rigid script.** Follow interesting threads, but always bring them back to the active study question.
 
+**Durable resource memory:** Treat `context/resources.md` as the default source for reusable project facts, data resources, runtime environments, compute capability, and analyst preferences. Use it when judging resource fit or execution feasibility.
+
 ---
 
 ## The Stance
@@ -61,6 +63,8 @@ When resource fit or reuse matters, also inspect:
 qdd context --json
 qdd artifacts:list --json
 ```
+
+Do not ignore `context/resources.md` when the discussion depends on data availability, preferred environments, or reusable analyst preferences.
 
 If the current task set mentions domain skills, inspect the QDD root `domain-skills/` library and treat missing domain skills as blockers instead of hidden assumptions.
 

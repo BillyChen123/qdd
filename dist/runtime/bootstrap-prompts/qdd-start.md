@@ -12,6 +12,8 @@ Use `thesis/frontier-planning` only to understand the project-level frontier and
 
 **Managed schema source:** If you edit YAML or Markdown managed by QDD, use `.qdd/schema-reference.md` and the matching `.qdd/examples/*` file as the current schema reference. Do not infer current schemas from older PRD or prototype documents.
 
+**Durable resource memory:** Treat `context/resources.md` as the default durable project memory for data resources, runtime environments, compute capability, and analyst preferences. Later QDD commands depend on this file, so keep it concise, current, and reusable.
+
 ---
 
 ## What Start Owns
@@ -109,6 +111,8 @@ Write only a concise capability summary into `context/resources.md`:
 - a compute note that CPU threads should be used for baseline skills and GPU is only used by task-specific deep-learning backends
 
 Do not record local executable paths, home directories, usernames, full environment variables, API keys, tokens, or private environment names.
+
+If the user has declared preferred Python/R/conda environments, record them in portable terms in `context/resources.md`. Do not overwrite user-declared runtime preferences unless they are demonstrably wrong or unavailable.
 
 Keep `resources.md` stable and readable:
 

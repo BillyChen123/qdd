@@ -31,6 +31,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function describeArtifactCandidateManifestShapeIssue(manifest: unknown): string | null {
+  if (!isRecord(manifest)) {
+    return 'artifact-candidates.yaml must be a YAML mapping with top-level artifact_candidates array.';
+  }
+
+  if (Array.isArray(manifest.artifact_candidates)) {
+    return null;
+  }
+
+  if (Array.isArray(manifest.candidates)) {
+    return 'stale schema: top-level candidates is invalid for artifact-candidates.yaml; use artifact_candidates instead.';
+  }
+
+  return 'artifact_candidates must be an array.';
+}
+
 function getArtifactDirectoryForType(type: ArtifactType): string {
   switch (type) {
     case 'data':
@@ -209,12 +225,13 @@ export interface CandidatePathIssue {
 export async function inspectArtifactCandidatePaths(projectRoot: string, studyId: string): Promise<CandidatePathIssue[]> {
   const relativePath = getStudyArtifactCandidatesPath(studyId);
   const manifest = await readArtifactCandidateManifest(projectRoot, studyId);
-  if (!Array.isArray(manifest.artifact_candidates)) {
+  const shapeIssue = describeArtifactCandidateManifestShapeIssue(manifest);
+  if (shapeIssue) {
     return [
       {
         index: -1,
         path: relativePath,
-        reason: 'artifact_candidates must be an array.',
+        reason: shapeIssue,
       },
     ];
   }

@@ -143,6 +143,17 @@ function appendRoleSkillIssues(rules, subject, roleSkills) {
         rules.push(`${subject} default domain skills are missing from the QDD root domain-skills/ library: ${missingDefault.join(', ')}.`);
     }
 }
+function appendArtifactCandidateSchemaRules(rules) {
+    rules.push('When editing artifact-candidates.yaml by hand, use top-level artifact_candidates exactly; the old top-level candidates key is invalid.');
+    rules.push('Minimal artifact-candidates.yaml shape: artifact_candidates: [{ path: studies/STUDY-XXX/output/tables/example.csv, type: table, task_id: TASK-XXX, reusable: true, scope: study, description: "Short reason this output is worth promoting.", schema: csv-table }].');
+}
+function appendStudyStatusSchemaRules(rules) {
+    rules.push('Do not write status: judgeable in study.md; judgeable is reasoning prose, while completed is the legal status for a study ready for close.');
+}
+function appendResourceMemoryRules(rules) {
+    rules.push('Treat context/resources.md as the default durable project memory for data resources, runtime environments, compute capability, and analyst preferences.');
+    rules.push('Before running Python, R, conda, or other analysis commands, check context/resources.md and prefer the declared project environment; if you do not use it, state why.');
+}
 function buildInstructionHeader(command, role) {
     return { command, role };
 }
@@ -188,6 +199,7 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Use thesis/* role skills only for thesis-manager project-frontier planning; do not treat them as study-brain or executor skills.',
             'Treat domain skills as read from the QDD root domain-skills/ library, while local workflow skills remain bootstrapped under .codex/skills/qdd/ and .claude/skills/qdd/.',
         ];
+        appendResourceMemoryRules(rules);
         appendRoleSkillIssues(rules, 'Project', roleSkillSet);
         return {
             ...buildInstructionHeader(command, role),
@@ -293,6 +305,9 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Use studies/STUDY-XXX/output/public_data_request.yaml only when this study truly depends on external public datasets; do not create it for studies that can proceed entirely from local resources.',
             'Include task_id in artifact candidates whenever one task clearly produced the reusable output.',
         ];
+        appendResourceMemoryRules(rules);
+        appendArtifactCandidateSchemaRules(rules);
+        appendStudyStatusSchemaRules(rules);
         if (command === 'qdd-propose' || command === 'qdd-explore') {
             readPaths.push(PATHS.skillsCatalog);
             rules.push('Keep human propose as the highest semantic authority; treat prior candidates in evolution.yaml only as suggestions.');
@@ -396,6 +411,9 @@ export async function buildInstructions(projectRoot, id, options = {}) {
             'Do not switch strategies just because a heavy command has been running for a few minutes without finishing.',
             'Treat explicit process exit, repeated hard errors, or sustained non-progress after extended inspection as stronger failure evidence than simple elapsed time.',
         ];
+        appendResourceMemoryRules(rules);
+        appendArtifactCandidateSchemaRules(rules);
+        appendStudyStatusSchemaRules(rules);
         if (hasDatasetPublicDataTask) {
             rules.push(`Treat ${getStudyPublicDataRequestPath(studyId)} as the only public-data handoff file for this task.`);
             rules.push('Do not reopen broad public-data search during apply; download only the selected targets already written during planning.');

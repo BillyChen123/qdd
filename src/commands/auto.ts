@@ -4,11 +4,7 @@ import { resolveClaudeModel } from '../runtime/agent-runner.js';
 import { createAutoConsoleRenderer } from '../ui/auto-stream.js';
 import { FileSystemUtils } from '../utils/file-system.js';
 
-const DEFAULT_MAX_ITERATIONS = 20;
-const DEFAULT_MAX_TURNS_PER_AGENT = 50;
-
-function parsePositiveInteger(value: string | undefined, fallback: number, optionName: string): number {
-  if (value === undefined) return fallback;
+function parsePositiveInteger(value: string, optionName: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1 || `${parsed}` !== value.trim()) {
     throw new Error(`${optionName} must be a positive integer.`);
@@ -16,11 +12,19 @@ function parsePositiveInteger(value: string | undefined, fallback: number, optio
   return parsed;
 }
 
-function parseMaxTurns(value: string | undefined): number | null {
-  if (value === undefined) return DEFAULT_MAX_TURNS_PER_AGENT;
+function parseOptionalPositiveInteger(value: string | undefined, optionName: string): number | null {
+  if (value === undefined) return null;
   const normalized = value.trim().toLowerCase();
   if (['0', 'none', 'unlimited', 'off'].includes(normalized)) return null;
-  return parsePositiveInteger(value, DEFAULT_MAX_TURNS_PER_AGENT, '--max-turns');
+  return parsePositiveInteger(value, optionName);
+}
+
+export function parseAutoMaxIterationsForTest(value: string | undefined): number | null {
+  return parseOptionalPositiveInteger(value, '--max-iterations');
+}
+
+export function parseAutoMaxTurnsForTest(value: string | undefined): number | null {
+  return parseOptionalPositiveInteger(value, '--max-turns');
 }
 
 async function resolveAutoPrompt(positionalPrompt: string | undefined, options: { prompt?: string; promptFile?: string }): Promise<string | undefined> {
@@ -56,8 +60,8 @@ export async function autoCommand(
 
   const autoOptions: AutoOptions = {
     model: resolveClaudeModel(options.model),
-    maxIterations: parsePositiveInteger(options.maxIterations, DEFAULT_MAX_ITERATIONS, '--max-iterations'),
-    maxTurnsPerAgent: parseMaxTurns(options.maxTurns),
+    maxIterations: parseAutoMaxIterationsForTest(options.maxIterations),
+    maxTurnsPerAgent: parseAutoMaxTurnsForTest(options.maxTurns),
     dryRun: options.dryRun ?? false,
     verbose: options.verbose ?? false,
     prompt,

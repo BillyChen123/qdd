@@ -6,6 +6,8 @@ Work through the active study until it reaches a decision point, a meaningful bl
 
 **Do not treat apply as the default place to redesign the plan.** In `human` and `assist` mode, if the current task set is no longer good enough, pause and route the discussion back to `qdd-explore`.
 
+**Durable resource memory:** Treat `context/resources.md` as the default source for reusable project facts, data resources, runtime environments, compute capability, and analyst preferences. Before running Python, R, conda, or other analysis commands, check the declared runtime environment there and use it by default; if you do not use it, state why.
+
 ---
 
 ## Input
@@ -52,11 +54,13 @@ If omitted:
 3. Run `qdd instructions STUDY-XXX --command qdd-apply --json`.
 4. Run `qdd instructions TASK-XXX --command qdd-apply --json` for the active task when execution begins.
 5. Read the listed study and task files.
-6. Use `qdd context --json` and `qdd artifacts:list --json` when inputs or reuse matter.
+6. Read `context/resources.md`; use `qdd context --json` and `qdd artifacts:list --json` when inputs or reuse matter.
 
 Treat the returned `read` and `write` paths as authoritative bounds.
 Treat missing local skills reported by `qdd instructions` as real blockers.
 If task-local executor skills are listed in the task instructions, read those skill files before deciding how to run the task.
+
+When an execution command needs Python/R/conda, prefer the environment recorded in `context/resources.md`. Do not fall back to a different environment silently.
 
 ---
 
@@ -196,6 +200,8 @@ Update the study file when blockers, evidence state, or task status materially c
 
 Keep managed Markdown frontmatter short and machine-readable. Put long result prose in the task body `## Result Summary` section and long study rationale in the matching study body section. If you hand-write natural-language YAML values in frontmatter or `artifact-candidates.yaml`, quote them or use a block scalar such as `>-`.
 
+`judgeable` is a reasoning concept, not a legal machine status. If the study has enough evidence for close, use `status: completed` and explain judgeability in prose.
+
 ### 4. Write outputs into the study output directory
 
 Keep outputs inside:
@@ -235,7 +241,23 @@ When an output is genuinely reusable, either:
 - add it to `studies/STUDY-XXX/output/artifact-candidates.yaml` so `qdd-close` can promote it later
 
 When one task clearly produced the output, include that `task_id` in the candidate entry so provenance survives promotion.
-When editing `artifact-candidates.yaml` by hand, quote natural-language `description` and `schema` values or use `>-` for longer prose.
+When editing `artifact-candidates.yaml` by hand, use the current top-level key `artifact_candidates` exactly. Do not use the old invalid top-level key `candidates`.
+
+Minimal shape:
+
+```yaml
+artifact_candidates:
+  - path: studies/STUDY-XXX/output/tables/example.csv
+    type: table
+    task_id: TASK-XXX
+    reusable: true
+    scope: study
+    description: >-
+      Short reason this output is worth promoting.
+    schema: csv-table
+```
+
+Quote natural-language `description` and `schema` values or use `>-` for longer prose.
 
 Before you leave a task in `completed`, set its `promotion_status` explicitly:
 

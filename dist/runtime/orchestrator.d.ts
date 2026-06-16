@@ -5,7 +5,7 @@ export type AutoCommand = Extract<QddCommand, 'qdd-start' | 'qdd-propose' | 'qdd
 export type AutoStopCode = 'terminal_state' | 'max_iterations' | 'phase_incomplete' | 'agent_failed' | 'missing_auth' | 'invalid_state';
 export interface AutoOptions {
     model: string;
-    maxIterations: number;
+    maxIterations: number | null;
     maxTurnsPerAgent: number | null;
     dryRun: boolean;
     verbose?: boolean;
@@ -47,7 +47,7 @@ export interface AutoRunStartEvent {
     projectRoot: string;
     phase: PhaseTarget | null;
     model: string;
-    maxIterations: number;
+    maxIterations: number | null;
     maxTurnsPerAgent: number | null;
     dryRun: boolean;
     prompt?: string;

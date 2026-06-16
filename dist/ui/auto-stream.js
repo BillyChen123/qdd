@@ -12,6 +12,7 @@ const INTRO_FRAME_DELAY_MS = 140;
 const FOOTER_ROWS = 2;
 const RESULT_INLINE_LINE_LIMIT = 2;
 const RESULT_INLINE_CHAR_LIMIT = 180;
+const LOG_BLOCK_CHAR_LIMIT = 64_000;
 const require = createRequire(import.meta.url);
 const { version: packageVersion } = require('../../package.json');
 const text = {
@@ -278,6 +279,9 @@ function stripCompletionMarker(value) {
 function maxTurnsLabel(value) {
     return value === null ? 'unlimited' : String(value);
 }
+function maxIterationsLabel(value) {
+    return value === null ? 'unlimited' : String(value);
+}
 function terminalTone(code) {
     if (code === 'terminal_state')
         return 'green';
@@ -287,6 +291,25 @@ function terminalTone(code) {
 }
 function isToolFailure(result) {
     return result.startsWith('Error') || result.includes('[exit code:') || result.includes('[killed by timeout]');
+}
+function sanitizeLogText(value) {
+    return value.replaceAll('\0', '\\0');
+}
+export function truncateAutoLogBlockForTest(value, limit = LOG_BLOCK_CHAR_LIMIT) {
+    const sanitized = sanitizeLogText(value);
+    if (sanitized.length <= limit)
+        return sanitized;
+    const headLength = Math.floor(limit * 0.7);
+    const tailLength = limit - headLength;
+    const omitted = sanitized.length - headLength - tailLength;
+    return [
+        `[log block truncated: omitted ${omitted} chars]`,
+        sanitized.slice(0, headLength),
+        '',
+        '[... omitted middle ...]',
+        '',
+        sanitized.slice(-tailLength),
+    ].join('\n');
 }
 function toolDisplayName(name) {
     if (name === 'bash')
@@ -514,7 +537,7 @@ export class AutoConsoleRenderer {
         this.globalStatus = 'WAITING';
         this.openLog(event.projectRoot);
         this.logLine(`qdd auto start project=${event.projectRoot}`);
-        this.logLine(`model=${event.model} maxIterations=${event.maxIterations} maxTurns=${maxTurnsLabel(event.maxTurnsPerAgent)} dryRun=${event.dryRun}`);
+        this.logLine(`model=${event.model} maxIterations=${maxIterationsLabel(event.maxIterations)} maxTurns=${maxTurnsLabel(event.maxTurnsPerAgent)} dryRun=${event.dryRun}`);
         if (event.prompt?.trim())
             this.logBlock('prompt', event.prompt);
         this.headerPrinted = true;
@@ -526,7 +549,7 @@ export class AutoConsoleRenderer {
             this.line(`${this.title('qdd auto')} ${this.dim(this.t('subtitle'))}`);
             this.field(this.t('project'), event.projectRoot);
             this.field(this.t('model'), event.model);
-            this.field(this.t('limits'), `${event.maxIterations} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
+            this.field(this.t('limits'), `${maxIterationsLabel(event.maxIterations)} phases, ${maxTurnsLabel(event.maxTurnsPerAgent)} turns/session`);
             this.field(this.t('mode'), event.dryRun ? this.t('dryRun') : this.t('live'));
             this.field(this.t('start'), event.phase ? `${event.phase.phase} ${event.phase.target}` : this.t('terminalState'));
             if (this.logPath)
@@ -1120,9 +1143,10 @@ export class AutoConsoleRenderer {
     logBlock(title, value) {
         if (!this.logPath || !value.trim())
             return;
+        const safeValue = truncateAutoLogBlockForTest(value);
         fs.appendFileSync(this.logPath, [
             `${new Date().toISOString()} --- ${title} ---`,
-            value,
+            safeValue,
             `${new Date().toISOString()} --- end ${title} ---`,
             '',
         ].join('\n'), 'utf-8');
