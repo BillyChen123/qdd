@@ -28,7 +28,8 @@ agent:
   max_turns: 8
   max_retry_backoff_ms: 300000
 codex:
-  command: codex --config 'model="gpt-5.4"' --config model_reasoning_effort=xhigh app-server
+  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.4"' --config model_reasoning_effort=xhigh app-server
+  approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
     type: workspaceWrite
