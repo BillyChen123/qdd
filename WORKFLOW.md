@@ -86,6 +86,21 @@ Important paths:
 
 Use the repository's existing patterns. Do not introduce a new framework or unrelated runtime.
 
+## Symphony Runtime Constraints
+
+This workflow runs inside raw Codex app-server through Symphony, not inside the API-based coding harness.
+
+- Do not call API-only wrapper tool names such as `functions.exec_command`, `multi_tool_use.parallel`, `functions.apply_patch`, `functions.write_stdin`, or similar wrapper namespaces.
+- Use Codex's built-in shell and file-editing capabilities directly.
+- For Linear operations, use the injected `linear_graphql` tool directly.
+- If a required tool is unavailable, explain the exact missing capability in the final response and stop instead of repeatedly retrying invented tool names.
+
+When using `linear_graphql`, keep operations narrow and explicit:
+
+- Query only the fields you need.
+- Treat a top-level GraphQL `errors` array as a real failure.
+- Use it for issue reads, state updates, and the single persistent `## Codex Workpad` comment.
+
 ## Expected Development Posture
 
 1. Read `docs/09-qdd-conclude-prd.md` before making changes.
