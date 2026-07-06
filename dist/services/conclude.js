@@ -679,10 +679,33 @@ async function writePlanningArtifacts(candidate, claims, artifactPaths) {
         FileSystemUtils.writeFile(artifactPaths.writingRationaleMatrixPath, renderWritingRationaleMatrixMarkdown(candidate, claims)),
     ]);
 }
+async function writeSelectedStoryOutput(outputDir, candidate, inputSource) {
+    await FileSystemUtils.writeFile(path.join(outputDir, 'selected_story.md'), renderSelectedStoryMarkdown(candidate, { inputSource }));
+}
+function renderSelectedStoryMarkdown(candidate, options) {
+    return [
+        '# Selected Story',
+        '',
+        `Selected Story ID: ${candidate.id}`,
+        `Input Source: ${options.inputSource}`,
+        `Framing: ${candidate.framing}`,
+        `Recommended Title Style: ${candidate.recommendedTitleStyle}`,
+        '',
+        '## Central Claim',
+        '',
+        candidate.centralClaim,
+        '',
+        '## Story',
+        '',
+        candidate.story,
+        '',
+    ].join('\n');
+}
 async function resolveSelectedStory(projectRoot, outputDir, options, candidates) {
     const candidateById = new Map(candidates.map((candidate) => [normalizeStoryId(candidate.id), candidate]));
     const directSelectedStoryId = options.selectedStoryId ? normalizeStoryId(options.selectedStoryId) : null;
     const selectedStoryPathInput = options.selectedStoryPath?.trim();
+    const auditSelectedStoryPath = path.join(outputDir, 'selected_story.md');
     const defaultSelectedStoryPath = path.join(outputDir, 'selected_story.md');
     const absoluteSelectedStoryPath = selectedStoryPathInput
         ? resolveProjectLocalPath(projectRoot, selectedStoryPathInput, 'Selected story path')
@@ -705,16 +728,27 @@ async function resolveSelectedStory(projectRoot, outputDir, options, candidates)
             selectedStoryId: null,
             selectedStoryPath: null,
             selectedCandidate: null,
+            selectedStoryInputSource: null,
+            selectedStoryMarkdown: null,
         };
     }
     const selectedCandidate = candidateById.get(selectedStoryId);
     if (!selectedCandidate) {
         throw new Error(`Selected story '${selectedStoryId}' does not match any generated candidate.`);
     }
+    const selectionInputSource = selectedStoryPathExists
+        ? toProjectRelativePath(projectRoot, absoluteSelectedStoryPath)
+        : options.selectedStoryId
+            ? 'inline-selected-story-id'
+            : 'unknown-selection-input';
     return {
         selectedStoryId,
-        selectedStoryPath: toProjectRelativePath(projectRoot, absoluteSelectedStoryPath),
+        selectedStoryPath: toProjectRelativePath(projectRoot, auditSelectedStoryPath),
         selectedCandidate,
+        selectedStoryInputSource: selectionInputSource,
+        selectedStoryMarkdown: renderSelectedStoryMarkdown(selectedCandidate, {
+            inputSource: selectionInputSource,
+        }),
     };
 }
 function renderStoryCandidatesMarkdown(result) {
@@ -846,6 +880,9 @@ export async function generateConcludeStoryCandidates(projectRoot, options = {})
         nextStep: selectedStory.selectedCandidate ? 'draft-manuscript' : 'select-story',
     };
     await writeConcludeStoryOutputs(result);
+    if (selectedStory.selectedCandidate && selectedStory.selectedStoryInputSource) {
+        await writeSelectedStoryOutput(outputDir, selectedStory.selectedCandidate, selectedStory.selectedStoryInputSource);
+    }
     if (selectedStory.selectedCandidate && planningArtifacts) {
         await writePlanningArtifacts(selectedStory.selectedCandidate, resultsClaims, planningArtifacts);
     }

@@ -800,6 +800,48 @@ test('qdd conclude CLI accepts selected story input and returns planning artifac
   assert.match(resultsValidationMarkdown, /# Results Validation/);
 });
 
+test('conclude normalizes inline selected story input into selected_story.md output', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-inline-selected-story-');
+
+  const study = await createStudy(projectRoot, {
+    question: 'Can inline selected story input still produce a standard selected_story artifact?',
+    hypothesis: 'Equivalent selection input should be normalized into the expected conclude output layout.',
+  });
+  const task = await createTask(projectRoot, study.studyId, {
+    goal: 'Record one bounded result for selected story normalization coverage',
+    expectedOutputs: ['One markdown summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    study.studyId,
+    task.taskId,
+    'completed',
+    'The bounded cohort signal is associated with the candidate state and remains non-mechanistic.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`),
+    `# ${study.studyId} Memory\n\n## Notes\n\nEquivalent selection input should still leave a durable selected story artifact.\n`,
+    'utf-8'
+  );
+
+  const outputDir = 'conclusions/inline-selected-story';
+  const result = await generateConcludeStoryCandidates(projectRoot, {
+    outputDir,
+    selectedStoryId: 'story-1',
+    now: new Date('2026-07-07T02:00:00.000Z'),
+  });
+
+  const selectedStoryMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'selected_story.md'), 'utf-8');
+
+  assert.equal(result.selectionRequired, false);
+  assert.equal(result.selectedStoryId, 'story-1');
+  assert.equal(result.selectedStoryPath, 'conclusions/inline-selected-story/selected_story.md');
+  assert.match(selectedStoryMarkdown, /# Selected Story/);
+  assert.match(selectedStoryMarkdown, /Selected Story ID: story-1/);
+  assert.match(selectedStoryMarkdown, /Input Source: inline-selected-story-id/);
+});
+
 test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
   assert.deepEqual(
     computeInitialPhase(
