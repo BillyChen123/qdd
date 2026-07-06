@@ -1,6 +1,8 @@
 node_modules/
 tmp/
 *.tgz
+.env
+.env.*
 
 # Local agent/bootstrap state for this repo
 .agents/
