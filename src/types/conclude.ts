@@ -115,6 +115,14 @@ export interface ConcludeStoryGenerationResult {
   nextStep: 'select-story';
 }
 
+export interface RunConcludeOptions extends GenerateConcludeStoryCandidatesOptions {
+}
+
+export interface RunConcludeResult extends ConcludeStoryGenerationResult {
+  preflight: ConcludePreflightResult;
+  renderStatusPath: string;
+}
+
 export interface ConcludeRenderStatus {
   status: ConcludeAvailability;
   reasons: string[];
@@ -151,4 +159,5 @@ export interface GenerateConcludeStoryCandidatesOptions extends ConcludePrefligh
   selectedStoryId?: string | null;
   runId?: string;
   now?: Date;
+  outputDir?: string;
 }

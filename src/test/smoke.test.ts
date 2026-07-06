@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import { initCommand } from '../commands/init.js';
 import { createDefaultResourcesMarkdown, createExampleResourcesMarkdown } from '../file-contracts/resources.js';
@@ -32,6 +34,8 @@ import { createTask } from '../services/tasks.js';
 import type { EvolutionState, StatusJson, StudyRecord, TaskRecord } from '../types.js';
 import { autoCommand, parseAutoMaxIterationsForTest, parseAutoMaxTurnsForTest } from '../commands/auto.js';
 import { createAutoConsoleRenderer, renderAutoConsoleFooter, renderAutoConsoleFrame } from '../ui/auto-stream.js';
+
+const execFileAsync = promisify(execFile);
 
 async function createTempProject(prefix: string, options: { tools?: string[] } = {}): Promise<string> {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -561,6 +565,59 @@ test('conclude generates distinct story candidates and enforces selection gate b
   assert.match(storyCandidatesMarkdown, /associated with/);
   assert.match(claimSafetyMarkdown, /SOFTEN:/);
   assert.equal(await FileSystemUtils.directoryExists(paperRewritingOutputPath), false);
+});
+
+test('qdd conclude CLI emits json, writes evidence audit, and reports selection gate next step', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-cli-');
+
+  const discoveryStudy = await createStudy(projectRoot, {
+    question: 'Can the CLI integrate story selection outputs without regressing evidence harvest?',
+    hypothesis: 'The conclude command should reuse current service outputs and keep the selection gate explicit.',
+    expectedArtifacts: ['One reusable report'],
+  });
+  const discoveryTask = await createTask(projectRoot, discoveryStudy.studyId, {
+    goal: 'Record one bounded association result for conclude CLI smoke coverage',
+    expectedOutputs: ['One markdown summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    discoveryStudy.studyId,
+    discoveryTask.taskId,
+    'completed',
+    'The cohort signal is associated with the candidate state, but mechanism remains untested.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`),
+    `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nThe evidence package supports a bounded conclusion and should stay association-only.\n`,
+    'utf-8'
+  );
+
+  const outputDir = 'conclusions/cli-smoke';
+  const { stdout } = await execFileAsync('node', [path.join(process.cwd(), 'bin', 'qdd.js'), 'conclude', '--json', '--output-dir', outputDir], {
+    cwd: projectRoot,
+  });
+  const parsed = JSON.parse(stdout) as {
+    outputDir: string;
+    evidenceAuditPath: string;
+    renderStatusPath: string;
+    selectionRequired: boolean;
+    nextStep: string;
+    candidates: Array<{ id: string }>;
+  };
+
+  const evidenceAuditMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'evidence_audit.md'), 'utf-8');
+  const renderStatusMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'render_status.md'), 'utf-8');
+
+  assert.equal(parsed.outputDir, path.join(projectRoot, outputDir));
+  assert.equal(parsed.evidenceAuditPath, path.join(projectRoot, outputDir, 'evidence_audit.md'));
+  assert.equal(parsed.renderStatusPath, path.join(projectRoot, outputDir, 'render_status.md'));
+  assert.equal(parsed.selectionRequired, true);
+  assert.equal(parsed.nextStep, 'select-story');
+  assert.ok(parsed.candidates.length >= 1);
+  assert.match(evidenceAuditMarkdown, /# Evidence Audit/);
+  assert.match(evidenceAuditMarkdown, /associated with/);
+  assert.match(renderStatusMarkdown, /# Render Status/);
 });
 
 test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
