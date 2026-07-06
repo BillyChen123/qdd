@@ -7,8 +7,11 @@ Recommended layout:
 ```text
 domain-skills/
 ├── thesis/
-│   └── frontier-planning/
-│       └── SKILL.md
+│   ├── frontier-planning/
+│   │   └── SKILL.md
+│   └── conclude/
+│       ├── SKILL.md
+│       └── vendor/
 ├── brain/
 │   ├── public-data/
 │   │   ├── public-data-planning/
@@ -61,7 +64,7 @@ This tree is illustrative, not exhaustive. New executor skills should extend the
 
 Rules:
 
-- Thesis-manager planning skills live under `thesis/*`
+- Thesis-layer planning and synthesis skills live under `thesis/*`
 - Study-brain planning skills live under `brain/*`
 - Executor problem-level skills live under domain trees such as `singlecell/scrna/*`, `spatial/*`, or `public-data/*`
 - Not every `public-data/*` skill uses `public_data_request.yaml`; dataset acquisition and lighter public-data capture tasks are intentionally separate
@@ -73,6 +76,7 @@ Rules:
   - `scripts/*.py`: directly runnable entry scripts
 - Keep one clear entry script per skill, named by function such as `scrna_integration.py`, not generic names like `run.py`
 - `references/` and `tests/` are optional; add them only when they materially improve reliability
+- Thesis-layer manual synthesis skills may keep vendored or template resources under the skill root, but they still must not be written into task `skills:`
 - `qdd init` records this tree as the central domain-skill source for the target project
 - `qdd init --refresh-bootstrap` refreshes local QDD workflow assets and the skill catalog, not per-project copies of every domain skill
 - Skill examples should run in the project-configured Python environment. The packaged `envs/qdd-skill-core.yml` environment is a convenience example, not a protocol requirement.
