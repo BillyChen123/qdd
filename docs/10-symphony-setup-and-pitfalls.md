@@ -9,10 +9,10 @@ QDD 仓库：
 - GitHub: `https://github.com/BillyChen123/qdd`
 - SSH remote: `git@github.com:BillyChen123/qdd.git`
 - 主分支: `main`
-- 本地仓库: `/data/chenyz/project/qdd`
-- Symphony 仓库: `/data/chenyz/symphony`
+- 本地仓库: `<qdd-local-repo>`
+- Symphony 仓库: `<symphony-local-repo>`
 - Symphony workspace: `~/code/qdd-symphony-workspaces`
-- QDD workflow: `/data/chenyz/project/qdd/WORKFLOW.md`
+- QDD workflow: `WORKFLOW.md`
 - Linear project slug: `qdd-5bbf8f2a81d1`
 - 必需 Linear label: `qdd-conclude`
 
@@ -135,7 +135,7 @@ qdd-symphony
 `qdd-symphony` 是本机 shell function/alias，作用是运行：
 
 ```bash
-/data/chenyz/symphony/elixir/bin/symphony /data/chenyz/project/qdd/WORKFLOW.md
+<symphony-local-repo>/elixir/bin/symphony <qdd-local-repo>/WORKFLOW.md
 ```
 
 如果换项目，应该换成对应项目的 `WORKFLOW.md`。
@@ -144,7 +144,7 @@ qdd-symphony
 
 1. 在 Linear 创建 issue，放到 QDD project，打上 `qdd-conclude` label。
 2. issue state 设为 `Todo` 或 `In Progress`。
-3. Symphony 轮询到 issue 后创建 workspace，例如 `~/code/qdd-symphony-workspaces/BIL-5`。
+3. Symphony 轮询到 issue 后创建 workspace，例如 `~/code/qdd-symphony-workspaces/BIL-123`。
 4. agent clone GitHub 仓库，安装依赖，执行 build。
 5. agent 创建 issue branch，例如 `bil-5-...`。
 6. agent 实现、验证、提交、推送。
@@ -203,7 +203,7 @@ Access blocked by Cloudflare ... status 403 Forbidden ... https://www.78code.cc/
 dashboard 可能只显示 `error`，不显示完整 payload。定位时看：
 
 ```bash
-tail -n 80 /data/chenyz/symphony/elixir/log/symphony.log.1
+tail -n 80 <symphony-local-repo>/elixir/log/symphony.log.1
 ```
 
 如果需要更细，可以临时增强 Symphony 的 Codex error 日志，但这属于本地调试补丁，不应混入 QDD 仓库。
@@ -239,7 +239,7 @@ Linear API key 应放在用户级环境文件或 shell profile，不要写入 `W
 
 ### 9. 本地仓库和 Symphony workspace 是两份 clone
 
-Symphony 不直接在 `/data/chenyz/project/qdd` 里改代码，而是在独立 workspace 里工作。
+Symphony 不直接在 `<qdd-local-repo>` 里改代码，而是在独立 workspace 里工作。
 
 所以 PR merge 到 GitHub `main` 后，本地 QDD 仓库需要：
 
@@ -264,8 +264,8 @@ Base branch: main
 看当前 workflow 是否能被 Symphony 解析：
 
 ```bash
-cd /data/chenyz/symphony/elixir
-mise exec -- mix run -e 'case SymphonyElixir.Workflow.load("/data/chenyz/project/qdd/WORKFLOW.md") do {:ok, wf} -> IO.inspect(get_in(wf.config, ["tracker", "active_states"]), label: "active_states"); IO.puts("workflow ok"); other -> IO.inspect(other) end'
+cd <symphony-local-repo>/elixir
+mise exec -- mix run -e 'case SymphonyElixir.Workflow.load("<qdd-local-repo>/WORKFLOW.md") do {:ok, wf} -> IO.inspect(get_in(wf.config, ["tracker", "active_states"]), label: "active_states"); IO.puts("workflow ok"); other -> IO.inspect(other) end'
 ```
 
 看本地 Git remote 和当前分支：
@@ -279,14 +279,14 @@ git ls-remote --symref origin HEAD
 看 Symphony issue workspace：
 
 ```bash
-git -C ~/code/qdd-symphony-workspaces/BIL-5 status --short --branch
-git -C ~/code/qdd-symphony-workspaces/BIL-5 branch -vv
+git -C ~/code/qdd-symphony-workspaces/BIL-123 status --short --branch
+git -C ~/code/qdd-symphony-workspaces/BIL-123 branch -vv
 ```
 
 看 Symphony 日志：
 
 ```bash
-tail -n 80 /data/chenyz/symphony/elixir/log/symphony.log.1
+tail -n 80 <symphony-local-repo>/elixir/log/symphony.log.1
 ```
 
 ## 最小复用模板

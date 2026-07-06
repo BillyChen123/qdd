@@ -1,5 +1,6 @@
 export * from './artifacts.js';
 export * from './bootstrap.js';
+export * from './conclude.js';
 export * from './core.js';
 export * from './evolution.js';
 export * from './lifecycle.js';
