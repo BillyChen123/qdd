@@ -14,4 +14,4 @@ Not included in this phase:
 - rendering logic
 - CLI or lifecycle integration
 
-Use [`docs/09-qdd-conclude-prd.md`](/data/chenyz/code/qdd-symphony-workspaces/BIL-5/docs/09-qdd-conclude-prd.md) as the product source of truth for later phases.
+Use [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md) as the product source of truth for later phases.

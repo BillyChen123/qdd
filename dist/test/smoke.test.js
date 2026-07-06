@@ -13,6 +13,7 @@ import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
 import { closeStudy } from '../services/closure.js';
+import { inspectConcludePreflight, renderConcludeRenderStatusMarkdown } from '../services/conclude.js';
 import { listArtifacts, validateProject } from '../services/inspection.js';
 import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
@@ -63,6 +64,27 @@ async function setTaskCompleted(projectRoot, studyId, taskId) {
         status: 'completed',
         updated_at: new Date().toISOString(),
     }, document.body);
+}
+async function prependStubCommands(binDir, commands) {
+    await fs.mkdir(binDir, { recursive: true });
+    for (const command of commands) {
+        const commandPath = path.join(binDir, command);
+        await fs.writeFile(commandPath, '#!/bin/sh\nexit 0\n', 'utf-8');
+        await fs.chmod(commandPath, 0o755);
+    }
+    return {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
+    };
+}
+async function createShellWithControlledPath(shellPath, pathValue) {
+    const shellBody = `#!/bin/sh
+PATH="${pathValue}"
+export PATH
+exec /bin/sh "$@"
+`;
+    await fs.writeFile(shellPath, shellBody, 'utf-8');
+    await fs.chmod(shellPath, 0o755);
 }
 function statusFixture(overrides = {}) {
     return {
@@ -188,6 +210,118 @@ test('auto orchestrator termination conditions are explicit', () => {
         studies: { active: [], blocked: [], completed: [], closed: ['STUDY-001'] },
         question_state: { last_kind: 'dissolution', next_candidates: [], open_boundary_ids: ['B001'] },
     })), null);
+});
+test('conclude preflight reads required QDD inputs and reports render availability', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-preflight-');
+    const study = await createStudy(projectRoot, {
+        question: 'Does the promoted evidence package support a bounded conclusion?',
+        hypothesis: 'One closed-loop study can seed conclude preflight inputs.',
+        expectedArtifacts: ['One reusable report'],
+    });
+    const task = await createTask(projectRoot, study.studyId, {
+        goal: 'Package one reusable evidence report',
+        expectedOutputs: ['One markdown summary'],
+    });
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Question\n\nTest memory\n`, 'utf-8');
+    await fs.writeFile(path.join(projectRoot, 'studies', study.studyId, 'output', 'reports', 'summary.md'), '# Summary\n', 'utf-8');
+    const binDir = path.join(projectRoot, '.tmp-bin-all');
+    const toolEnv = await prependStubCommands(binDir, ['latexmk', 'xelatex', 'pandoc']);
+    const shellPath = path.join(projectRoot, '.tmp-shell-all.sh');
+    await createShellWithControlledPath(shellPath, binDir);
+    const result = await inspectConcludePreflight(projectRoot, { environment: toolEnv, shellPath });
+    const renderStatus = renderConcludeRenderStatusMarkdown(result);
+    assert.equal(result.projectStatus, 'available');
+    assert.equal(result.qddProjectRoot, true);
+    assert.equal(result.checkedPaths.contract.status, 'available');
+    assert.equal(result.checkedPaths.studies.count, 1);
+    assert.equal(result.checkedPaths.memory.count, 1);
+    assert.equal(result.snapshot.contract?.theme, 'Unspecified research theme');
+    assert.equal(result.snapshot.studies.length, 1);
+    assert.equal(result.snapshot.studies[0].studyId, study.studyId);
+    assert.equal(result.snapshot.studies[0].tasks.length, 1);
+    assert.equal(result.snapshot.studies[0].tasks[0].taskId, task.taskId);
+    assert.equal(result.snapshot.studyMemories[0].relativePath, `context/memory/${study.studyId}.md`);
+    assert.equal(result.render.status, 'available');
+    assert.equal(result.render.pdf.status, 'available');
+    assert.equal(result.render.word.status, 'available');
+    assert.match(renderStatus, /Overall status: AVAILABLE/);
+    assert.match(renderStatus, /PDF: AVAILABLE/);
+    assert.match(renderStatus, /Word: AVAILABLE/);
+});
+test('conclude preflight blocks when required QDD structure is missing', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-preflight-missing-');
+    await fs.rm(path.join(projectRoot, 'studies'), { recursive: true, force: true });
+    await fs.rm(path.join(projectRoot, 'context', 'memory'), { recursive: true, force: true });
+    const result = await inspectConcludePreflight(projectRoot);
+    const renderStatus = renderConcludeRenderStatusMarkdown(result);
+    assert.equal(result.projectStatus, 'blocked');
+    assert.equal(result.checkedPaths.studies.status, 'blocked');
+    assert.equal(result.checkedPaths.memory.status, 'blocked');
+    assert.ok(result.projectBlockers.some((reason) => reason.includes("Missing required conclude directory 'studies'.")));
+    assert.ok(result.projectBlockers.some((reason) => reason.includes("Missing required conclude directory 'context/memory'.")));
+    assert.match(renderStatus, /Project preflight: BLOCKED/);
+    assert.match(renderStatus, /studies: BLOCKED/);
+});
+test('conclude preflight warns when .qdd is missing but conclude inputs still exist', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-preflight-without-qdd-dir-');
+    const study = await createStudy(projectRoot, {
+        question: 'Can conclude preflight tolerate a missing bootstrap directory?',
+        hypothesis: 'The conclude slice should key off required research inputs, not bootstrap state.',
+    });
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Question\n\nRoot marker audit\n`, 'utf-8');
+    await fs.rm(path.join(projectRoot, '.qdd'), { recursive: true, force: true });
+    const result = await inspectConcludePreflight(projectRoot);
+    assert.equal(result.qddProjectRoot, false);
+    assert.equal(result.projectStatus, 'available');
+    assert.equal(result.projectBlockers.length, 0);
+    assert.ok(result.warnings.some((warning) => warning.includes("Current directory is missing standard QDD root markers")));
+});
+test('conclude preflight marks rendering blocked when TeX or pandoc tools are missing', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-render-blocked-');
+    const study = await createStudy(projectRoot, {
+        question: 'Does tool detection preserve blocked rendering state?',
+        hypothesis: 'Missing tools should not be reported as success.',
+    });
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Question\n\nRender audit\n`, 'utf-8');
+    const binDir = path.join(projectRoot, '.tmp-bin-pdf-only');
+    const toolEnv = await prependStubCommands(binDir, ['pdflatex']);
+    const shellPath = path.join(projectRoot, '.tmp-shell-pdf-only.sh');
+    await createShellWithControlledPath(shellPath, binDir);
+    const result = await inspectConcludePreflight(projectRoot, { environment: toolEnv, shellPath });
+    const renderStatus = renderConcludeRenderStatusMarkdown(result);
+    assert.equal(result.projectStatus, 'available');
+    assert.equal(result.render.status, 'blocked');
+    assert.equal(result.render.pdf.status, 'available');
+    assert.equal(result.render.word.status, 'blocked');
+    assert.equal(result.render.tools.pdflatex.available, true);
+    assert.equal(result.render.tools.pandoc.available, false);
+    assert.equal(result.render.tools.latexmk.available, false);
+    assert.match(renderStatus, /PDF: AVAILABLE/);
+    assert.match(renderStatus, /Word: BLOCKED - pandoc is not installed\./);
+    assert.match(renderStatus, /pandoc: BLOCKED/);
+});
+test('conclude preflight marks PDF rendering blocked when no TeX engine is available', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-render-pdf-blocked-');
+    const study = await createStudy(projectRoot, {
+        question: 'Does render detection block PDF when no TeX engine is installed?',
+        hypothesis: 'PDF rendering should stay blocked without xelatex or pdflatex.',
+    });
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Question\n\nPDF audit\n`, 'utf-8');
+    const binDir = path.join(projectRoot, '.tmp-bin-word-only');
+    const toolEnv = await prependStubCommands(binDir, ['pandoc']);
+    const shellPath = path.join(projectRoot, '.tmp-shell-word-only.sh');
+    await createShellWithControlledPath(shellPath, binDir);
+    const result = await inspectConcludePreflight(projectRoot, { environment: toolEnv, shellPath });
+    const renderStatus = renderConcludeRenderStatusMarkdown(result);
+    assert.equal(result.projectStatus, 'available');
+    assert.equal(result.render.status, 'blocked');
+    assert.equal(result.render.pdf.status, 'blocked');
+    assert.equal(result.render.word.status, 'available');
+    assert.equal(result.render.tools.xelatex.available, false);
+    assert.equal(result.render.tools.pdflatex.available, false);
+    assert.equal(result.render.tools.pandoc.available, true);
+    assert.match(renderStatus, /PDF: BLOCKED - Neither xelatex nor pdflatex is installed\./);
+    assert.match(renderStatus, /Word: AVAILABLE/);
 });
 test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
     assert.deepEqual(computeInitialPhase(statusFixture({

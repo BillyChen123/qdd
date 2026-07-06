@@ -43,7 +43,7 @@ This scaffold does **not** yet implement:
 
 ## Required Product Constraints
 
-Future implementation work must continue to follow [`docs/09-qdd-conclude-prd.md`](/data/chenyz/code/qdd-symphony-workspaces/BIL-5/docs/09-qdd-conclude-prd.md).
+Future implementation work must continue to follow [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md).
 
 Especially preserve these guardrails:
 
