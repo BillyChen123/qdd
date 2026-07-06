@@ -78,6 +78,13 @@ Treat the Linear state as the control plane:
 - `Todo`, `In Progress`, and `Rework`: implement or revise the requested issue slice.
 - `Human Review`: do not work. This is the human review pause state and is intentionally not an active state.
 - `Merging`: do not add new feature scope. Confirm the issue has a pushed branch and PR, verify the review handoff is complete, merge the approved PR into `main`, then move the Linear issue to `Done`.
+- Linear `Blocked by` / `Blocks` relations are dependency gates. If the current issue has any non-terminal blocker, do not implement it; update the workpad with the blocker and leave the issue in a waiting state.
+
+For dependent issue chains:
+
+- Upstream issues must merge to `main` before downstream implementation begins.
+- Downstream issues should remain `Todo + Blocked by` until their blockers are terminal.
+- Do not ignore Linear blockers just because the issue is in an active state.
 
 When the issue is in `Merging`:
 

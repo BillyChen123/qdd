@@ -67,6 +67,50 @@ tracker:
 
 注意：`Human Review` 不放进 `active_states`，它就是为了让系统暂停等待人类。
 
+## Linear 依赖图
+
+大规模任务不要只靠 issue 描述里的文字顺序。Linear 支持 issue relation，可以表达：
+
+- `Related`: 普通相关，不表示阻塞。
+- `Blocked by`: 当前 issue 被另一个 issue 阻塞。
+- `Blocking` / `Blocks`: 当前 issue 阻塞另一个 issue。
+- `Duplicate`: 重复 issue。
+
+对 Symphony 调度有用的是 `Blocked by` / `Blocks`，不是普通 `Related`。
+
+例如：
+
+```text
+BIL-10 blocks BIL-11
+BIL-11 blocks BIL-12
+```
+
+等价于：
+
+```text
+BIL-11 is blocked by BIL-10
+BIL-12 is blocked by BIL-11
+```
+
+在 Linear 里可以这样添加：
+
+1. 打开被阻塞的 issue，例如 `BIL-11`。
+2. 在右侧属性栏、右上角 `...` 菜单，或 `Cmd/Ctrl + K` command menu 中搜索 `Blocked by`。
+3. 选择前置 issue，例如 `BIL-10`。
+4. 确认前置 issue 页面显示 `Blocks BIL-11`，下游 issue 页面显示 `Blocked by BIL-10`。
+
+也可以反过来打开前置 issue，选择 `Blocking` / `Blocks`，再选下游 issue。
+
+注意：只在 description 里写 `depends on BIL-10` 不够。Symphony 读取的是 Linear issue relation。
+
+当前 Symphony 已经会读取 Linear 的 `blocks` relation，并在派发 `Todo` issue 前检查 blocker 是否进入 terminal state。因此推荐：
+
+- 有依赖的下游 issue 可以提前建好并放 `Backlog`。
+- 要准备排队时，把下游 issue 放 `Todo`，但必须设置 `Blocked by` 关系。
+- 不要把仍被 blocker 卡住的 issue 手动改成 `In Progress`。
+- 对互不依赖的 issue，可以提高 `max_concurrent_agents` 并行跑。
+- 对线性依赖链，确保只有当前 ready 的节点进入 active state，或至少让下游保持 `Todo + Blocked by`。
+
 ## WORKFLOW.md 的作用
 
 `WORKFLOW.md` 分两部分。
@@ -104,7 +148,7 @@ codex:
 - `tracker.terminal_states`: 终态；进入这些状态后不再工作，workspace 可能被清理。
 - `workspace.root`: 每个 issue 的独立工作目录根路径。
 - `hooks.after_create`: 新 workspace 创建后执行，一般用于 clone repo、安装依赖、初次 build。
-- `agent.max_concurrent_agents`: 同时跑几个 agent。QDD 当前设为 1，方便学习和观察。
+- `agent.max_concurrent_agents`: 同时跑几个 agent。学习期或线性依赖链建议设为 1；如果 Linear `Blocked by` 关系维护清楚，可以提高并发来跑互不依赖的 ready nodes。
 - `agent.max_turns`: 单次 agent run 最多循环多少 turn。
 - `codex.command`: 启动 Codex app-server 的命令，包括模型和 reasoning effort。
 - `codex.approval_policy: never`: agent 不再交互式问批准，适合自动化，但要确保 workflow 和权限边界写清楚。
@@ -259,6 +303,86 @@ SSH remote: git@github.com:BillyChen123/qdd.git
 Base branch: main
 ```
 
+### 11. GitHub token 要同时照顾 shell 和 MCP
+
+Git SSH 能 push 分支，不代表 GitHub API 能开 PR。创建 PR 需要 `GITHUB_TOKEN` / `GH_TOKEN` 或可用的 GitHub MCP 认证。
+
+本次遇到过：
+
+- shell 中没有 `GITHUB_TOKEN` / `GH_TOKEN`，普通 REST API 和 `gh` 路线不可用。
+- `~/.codex/config.toml` 里 GitHub MCP token 已失效，MCP 创建 PR 返回 authentication failed。
+- `.bashrc` 顶部有非交互 shell 直接 `return` 的保护，如果 token block 放在后面，Symphony 子进程可能拿不到。
+
+推荐：
+
+- 生成权限足够的 GitHub token。Classic token 至少需要 `repo`，如需 workflow 权限再加 `workflow`。
+- 在 shell profile 里导出：
+
+```bash
+export GITHUB_TOKEN="<token>"
+export GH_TOKEN="$GITHUB_TOKEN"
+```
+
+- 如果 `.bashrc` 有非交互 `return`，把 token block 放在它前面，或放到专门的 env 文件并由启动脚本显式 source。
+- 同步更新 `~/.codex/config.toml` 的 GitHub MCP token，避免 MCP 继续使用失效 token。
+
+验证：
+
+```bash
+curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user
+```
+
+### 12. `workspace-write` 可能挡住 `.git` 元数据
+
+本次 BIL-7 遇到过普通文件能改，但 `git checkout -b` 失败：
+
+```text
+cannot lock ref ... .git/refs/heads/...lock: Read-only file system
+```
+
+原因是 Codex `workspace-write` sandbox 对 `.git` 元数据写入不够。自动建分支、commit、push、merge 时，需要给 Symphony agent 更高权限。
+
+当前 QDD workflow 使用：
+
+```yaml
+codex:
+  approval_policy: never
+  thread_sandbox: danger-full-access
+  turn_sandbox_policy:
+    type: dangerFullAccess
+    networkAccess: true
+```
+
+这不是管理员权限，而是让 Codex 在独立 issue workspace 里可以写 `.git`、建分支、提交和推送。启用前要确认 `WORKFLOW.md` 的任务边界和 Linear label 过滤足够清楚。
+
+### 13. 并发 issue 必须有依赖图，否则容易乱序
+
+BIL-9 和 BIL-10 暴露了一个典型问题：
+
+```text
+BIL-9: evidence harvest / CLI integration
+BIL-10: story candidates / selection gate
+```
+
+逻辑上 BIL-10 应该依赖 BIL-9。但当 `max_concurrent_agents` 提高到 2 且两张 issue 都处于 active state 时，BIL-10 先 merge 到 `main`，导致 BIL-9 的 PR 变成 dirty/conflict。
+
+处理原则：
+
+- 不要把依赖关系只写在 issue 描述里。
+- 在 Linear 中建立 `BIL-9 blocks BIL-10` 这类 relation。
+- 下游 issue 保持 `Todo + Blocked by`，不要提前手动改到 `In Progress`。
+- 如果已经乱序 merge，优先评估后 merge 的 PR 是否覆盖前置任务；必要时关闭旧 PR，另开 integration rescue issue。
+
+本次最终采用：
+
+```text
+BIL-10 Done
+  blocks
+BIL-11 Integrate conclude evidence harvest CLI after story candidate merge
+  blocks
+BIL-12 Generate selected-story manuscript planning artifacts
+```
+
 ## 调试检查表
 
 看当前 workflow 是否能被 Symphony 解析：
@@ -297,7 +421,8 @@ tail -n 80 <symphony-local-repo>/elixir/log/symphony.log.1
 2. 一个 Linear project。
 3. Team Workflow 里的 issue statuses：`Todo`, `In Progress`, `Human Review`, `Merging`, `Done`，可选 `Rework`。
 4. 一个项目级 label，用于限制 Symphony 只处理目标 issue。
-5. 一个 `WORKFLOW.md`，写清楚：
+5. Linear issue relation 约定：用 `Blocked by` / `Blocks` 表达依赖，不用普通 `Related` 代替 blocker。
+6. 一个 `WORKFLOW.md`，写清楚：
    - `tracker.project_slug`
    - `required_labels`
    - `active_states`
@@ -306,10 +431,11 @@ tail -n 80 <symphony-local-repo>/elixir/log/symphony.log.1
    - Codex model 和 reasoning effort
    - repo URL、base branch、PR target
    - 每个 Linear state 下 agent 应该做什么
-6. 用户级环境变量：
+7. 用户级环境变量：
    - `LINEAR_API_KEY`
+   - `GITHUB_TOKEN` / `GH_TOKEN`
    - Codex provider 相关配置
-7. 网络代理或 provider 可访问性验证。
+8. 网络代理或 provider 可访问性验证。
 
 ## 当前 QDD 推荐状态
 
