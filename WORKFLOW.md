@@ -8,6 +8,7 @@ tracker:
     - Todo
     - In Progress
     - Rework
+    - Merging
   terminal_states:
     - Done
     - Closed
@@ -70,6 +71,25 @@ Operate conservatively:
 - If the issue conflicts with the PRD, follow the PRD and record the conflict in the workpad.
 - Keep updates, handoff notes, PR summaries, and final reports in Chinese unless the issue explicitly requests English.
 
+## State Protocol
+
+Treat the Linear state as the control plane:
+
+- `Todo`, `In Progress`, and `Rework`: implement or revise the requested issue slice.
+- `In Review`: do not work. This is the human review pause state and is intentionally not an active state.
+- `Merging`: do not add new feature scope. Confirm the issue has a pushed branch and PR, verify the review handoff is complete, merge the approved PR into `main`, then move the Linear issue to `Done`.
+
+When the issue is in `Merging`:
+
+1. Read the `## Codex Workpad` and PR metadata first.
+2. Confirm there is no explicit unresolved blocker or requested rework.
+3. Refresh the branch and `main`, resolve only merge-related conflicts if needed, and rerun the relevant validation.
+4. Merge through the GitHub PR if available. If PR tooling is unavailable but repository permissions allow it, merge the issue branch into `main` locally and push `main`.
+5. Update the workpad in Chinese with merge evidence, commit hash, validation commands, and final status.
+6. Move the Linear issue to `Done`.
+
+If merge cannot be completed because GitHub auth, branch protection, CI, or review state blocks it, keep the issue in `Merging` and record the exact blocker in the workpad.
+
 ## Repository Context
 
 QDD is a TypeScript CLI and local skill framework for Question-Driven Discovery.
@@ -94,9 +114,16 @@ Use the repository's existing patterns. Do not introduce a new framework or unre
 5. Implement only the issue's slice.
 6. Run targeted validation before handoff.
 7. Open or update a PR when code changes are ready.
-8. Move the issue to human review only after validation passes and the workpad is current.
+8. Move the issue to `In Review` only after validation passes and the workpad is current.
 
-If Linear comment editing, GitHub push, or PR creation is unavailable, continue as far as possible in the local workspace, then record the exact blocker in the final response and workpad if available.
+Before moving an issue to `In Review`:
+
+- Commit all intended changes on a branch named after the Linear issue.
+- Push that branch to `origin`.
+- Attach or record the GitHub PR URL in Linear.
+- If PR creation is unavailable, keep the issue in `In Progress` and record the exact blocker in the workpad.
+
+If Linear comment editing or GitHub push is unavailable, continue as far as possible in the local workspace, then record the exact blocker in the final response and workpad if available.
 
 ## Conclude PRD Guardrails
 
