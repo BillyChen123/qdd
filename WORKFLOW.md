@@ -76,7 +76,7 @@ Operate conservatively:
 Treat the Linear state as the control plane:
 
 - `Todo`, `In Progress`, and `Rework`: implement or revise the requested issue slice.
-- `In Review`: do not work. This is the human review pause state and is intentionally not an active state.
+- `Human Review`: do not work. This is the human review pause state and is intentionally not an active state.
 - `Merging`: do not add new feature scope. Confirm the issue has a pushed branch and PR, verify the review handoff is complete, merge the approved PR into `main`, then move the Linear issue to `Done`.
 
 When the issue is in `Merging`:
@@ -114,9 +114,9 @@ Use the repository's existing patterns. Do not introduce a new framework or unre
 5. Implement only the issue's slice.
 6. Run targeted validation before handoff.
 7. Open or update a PR when code changes are ready.
-8. Move the issue to `In Review` only after validation passes and the workpad is current.
+8. Move the issue to `Human Review` only after validation passes and the workpad is current.
 
-Before moving an issue to `In Review`:
+Before moving an issue to `Human Review`:
 
 - Commit all intended changes on a branch named after the Linear issue.
 - Push that branch to `origin`.
