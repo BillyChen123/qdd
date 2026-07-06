@@ -20,9 +20,10 @@ import {
 } from '../runtime/orchestrator.js';
 import { suggestProblemSkills } from '../runtime/local-skills.js';
 import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFile } from '../runtime/store.js';
+import { FileSystemUtils } from '../utils/file-system.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
 import { closeStudy } from '../services/closure.js';
-import { inspectConcludePreflight, renderConcludeRenderStatusMarkdown } from '../services/conclude.js';
+import { generateConcludeStoryCandidates, inspectConcludePreflight, renderConcludeRenderStatusMarkdown } from '../services/conclude.js';
 import { listArtifacts, validateProject } from '../services/inspection.js';
 import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
@@ -86,6 +87,39 @@ async function setTaskCompleted(projectRoot: string, studyId: string, taskId: st
       updated_at: new Date().toISOString(),
     },
     document.body
+  );
+}
+
+async function setTaskState(
+  projectRoot: string,
+  studyId: string,
+  taskId: string,
+  status: NonNullable<TaskRecord['status']>,
+  resultSummary?: string,
+  blockerReason?: string
+): Promise<void> {
+  const relativePath = `studies/${studyId}/tasks/${taskId}.md`;
+  const document = await readMarkdownDocument<TaskRecord>(projectRoot, relativePath);
+  const resultBody =
+    status === 'completed'
+      ? `- ${resultSummary ?? 'Completed and summarized for conclude evidence harvesting.'}`
+      : status === 'blocked'
+        ? `- Blocked: ${blockerReason ?? resultSummary ?? 'Blocking condition recorded for conclude boundary evidence.'}`
+        : '- Not completed yet.';
+
+  const nextBody = document.body.replace(/## Result Summary\n\n[\s\S]*?(?=\n## Skills\b)/, `## Result Summary\n\n${resultBody}\n\n`);
+  await writeMarkdownDocument(
+    projectRoot,
+    relativePath,
+    {
+      ...document.frontmatter,
+      status,
+      result_summary: resultSummary,
+      blocker_reason: blockerReason,
+      promotion_status: status === 'completed' ? 'candidate-recorded' : document.frontmatter.promotion_status,
+      updated_at: new Date().toISOString(),
+    },
+    nextBody
   );
 }
 
@@ -443,6 +477,90 @@ test('conclude preflight marks PDF rendering blocked when no TeX engine is avail
   assert.equal(result.render.tools.pandoc.available, true);
   assert.match(renderStatus, /PDF: BLOCKED - Neither xelatex nor pdflatex is installed\./);
   assert.match(renderStatus, /Word: AVAILABLE/);
+});
+
+test('conclude generates distinct story candidates and enforces selection gate before drafting', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-story-candidates-');
+
+  const discoveryStudy = await createStudy(projectRoot, {
+    question: 'Which evidence package supports a bounded manuscript claim?',
+    hypothesis: 'A reusable internal evidence bundle can support a conservative story candidate set.',
+    expectedArtifacts: ['One figure and one report suitable for synthesis'],
+  });
+  const discoveryTask = await createTask(projectRoot, discoveryStudy.studyId, {
+    goal: 'Summarize the candidate-state evidence without overclaiming mechanism',
+    expectedOutputs: ['One summary figure', 'One synthesis report'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    discoveryStudy.studyId,
+    discoveryTask.taskId,
+    'completed',
+    'Expression correlation is associated with a candidate state across the reusable cohort; no perturbation or mechanism test was performed.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`),
+    `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nAssociation signal replicated in the curated cohort, but mechanism remains untested.\n`,
+    'utf-8'
+  );
+  const figurePath = path.join(projectRoot, 'studies', discoveryStudy.studyId, 'output', 'figures', 'association-summary.png');
+  await fs.writeFile(figurePath, 'placeholder-figure', 'utf-8');
+  await recordArtifactCandidate(projectRoot, figurePath, {
+    studyId: discoveryStudy.studyId,
+    taskId: discoveryTask.taskId,
+    artifactType: 'figure',
+    description: 'Association-focused summary figure for the candidate state signal.',
+    schema: 'image',
+    promotionStatus: 'candidate-recorded',
+  });
+
+  const boundaryStudy = await createStudy(projectRoot, {
+    question: 'Do the failed validation passes meaningfully bound the final claim?',
+    hypothesis: 'Negative validation evidence should narrow, not disappear from, the final story.',
+    blockers: ['Independent perturbation data are not yet available.'],
+  });
+  const boundaryTask = await createTask(projectRoot, boundaryStudy.studyId, {
+    goal: 'Record why the validation path failed to support a mechanistic conclusion',
+    expectedOutputs: ['One blocker summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    boundaryStudy.studyId,
+    boundaryTask.taskId,
+    'blocked',
+    'Validation failed to reproduce a mechanistic effect in the follow-up cohort.',
+    'Follow-up validation failed and leaves only associative evidence.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${boundaryStudy.studyId}.md`),
+    `# ${boundaryStudy.studyId} Memory\n\n## Notes\n\nBlocked follow-up and failed validation are useful boundary evidence for conclude.\n`,
+    'utf-8'
+  );
+
+  const result = await generateConcludeStoryCandidates(projectRoot, {
+    runId: 'test-story-selection',
+    now: new Date('2026-07-06T12:00:00.000Z'),
+  });
+
+  const storyCandidatesMarkdown = await fs.readFile(result.storyCandidatesPath, 'utf-8');
+  const claimSafetyMarkdown = await fs.readFile(result.claimSafetyAuditPath, 'utf-8');
+  const paperRewritingOutputPath = path.join(result.outputDir, 'paper_rewriting_output');
+
+  assert.equal(result.selectionRequired, true);
+  assert.equal(result.selectedStoryId, null);
+  assert.equal(result.nextStep, 'select-story');
+  assert.equal(result.candidates.length, 3);
+  assert.equal(new Set(result.candidates.map((candidate) => candidate.framing)).size, 3);
+  assert.ok(result.candidates.every((candidate) => candidate.supportingEvidence.length > 0));
+  assert.ok(result.candidates.some((candidate) => candidate.negativeOrBoundaryEvidence.length > 0));
+  assert.ok(result.claimSafetyAudit.some((entry) => entry.action === 'soften' && /mechanism|driver|effect/i.test(entry.rationale + entry.claim)));
+  assert.match(storyCandidatesMarkdown, /Selection gate: STOP here until a human selects one story candidate\./);
+  assert.match(storyCandidatesMarkdown, /do not auto-select the highest score/);
+  assert.match(storyCandidatesMarkdown, /associated with/);
+  assert.match(claimSafetyMarkdown, /SOFTEN:/);
+  assert.equal(await FileSystemUtils.directoryExists(paperRewritingOutputPath), false);
 });
 
 test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
