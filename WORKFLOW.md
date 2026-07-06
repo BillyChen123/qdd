@@ -94,6 +94,15 @@ If merge cannot be completed because GitHub auth, branch protection, CI, or revi
 
 QDD is a TypeScript CLI and local skill framework for Question-Driven Discovery.
 
+Repository control plane:
+
+- Canonical GitHub repository: `https://github.com/BillyChen123/qdd`.
+- Git remote used by Symphony workspaces: `git@github.com:BillyChen123/qdd.git`.
+- Base branch for all issue branches, PRs, pulls, and merges: `main`.
+- Create one issue branch per Linear issue. Use a branch name that begins with the lower-case Linear identifier, for example `bil-5-...`.
+- Open PRs against `main`. Do not target another base branch unless the Linear issue explicitly says so.
+- After a successful merge, ensure `origin/main` contains the merged change before moving the Linear issue to `Done`.
+
 Important paths:
 
 - `docs/09-qdd-conclude-prd.md`: source PRD for the conclude skill.
