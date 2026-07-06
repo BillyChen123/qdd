@@ -3,6 +3,7 @@ export declare const PATHS: {
     readonly evolution: "evolution.yaml";
     readonly researchMapHtml: "research-map.html";
     readonly boundaryGraphHtml: "research-map.html";
+    readonly conclusionsDir: "conclusions";
     readonly contextDir: "context";
     readonly contextResources: "context/resources.md";
     readonly contextMemoryDir: "context/memory";

@@ -13,6 +13,7 @@ import { contextCommand } from '../commands/context.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 import { autoCommand } from '../commands/auto.js';
+import { concludeCommand } from '../commands/conclude.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
@@ -87,6 +88,20 @@ program
   .action(async (options?: { json?: boolean }) => {
     try {
       await contextCommand(options);
+    } catch (error) {
+      console.error(`Error: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('conclude')
+  .description('Harvest auditable QDD evidence into conclusions/<run-id>/evidence_audit.md')
+  .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
+  .option('--json', 'Output as JSON')
+  .action(async (options?: { outputDir?: string; json?: boolean }) => {
+    try {
+      await concludeCommand(options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);

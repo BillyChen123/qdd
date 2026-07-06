@@ -7,6 +7,7 @@ export const PATHS = {
     evolution: 'evolution.yaml',
     researchMapHtml: 'research-map.html',
     boundaryGraphHtml: 'research-map.html',
+    conclusionsDir: 'conclusions',
     contextDir: 'context',
     contextResources: 'context/resources.md',
     contextMemoryDir: 'context/memory',

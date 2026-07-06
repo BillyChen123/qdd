@@ -15,6 +15,7 @@ import { recordArtifactCandidate } from '../services/artifacts.js';
 import { closeStudy } from '../services/closure.js';
 import { listArtifacts, validateProject } from '../services/inspection.js';
 import { buildInstructions } from '../services/instructions.js';
+import { runConclude } from '../services/conclude.js';
 import { buildStatus } from '../services/status.js';
 import { createStudy } from '../services/studies.js';
 import { createTask } from '../services/tasks.js';
@@ -1487,6 +1488,138 @@ test('qdd closeStudy promotes candidates and writes evolution, memory, and resea
     assert.ok(!status.output_review.studies_with_invalid_candidate_paths.includes(studyId));
     const validation = await validateProject(projectRoot);
     assert.equal(validation.valid, true);
+});
+test('qdd conclude harvests mixed positive and negative evidence into evidence_audit', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-');
+    const { studyId: studyOneId } = await createStudy(projectRoot, {
+        question: 'Does the first figure narrow the candidate comparison?',
+        hypothesis: 'A first-pass figure and summary table will narrow the active comparison.',
+        targetBoundaries: ['B001'],
+    });
+    const { taskId: taskOneId } = await createTask(projectRoot, studyOneId, {
+        goal: 'Produce one promoted figure, one report, and one reusable script.',
+        expectedOutputs: ['One figure', 'One summary report'],
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const { studyId: studyTwoId } = await createStudy(projectRoot, {
+        question: 'Does the candidate mechanism survive validation?',
+        hypothesis: 'A second study can validate the candidate mechanism.',
+        targetBoundaries: ['B002'],
+    });
+    const { taskId: taskTwoId } = await createTask(projectRoot, studyTwoId, {
+        goal: 'Try to validate the candidate mechanism.',
+        expectedOutputs: ['One failed validation report'],
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    const { studyId: studyThreeId } = await createStudy(projectRoot, {
+        question: 'Can we acquire the missing external validation cohort?',
+        hypothesis: 'The cohort is required before stronger validation.',
+        targetBoundaries: ['B003'],
+    });
+    const { taskId: taskThreeId } = await createTask(projectRoot, studyThreeId, {
+        goal: 'Locate the missing external validation cohort.',
+        expectedOutputs: ['One acquisition note'],
+        skills: ['singlecell/scrna/sc-batch-integration'],
+    });
+    await writeYamlFile(projectRoot, 'evolution.yaml', {
+        studies: [],
+        boundaries: [
+            { id: 'B001', text: 'Need a clearer first-pass figure', state: 'open' },
+            { id: 'B002', text: 'Need mechanism validation', state: 'open' },
+            { id: 'B003', text: 'Need an external validation cohort', state: 'open' },
+        ],
+    });
+    const figurePath = path.join(projectRoot, 'studies', studyOneId, 'output', 'figures', 'narrowed-signal.png');
+    const codePath = path.join(projectRoot, 'studies', studyOneId, 'output', 'code', 'narrowed-signal.py');
+    const reportPath = path.join(projectRoot, 'studies', studyOneId, 'output', 'reports', 'narrowed-signal.md');
+    const failedReportPath = path.join(projectRoot, 'studies', studyTwoId, 'output', 'reports', 'failed-validation.md');
+    const blockedReportPath = path.join(projectRoot, 'studies', studyThreeId, 'output', 'reports', 'blocked-acquisition.md');
+    await fs.writeFile(figurePath, 'fake-png\n', 'utf-8');
+    await fs.writeFile(codePath, 'print(\"narrowed\")\n', 'utf-8');
+    await fs.writeFile(reportPath, '# narrowed signal\n', 'utf-8');
+    await fs.writeFile(failedReportPath, '# failed validation\n', 'utf-8');
+    await fs.writeFile(blockedReportPath, '# blocked acquisition\n', 'utf-8');
+    await setTaskCompleted(projectRoot, studyOneId, taskOneId);
+    await setTaskCompleted(projectRoot, studyTwoId, taskTwoId);
+    await recordArtifactCandidate(projectRoot, figurePath, {
+        artifactType: 'figure',
+        description: 'Primary narrowed figure kept for manuscript evidence',
+        studyId: studyOneId,
+        taskId: taskOneId,
+        reusable: true,
+        scope: 'study',
+        schema: 'png-figure',
+        promotionStatus: 'candidate-recorded',
+    });
+    await recordArtifactCandidate(projectRoot, codePath, {
+        artifactType: 'code',
+        description: 'Script that generated the narrowed figure',
+        studyId: studyOneId,
+        taskId: taskOneId,
+        reusable: true,
+        scope: 'study',
+        schema: 'python-script',
+        promotionStatus: 'candidate-recorded',
+    });
+    const taskTwoPath = `studies/${studyTwoId}/tasks/${taskTwoId}.md`;
+    const taskTwoDocument = await readMarkdownDocument(projectRoot, taskTwoPath);
+    await writeMarkdownDocument(projectRoot, taskTwoPath, {
+        ...taskTwoDocument.frontmatter,
+        result_summary: 'The validation failed and did not support a mechanistic claim.',
+        promotion_status: 'none',
+        updated_at: new Date().toISOString(),
+    }, taskTwoDocument.body);
+    const studyThreePath = `studies/${studyThreeId}/study.md`;
+    const studyThreeDocument = await readMarkdownDocument(projectRoot, studyThreePath);
+    await writeMarkdownDocument(projectRoot, studyThreePath, {
+        ...studyThreeDocument.frontmatter,
+        status: 'blocked',
+        blockers: ['External validation cohort is missing and acquisition is blocked.'],
+    }, studyThreeDocument.body);
+    const taskThreePath = `studies/${studyThreeId}/tasks/${taskThreeId}.md`;
+    const taskThreeDocument = await readMarkdownDocument(projectRoot, taskThreePath);
+    await writeMarkdownDocument(projectRoot, taskThreePath, {
+        ...taskThreeDocument.frontmatter,
+        status: 'blocked',
+        blocker_reason: 'External validation cohort is missing and acquisition is blocked.',
+        updated_at: new Date().toISOString(),
+    }, taskThreeDocument.body);
+    await closeStudy(projectRoot, studyOneId, {
+        changeType: 'refinement',
+        summary: 'The figure narrowed the question but did not support a strong mechanistic claim; keep it as association only.',
+        openBoundaries: ['Need an external validation cohort'],
+        nextCandidates: ['Should we validate the narrowed figure in an external cohort?'],
+    });
+    await closeStudy(projectRoot, studyTwoId, {
+        changeType: 'dissolution',
+        summary: 'The validation failed and dissolved the candidate mechanism story.',
+        openBoundaries: ['Need an external validation cohort'],
+        nextCandidates: [],
+    });
+    const result = await runConclude(projectRoot, {
+        outputDir: 'conclusions/test-harvest',
+    });
+    assert.equal(result.output_dir, 'conclusions/test-harvest');
+    assert.equal(result.evidence_audit_path, 'conclusions/test-harvest/evidence_audit.md');
+    assert.ok(result.evidence_items.some((item) => item.kind === 'promoted-artifact' && item.category === 'figure'));
+    assert.ok(result.evidence_items.some((item) => item.kind === 'study-output' && item.category === 'code' && item.task_id === taskOneId));
+    assert.ok(result.evidence_items.some((item) => item.kind === 'study-memory' && item.study_id === studyOneId));
+    assert.ok(result.evidence_items.some((item) => item.kind === 'reusable-context' && item.relative_path === 'context/resources.md'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'positive'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'negative'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'blocked'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'downgraded'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'dissolved'));
+    assert.ok(result.evidence_clues.some((clue) => clue.signal === 'boundary'));
+    const auditMarkdown = await fs.readFile(path.join(projectRoot, 'conclusions', 'test-harvest', 'evidence_audit.md'), 'utf-8');
+    assert.match(auditMarkdown, /# Evidence Audit/);
+    assert.match(auditMarkdown, /artifacts\/figures\/ART-\d{3}-/);
+    assert.match(auditMarkdown, /context\/resources\.md/);
+    assert.match(auditMarkdown, /negative:/);
+    assert.match(auditMarkdown, /downgraded:/);
+    assert.match(auditMarkdown, /dissolved:/);
+    assert.match(auditMarkdown, /blocked:/);
+    assert.match(auditMarkdown, /Need an external validation cohort/);
 });
 test('qdd validate requires study memory for closed studies under the new model', async () => {
     const projectRoot = await createTempProject('qdd-validate-');
