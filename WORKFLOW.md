@@ -63,13 +63,12 @@ Continuation context:
 
 Implement the QDD `conclude` skill described in `docs/09-qdd-conclude-prd.md`.
 
-This workflow is intentionally conservative for learning Symphony:
+Operate conservatively:
 
 - Work on one issue at a time.
-- Keep each issue small enough to review.
-- Prefer a focused, verifiable slice over broad speculative implementation.
 - Do not expand scope beyond the Linear issue and the PRD.
 - If the issue conflicts with the PRD, follow the PRD and record the conflict in the workpad.
+- Keep updates, handoff notes, PR summaries, and final reports in Chinese unless the issue explicitly requests English.
 
 ## Repository Context
 
@@ -86,36 +85,16 @@ Important paths:
 
 Use the repository's existing patterns. Do not introduce a new framework or unrelated runtime.
 
-## Symphony Runtime Constraints
-
-This workflow runs inside raw Codex app-server through Symphony, not inside the API-based coding harness.
-
-- Do not call API-only wrapper tool names such as `functions.exec_command`, `multi_tool_use.parallel`, `functions.apply_patch`, `functions.write_stdin`, or similar wrapper namespaces.
-- Use Codex's built-in shell and file-editing capabilities directly.
-- For Linear operations, use the injected `linear_graphql` tool directly.
-- If a required tool is unavailable, explain the exact missing capability in the final response and stop instead of repeatedly retrying invented tool names.
-
-When using `linear_graphql`, keep operations narrow and explicit:
-
-- Query only the fields you need.
-- Treat a top-level GraphQL `errors` array as a real failure.
-- Use it for issue reads, state updates, and the single persistent `## Codex Workpad` comment.
-
 ## Expected Development Posture
 
 1. Read `docs/09-qdd-conclude-prd.md` before making changes.
 2. Read the files directly related to the issue.
 3. Create or update a single persistent Linear comment headed `## Codex Workpad`.
-4. Keep the workpad current with:
-   - plan
-   - acceptance criteria
-   - validation evidence
-   - blockers or confusions
+4. Keep the workpad current with plan, acceptance criteria, validation evidence, blockers, and confusions.
 5. Implement only the issue's slice.
 6. Run targeted validation before handoff.
 7. Open or update a PR when code changes are ready.
 8. Move the issue to human review only after validation passes and the workpad is current.
-9. Write Linear workpad updates, PR summaries, handoff notes, and final reports in Chinese unless the issue explicitly requests English.
 
 If Linear comment editing, GitHub push, or PR creation is unavailable, continue as far as possible in the local workspace, then record the exact blocker in the final response and workpad if available.
 
@@ -153,38 +132,3 @@ Use the smallest validation set that proves the issue slice:
 - targeted fixture or smoke test when new parsing, harvesting, or rendering behavior is added
 
 If validation cannot run because dependencies or tools are missing, report the missing dependency and the command that failed.
-
-## Workpad Template
-
-Use this structure for the persistent Linear workpad comment:
-
-```md
-## Codex Workpad
-
-### Plan
-
-- [ ] Read PRD and related source files
-- [ ] Define acceptance criteria for this issue
-- [ ] Implement focused slice
-- [ ] Validate
-- [ ] Prepare handoff
-
-### Acceptance Criteria
-
-- [ ] The issue scope is implemented without broad unrelated changes
-- [ ] Behavior aligns with `docs/09-qdd-conclude-prd.md`
-- [ ] Validation evidence is recorded
-
-### Validation
-
-- [ ] `npm run build`
-- [ ] Additional targeted command, if needed
-
-### Notes
-
-- Pending.
-
-### Confusions
-
-- None yet.
-```
