@@ -10,6 +10,7 @@ import { closeStudyCommand } from '../commands/close-study.js';
 import { validateCommand } from '../commands/validate.js';
 import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
+import { concludeCommand } from '../commands/conclude.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 import { autoCommand } from '../commands/auto.js';
@@ -74,6 +75,20 @@ program
   .action(async (options?: { json?: boolean }) => {
     try {
       await artifactsListCommand(options);
+    } catch (error) {
+      console.error(`Error: ${(error as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('conclude')
+  .description('Harvest auditable QDD evidence into conclusions/<run-id>/evidence_audit.md')
+  .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
+  .option('--json', 'Output as JSON')
+  .action(async (options?: { outputDir?: string; json?: boolean }) => {
+    try {
+      await concludeCommand(options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);

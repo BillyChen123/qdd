@@ -44,6 +44,9 @@ function clampScore(value) {
 function sentenceCaseTrim(value) {
     return value.replace(/\s+/g, ' ').trim();
 }
+function normalizeRelativePath(value) {
+    return value.split(path.sep).join('/').replace(/^\.\/+/, '').replace(/\/+/g, '/');
+}
 function buildEvidenceId(prefix, index) {
     return `${prefix}-${String(index).padStart(3, '0')}`;
 }
@@ -496,6 +499,19 @@ async function writeConcludeStoryOutputs(result) {
         FileSystemUtils.writeFile(path.join(result.outputDir, 'reviewer_risk_audit.md'), renderReviewerRiskAuditMarkdown(result.candidates)),
     ]);
 }
+function resolveConcludeOutputDir(projectRoot, outputDir, runId) {
+    const requested = outputDir?.trim();
+    if (!requested) {
+        return path.join(projectRoot, 'conclusions', runId);
+    }
+    const normalizedRelative = normalizeRelativePath(requested);
+    const absoluteOutputDir = path.resolve(projectRoot, normalizedRelative);
+    const relativeToProject = normalizeRelativePath(path.relative(projectRoot, absoluteOutputDir));
+    if (relativeToProject.startsWith('..') || path.isAbsolute(relativeToProject)) {
+        throw new Error('Conclude output directory must stay within the current QDD project directory.');
+    }
+    return absoluteOutputDir;
+}
 export async function generateConcludeStoryCandidates(projectRoot, options = {}) {
     const preflight = await inspectConcludePreflight(projectRoot, options);
     if (preflight.projectStatus === 'blocked') {
@@ -508,7 +524,7 @@ export async function generateConcludeStoryCandidates(projectRoot, options = {})
     const candidates = buildStoryCandidates(evidence, preflight.snapshot.contract).slice(0, 3);
     const claimSafetyAudit = collectClaimSafetyAudit(evidence);
     const runId = options.runId ?? slugifyConcludeTimestamp(options.now ?? new Date());
-    const outputDir = path.join(preflight.projectRoot, 'conclusions', runId);
+    const outputDir = resolveConcludeOutputDir(preflight.projectRoot, options.outputDir, runId);
     const result = {
         runId,
         outputDir,
@@ -525,6 +541,20 @@ export async function generateConcludeStoryCandidates(projectRoot, options = {})
     };
     await writeConcludeStoryOutputs(result);
     return result;
+}
+export async function runConclude(projectRoot, options = {}) {
+    const preflight = await inspectConcludePreflight(projectRoot, options);
+    if (preflight.projectStatus === 'blocked') {
+        throw new Error(`Conclude preflight is blocked: ${preflight.projectBlockers.join(' ')}`);
+    }
+    const baseResult = await generateConcludeStoryCandidates(projectRoot, options);
+    const renderStatusPath = path.join(baseResult.outputDir, 'render_status.md');
+    await FileSystemUtils.writeFile(renderStatusPath, renderConcludeRenderStatusMarkdown(preflight));
+    return {
+        ...baseResult,
+        preflight,
+        renderStatusPath,
+    };
 }
 async function readStudyMemories(projectRoot, memoryPaths) {
     return Promise.all(memoryPaths.map(async (relativePath) => {
