@@ -62,6 +62,7 @@ This tree is illustrative, not exhaustive. New executor skills should extend the
 Rules:
 
 - Thesis-manager planning skills live under `thesis/*`
+- Thesis-manager synthesis/report skills such as `thesis/conclude` also live under `thesis/*`
 - Study-brain planning skills live under `brain/*`
 - Executor problem-level skills live under domain trees such as `singlecell/scrna/*`, `spatial/*`, or `public-data/*`
 - Not every `public-data/*` skill uses `public_data_request.yaml`; dataset acquisition and lighter public-data capture tasks are intentionally separate

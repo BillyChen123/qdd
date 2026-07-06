@@ -58,7 +58,7 @@ More installation details are in [docs/04-installation-guide.md](docs/04-install
     <td><strong>Agent-ready memory</strong><br />Contracts, study files, task records, artifacts, and evolution history stay readable to both humans and agents.</td>
   </tr>
   <tr>
-    <td><strong>Domain skill injection</strong><br />34 local skills are routed by role and task instead of being dumped into every prompt.</td>
+    <td><strong>Domain skill injection</strong><br />35 local skills are routed by role and task instead of being dumped into every prompt.</td>
     <td><strong>Public-data grounding</strong><br />CELLxGENE, GEO, PubMed, CellMarker, and ligand-receptor references become auditable local artifacts.</td>
   </tr>
 </table>
@@ -134,11 +134,11 @@ qdd auto --model deepseek-reasoner --max-turns unlimited
 
 ## Domain Skill Injection
 
-QDD ships with **34 local skills** that are routed by role and task instead of dumped into every prompt.
+QDD ships with **35 local skills** that are routed by role and task instead of dumped into every prompt.
 
 | Skill layer | Current coverage |
 |---|---|
-| Thesis planning | project-frontier planning and continue/stop/pivot decisions |
+| Thesis planning | project-frontier planning plus conclude-stage synthesis guidance |
 | Study brain | single-cell, spatial, and public-data planning |
 | scRNA-seq | QC, integration, clustering, annotation, DE, group stats, module scoring, enrichment, communication, trajectory |
 | scATAC-seq | LSI preprocessing, latent integration, gene-activity annotation, DAR |
@@ -147,7 +147,7 @@ QDD ships with **34 local skills** that are routed by role and task instead of d
 
 The point is not just more tools. The point is **role-aware injection**:
 
-- thesis-manager gets frontier-planning skills
+- thesis-manager gets frontier-planning and conclude-stage skills
 - study-brain gets planning skills
 - executor gets only the task-local domain skills it needs
 - public-data skills are separated from downstream analysis skills

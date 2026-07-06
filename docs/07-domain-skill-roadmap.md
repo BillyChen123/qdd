@@ -8,11 +8,11 @@ Current focus remains single-cell and spatial transcriptomics. GWAS is a planned
 
 Current source of truth: `domain-skills/`.
 
-As of this snapshot, there are `33` total `SKILL.md` files:
+As of this snapshot, there are `35` total `SKILL.md` files:
 
 | Group | Count | Notes |
 |---|---:|---|
-| Planning brain skills | 5 | `singlecell`, `spatial`, and `public-data` planning |
+| Planning and thesis skills | 7 | `brain/*` planning plus `thesis/frontier-planning` and `thesis/conclude` |
 | Public-data executor skills | 5 | `cellxgene-discover`, `cellmarker-fetch`, `lrdb-fetch`, `geo-candidate-capture`, `pubmed-evidence-capture` |
 | scRNA executor skills | 10 | preprocess, integration, clustering, annotation, DE, stats, enrichment, module scoring, trajectory, communication |
 | scATAC executor skills | 4 | LSI preprocess, latent batch correction, gene activity annotation, DAR |

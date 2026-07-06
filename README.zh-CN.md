@@ -58,7 +58,7 @@ qdd auto --max-turns unlimited
     <td><strong>Agent 可读记忆</strong><br />contract、study、task、artifact 和 evolution 历史都保持人和 agent 可读。</td>
   </tr>
   <tr>
-    <td><strong>领域 Skill 注入</strong><br />34 个本地 skill 按角色和任务路由，而不是一次性塞进所有 prompt。</td>
+    <td><strong>领域 Skill 注入</strong><br />35 个本地 skill 按角色和任务路由，而不是一次性塞进所有 prompt。</td>
     <td><strong>公共数据证据化</strong><br />CELLxGENE、GEO、PubMed、CellMarker 和配受体 reference 都会成为可审计的本地 artifact。</td>
   </tr>
 </table>
@@ -134,7 +134,7 @@ qdd auto --model deepseek-reasoner --max-turns unlimited
 
 ## 领域 Skill 注入
 
-QDD 当前内置 **34 个本地 skill**，并且按角色和任务路由，而不是一次性塞进所有 prompt。
+QDD 当前内置 **35 个本地 skill**，并且按角色和任务路由，而不是一次性塞进所有 prompt。
 
 | Skill 层级 | 当前覆盖 |
 |---|---|

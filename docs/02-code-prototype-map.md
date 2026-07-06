@@ -81,6 +81,7 @@ The repository-root `domain-skills/` tree remains the source of truth for domain
 domain-skills/
 ├── brain/
 │   └── singlecell/
+├── thesis/
 ├── singlecell/
 │   ├── public-data/
 │   ├── scatac/

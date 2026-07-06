@@ -2057,6 +2057,7 @@ test('qdd skills suggest returns executor-facing candidates and excludes brain s
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/public-data-planning'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/public-data/reference-planning'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'thesis/frontier-planning'));
+  assert.ok(!catalog.skills.some((entry) => entry.id === 'thesis/conclude'));
 
   const integration = await suggestProblemSkills(projectRoot, {
     domain: 'singlecell',
