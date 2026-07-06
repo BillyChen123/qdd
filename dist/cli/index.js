@@ -81,6 +81,8 @@ program
     .command('conclude')
     .description('Harvest auditable QDD evidence into conclusions/<run-id>/evidence_audit.md')
     .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
+    .option('--selected-story-id <id>', 'Selected story candidate id such as story-1')
+    .option('--selected-story-path <path>', 'Project-local selected story markdown; defaults to <output-dir>/selected_story.md when present')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
     try {

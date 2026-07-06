@@ -87,6 +87,27 @@ export interface ConcludeClaimSafetyAuditEntry {
     action: 'allow' | 'soften' | 'avoid';
     rationale: string;
 }
+export interface ConcludeResultsClaim {
+    id: string;
+    heading: string;
+    claim: string;
+    claimStrength: ConcludeClaimStrength;
+    supportingEvidence: ConcludeEvidenceItem[];
+    boundaryEvidence: ConcludeEvidenceItem[];
+    validationFocus: string;
+    claimSafetyNotes: string[];
+    reviewerRisk: string;
+}
+export interface ConcludePlanningArtifactPaths {
+    paperRewritingOutputDir: string;
+    selectedStoryPath: string;
+    confirmedContributionPath: string;
+    resultsValidationPath: string;
+    reviewerAuditPath: string;
+    citationSupportBankPath: string;
+    sectionBlueprintsPath: string;
+    writingRationaleMatrixPath: string;
+}
 export interface ConcludeStoryGenerationResult {
     runId: string;
     outputDir: string;
@@ -94,12 +115,16 @@ export interface ConcludeStoryGenerationResult {
     evidenceAuditPath: string;
     claimSafetyAuditPath: string;
     reviewerRiskAuditPath: string;
-    selectionRequired: true;
+    selectionRequired: boolean;
     selectedStoryId: string | null;
+    selectedStoryPath: string | null;
+    selectedCandidate: ConcludeStoryCandidate | null;
+    planningArtifacts: ConcludePlanningArtifactPaths | null;
+    resultsClaims: ConcludeResultsClaim[];
     candidates: ConcludeStoryCandidate[];
     evidence: ConcludeEvidenceItem[];
     claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
-    nextStep: 'select-story';
+    nextStep: 'select-story' | 'draft-manuscript';
 }
 export interface RunConcludeOptions extends GenerateConcludeStoryCandidatesOptions {
 }
@@ -138,6 +163,7 @@ export interface ConcludePreflightOptions {
 }
 export interface GenerateConcludeStoryCandidatesOptions extends ConcludePreflightOptions {
     selectedStoryId?: string | null;
+    selectedStoryPath?: string | null;
     runId?: string;
     now?: Date;
     outputDir?: string;

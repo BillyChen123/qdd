@@ -7,12 +7,14 @@ import type {
   ConcludeClaimStrength,
   ConcludeEvidenceItem,
   ConcludePathStatus,
+  ConcludePlanningArtifactPaths,
   ConcludePreflightOptions,
   ConcludePreflightResult,
   ConcludeRenderStatus,
   ConcludeRenderTargetStatus,
   ConcludeRenderToolName,
   ConcludeRenderToolStatus,
+  ConcludeResultsClaim,
   ConcludeStoryCandidate,
   ConcludeStoryFraming,
   ConcludeStoryGenerationResult,
@@ -39,6 +41,8 @@ const RENDER_TOOL_ORDER: ConcludeRenderToolName[] = ['latexmk', 'xelatex', 'pdfl
 const ASSOCIATIVE_SIGNAL_PATTERN = /\b(associate|associated|association|correlate|correlated|correlation|candidate state|candidate marker|proxy|trend)\b/i;
 const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causal|mechanism|mechanistic|proof|prove|proves|define|defines|defined|effect)\b/i;
 const NEGATIVE_SIGNAL_PATTERN = /\b(block|blocked|negative|failed|failure|dissolv|downgrad|avoid|limit|boundary)\b/i;
+const SELECTED_STORY_FIELD_PATTERN = /\bselected(?:[_ -]?story)?[_ -]?id\b\s*[:=]\s*(story-\d+)\b/i;
+const STORY_ID_PATTERN = /\b(story-\d+)\b/i;
 const TITLE_STYLE_BY_FRAMING: Record<ConcludeStoryFraming, string> = {
   discovery: 'Discovery-first with bounded biological scope',
   method: 'Method-forward with validation framing',
@@ -85,6 +89,20 @@ function sentenceCaseTrim(value: string): string {
 
 function normalizeRelativePath(value: string): string {
   return value.split(path.sep).join('/').replace(/^\.\/+/, '').replace(/\/+/g, '/');
+}
+
+function resolveProjectLocalPath(projectRoot: string, targetPath: string, label: string): string {
+  const absoluteTargetPath = path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(projectRoot, targetPath);
+  const relativeToProject = path.relative(projectRoot, absoluteTargetPath);
+  if (relativeToProject.startsWith('..') || path.isAbsolute(relativeToProject)) {
+    throw new Error(`${label} must stay within the current QDD project directory.`);
+  }
+  return absoluteTargetPath;
+}
+
+function toProjectRelativePath(projectRoot: string, absolutePath: string): string {
+  const relativePath = normalizeRelativePath(path.relative(projectRoot, absolutePath));
+  return relativePath.length > 0 ? relativePath : '.';
 }
 
 function buildEvidenceId(prefix: string, index: number): string {
@@ -183,6 +201,31 @@ function formatEvidenceReferences(evidence: ConcludeEvidenceItem[]): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => sentenceCaseTrim(value)).filter((value) => value.length > 0))];
+}
+
+function uniqueEvidenceItems(values: ConcludeEvidenceItem[]): ConcludeEvidenceItem[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (seen.has(value.id)) {
+      return false;
+    }
+    seen.add(value.id);
+    return true;
+  });
+}
+
+function normalizeStoryId(value: string): string {
+  return sentenceCaseTrim(value).toLowerCase();
+}
+
+function parseSelectedStoryId(content: string): string | null {
+  const labeledMatch = content.match(SELECTED_STORY_FIELD_PATTERN);
+  if (labeledMatch) {
+    return normalizeStoryId(labeledMatch[1]);
+  }
+
+  const storyIdMatch = content.match(STORY_ID_PATTERN);
+  return storyIdMatch ? normalizeStoryId(storyIdMatch[1]) : null;
 }
 
 function buildReviewerObjections(framing: ConcludeStoryFraming, supporting: ConcludeEvidenceItem[], negatives: ConcludeEvidenceItem[]): string[] {
@@ -520,13 +563,343 @@ function buildStoryCandidates(
   });
 }
 
+function selectEvidenceByIds(evidence: ConcludeEvidenceItem[], ids: string[]): ConcludeEvidenceItem[] {
+  const idSet = new Set(ids);
+  return evidence.filter((item) => idSet.has(item.id));
+}
+
+function buildResultsClaims(
+  candidate: ConcludeStoryCandidate,
+  evidence: ConcludeEvidenceItem[],
+  claimSafetyAudit: ConcludeClaimSafetyAuditEntry[]
+): ConcludeResultsClaim[] {
+  const candidateEvidence = uniqueEvidenceItems([
+    ...candidate.supportingEvidence,
+    ...candidate.negativeOrBoundaryEvidence,
+  ]);
+  const evidenceById = new Map(evidence.map((item) => [item.id, item] as const));
+  const supportingEvidenceIds = candidate.supportingEvidence.map((item) => item.id);
+  const boundaryEvidenceIds = candidate.negativeOrBoundaryEvidence.map((item) => item.id);
+
+  return candidate.supportingEvidence.slice(0, 3).map((item, index) => {
+    const relatedEvidence = uniqueEvidenceItems([
+      item,
+      ...candidate.supportingEvidence.filter((entry) => entry.studyId !== null && entry.studyId === item.studyId),
+      ...candidate.negativeOrBoundaryEvidence.filter((entry) => entry.studyId !== null && entry.studyId === item.studyId),
+    ]);
+    const boundaryEvidence = relatedEvidence.filter((entry) => entry.kind !== 'supporting');
+    const safetyEntries = claimSafetyAudit.filter((entry) => entry.claim === item.summary);
+    return {
+      id: `claim-${index + 1}`,
+      heading: `Result ${index + 1}`,
+      claim: item.summary,
+      claimStrength: item.claimStrength,
+      supportingEvidence: uniqueEvidenceItems([
+        item,
+        ...selectEvidenceByIds(evidence, supportingEvidenceIds),
+      ]).slice(0, 4),
+      boundaryEvidence: uniqueEvidenceItems([
+        ...boundaryEvidence,
+        ...selectEvidenceByIds(evidence, boundaryEvidenceIds),
+      ]).slice(0, 3),
+      validationFocus:
+        item.claimStrength === 'associative'
+          ? 'Keep the wording association-only and show why no causal intervention evidence exists.'
+          : item.claimStrength === 'causal'
+            ? 'Downgrade mechanistic verbs unless internal evidence shows direct intervention or functional validation.'
+            : 'Keep the claim bounded to the exact result package and avoid scope drift.',
+      claimSafetyNotes: uniqueStrings(
+        safetyEntries.length > 0
+          ? safetyEntries.map((entry) => `${entry.action.toUpperCase()}: ${entry.rationale}`)
+          : ['ALLOW: Current wording is already bounded to the available evidence.']
+      ),
+      reviewerRisk:
+        candidate.reviewerObjections[index]
+        ?? candidate.reviewerObjections[0]
+        ?? 'Reviewers may ask for a stronger explanation of why this claim remains bounded.',
+    };
+  }).map((claim) => ({
+    ...claim,
+    supportingEvidence: claim.supportingEvidence.map((entry) => evidenceById.get(entry.id) ?? entry),
+    boundaryEvidence: claim.boundaryEvidence.map((entry) => evidenceById.get(entry.id) ?? entry),
+  }));
+}
+
+function renderResultsClaimEvidence(evidence: ConcludeEvidenceItem[]): string[] {
+  return evidence.map((item) => `- [${item.id}] ${item.summary} Source: \`${item.sourcePath}\`.`);
+}
+
+function renderConfirmedContributionMarkdown(candidate: ConcludeStoryCandidate, selectedStoryPath: string): string {
+  return [
+    '# Confirmed Contribution',
+    '',
+    `- Selected story: ${candidate.id}`,
+    `- Selection source: \`${selectedStoryPath}\``,
+    `- Framing: ${candidate.framing}`,
+    `- Recommended title style: ${candidate.recommendedTitleStyle}`,
+    '',
+    '## Confirmed Contribution',
+    '',
+    candidate.centralClaim,
+    '',
+    '## Why This Story Survives Review',
+    '',
+    candidate.story,
+    '',
+    '## Claims Allowed',
+    '',
+    ...candidate.claimsAllowed.map((value) => `- ${value}`),
+    '',
+    '## Claims To Soften Or Avoid',
+    '',
+    ...candidate.claimsToSoftenOrAvoid.map((value) => `- ${value}`),
+    '',
+  ].join('\n');
+}
+
+function renderResultsValidationMarkdown(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const lines: string[] = [
+    '# Results Validation',
+    '',
+    `- Selected story: ${candidate.id}`,
+    '- Every Results claim must stay traceable to QDD internal evidence.',
+    '',
+  ];
+
+  for (const claim of claims) {
+    lines.push(`## ${claim.heading}`);
+    lines.push('');
+    lines.push(`- Claim ID: ${claim.id}`);
+    lines.push(`- Claim strength: ${claim.claimStrength}`);
+    lines.push(`- Validation focus: ${claim.validationFocus}`);
+    lines.push('');
+    lines.push(claim.claim);
+    lines.push('');
+    lines.push('### Supporting Evidence');
+    lines.push('');
+    lines.push(...renderResultsClaimEvidence(claim.supportingEvidence));
+    lines.push('');
+    lines.push('### Boundary Evidence');
+    lines.push('');
+    lines.push(...renderResultsClaimEvidence(claim.boundaryEvidence));
+    lines.push('');
+    lines.push('### Claim Safety Notes');
+    lines.push('');
+    lines.push(...claim.claimSafetyNotes.map((value) => `- ${value}`));
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trim()}\n`;
+}
+
+function renderReviewerAuditMarkdown(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const lines: string[] = [
+    '# Reviewer Audit',
+    '',
+    `- Selected story: ${candidate.id}`,
+    '- Reviewer risk is preserved as a standalone audit trail for drafting and revision.',
+    '',
+    '## Story-Level Risks',
+    '',
+    ...candidate.reviewerObjections.map((value) => `- ${value}`),
+    '',
+    '## Claim-Level Risks',
+    '',
+  ];
+
+  for (const claim of claims) {
+    lines.push(`### ${claim.heading}`);
+    lines.push('');
+    lines.push(`- ${claim.reviewerRisk}`);
+    lines.push(...claim.claimSafetyNotes.map((value) => `- ${value}`));
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function renderCitationSupportBankMarkdown(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const lines: string[] = [
+    '# Citation Support Bank',
+    '',
+    `- Selected story: ${candidate.id}`,
+    '- Internal evidence is authoritative for Results claims; external literature remains to be attached during manuscript drafting.',
+    '',
+  ];
+
+  for (const claim of claims) {
+    lines.push(`## ${claim.heading}`);
+    lines.push('');
+    lines.push(`- Results claim: ${claim.claim}`);
+    lines.push('- Internal evidence support:');
+    lines.push(...renderResultsClaimEvidence(claim.supportingEvidence));
+    if (claim.boundaryEvidence.length > 0) {
+      lines.push('- Boundary evidence support:');
+      lines.push(...renderResultsClaimEvidence(claim.boundaryEvidence));
+    }
+    lines.push('- External citation need: add real literature support for background or field context only; do not use literature to invent this result.');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function renderSectionBlueprintsMarkdown(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  return [
+    '# Section Blueprints',
+    '',
+    `- Selected story: ${candidate.id}`,
+    '',
+    '## Abstract Blueprint',
+    '',
+    `- Lead with: ${candidate.centralClaim}`,
+    '- Keep the abstract bounded to internal evidence and explicit negative evidence.',
+    '',
+    '## Introduction Blueprint',
+    '',
+    '- Define the question and why the QDD evidence package matters.',
+    '- Reserve external citations for field context, not Results support.',
+    '',
+    '## Results Blueprint',
+    '',
+    ...claims.map((claim) => `- ${claim.heading}: ${claim.claim}`),
+    '',
+    '## Discussion Blueprint',
+    '',
+    '- Explain how negative and blocked studies narrowed the interpretation.',
+    '- Call out why stronger mechanism claims were not made.',
+    '',
+  ].join('\n');
+}
+
+function renderWritingRationaleMatrixMarkdown(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const lines: string[] = [
+    '# Writing Rationale Matrix',
+    '',
+    `- Selected story: ${candidate.id}`,
+    '',
+    '| Section | Narrative job | Evidence anchor | Safety / reviewer rationale |',
+    '| --- | --- | --- | --- |',
+    `| Contribution | State the confirmed contribution | ${candidate.supportingEvidence[0]?.id ?? 'n/a'} | ${candidate.claimsToSoftenOrAvoid[0] ?? 'Keep wording bounded.'} |`,
+  ];
+
+  for (const claim of claims) {
+    lines.push(
+      `| ${claim.heading} | Validate one Results claim | ${claim.supportingEvidence.map((item) => item.id).join(', ')} | ${sentenceCaseTrim(`${claim.reviewerRisk} ${claim.claimSafetyNotes[0] ?? ''}`)} |`
+    );
+  }
+
+  lines.push(`| Discussion | Bound scope and future work | ${claims.flatMap((claim) => claim.boundaryEvidence.map((item) => item.id)).slice(0, 3).join(', ') || 'n/a'} | Negative evidence stays visible so the story remains auditable. |`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+function buildPlanningArtifactPaths(outputDir: string, selectedStoryPath: string): ConcludePlanningArtifactPaths {
+  const paperRewritingOutputDir = path.join(outputDir, 'paper_rewriting_output');
+  return {
+    paperRewritingOutputDir,
+    selectedStoryPath,
+    confirmedContributionPath: path.join(paperRewritingOutputDir, 'confirmed_contribution.md'),
+    resultsValidationPath: path.join(paperRewritingOutputDir, 'results_validation.md'),
+    reviewerAuditPath: path.join(paperRewritingOutputDir, 'reviewer_audit.md'),
+    citationSupportBankPath: path.join(paperRewritingOutputDir, 'citation_support_bank.md'),
+    sectionBlueprintsPath: path.join(paperRewritingOutputDir, 'section_blueprints.md'),
+    writingRationaleMatrixPath: path.join(paperRewritingOutputDir, 'writing_rationale_matrix.md'),
+  };
+}
+
+async function writePlanningArtifacts(
+  candidate: ConcludeStoryCandidate,
+  claims: ConcludeResultsClaim[],
+  artifactPaths: ConcludePlanningArtifactPaths
+): Promise<void> {
+  await FileSystemUtils.createDirectory(artifactPaths.paperRewritingOutputDir);
+  await Promise.all([
+    FileSystemUtils.writeFile(
+      artifactPaths.confirmedContributionPath,
+      renderConfirmedContributionMarkdown(candidate, artifactPaths.selectedStoryPath)
+    ),
+    FileSystemUtils.writeFile(
+      artifactPaths.resultsValidationPath,
+      renderResultsValidationMarkdown(candidate, claims)
+    ),
+    FileSystemUtils.writeFile(
+      artifactPaths.reviewerAuditPath,
+      renderReviewerAuditMarkdown(candidate, claims)
+    ),
+    FileSystemUtils.writeFile(
+      artifactPaths.citationSupportBankPath,
+      renderCitationSupportBankMarkdown(candidate, claims)
+    ),
+    FileSystemUtils.writeFile(
+      artifactPaths.sectionBlueprintsPath,
+      renderSectionBlueprintsMarkdown(candidate, claims)
+    ),
+    FileSystemUtils.writeFile(
+      artifactPaths.writingRationaleMatrixPath,
+      renderWritingRationaleMatrixMarkdown(candidate, claims)
+    ),
+  ]);
+}
+
+async function resolveSelectedStory(
+  projectRoot: string,
+  outputDir: string,
+  options: GenerateConcludeStoryCandidatesOptions,
+  candidates: ConcludeStoryCandidate[]
+): Promise<{ selectedStoryId: string | null; selectedStoryPath: string | null; selectedCandidate: ConcludeStoryCandidate | null }> {
+  const candidateById = new Map(candidates.map((candidate) => [normalizeStoryId(candidate.id), candidate] as const));
+  const directSelectedStoryId = options.selectedStoryId ? normalizeStoryId(options.selectedStoryId) : null;
+  const selectedStoryPathInput = options.selectedStoryPath?.trim();
+  const defaultSelectedStoryPath = path.join(outputDir, 'selected_story.md');
+  const absoluteSelectedStoryPath = selectedStoryPathInput
+    ? resolveProjectLocalPath(projectRoot, selectedStoryPathInput, 'Selected story path')
+    : defaultSelectedStoryPath;
+  const selectedStoryPathExists = await FileSystemUtils.fileExists(absoluteSelectedStoryPath);
+
+  let parsedSelectedStoryId: string | null = null;
+  if (selectedStoryPathExists) {
+    const content = await FileSystemUtils.readFile(absoluteSelectedStoryPath);
+    parsedSelectedStoryId = parseSelectedStoryId(content);
+  } else if (selectedStoryPathInput) {
+    throw new Error(`Selected story file was not found at '${toProjectRelativePath(projectRoot, absoluteSelectedStoryPath)}'.`);
+  }
+
+  const selectedStoryId = directSelectedStoryId ?? parsedSelectedStoryId;
+  if (!selectedStoryId) {
+    if (options.selectedStoryId || options.selectedStoryPath) {
+      throw new Error('Selected story input is present but no valid story id such as story-1 could be resolved.');
+    }
+    return {
+      selectedStoryId: null,
+      selectedStoryPath: null,
+      selectedCandidate: null,
+    };
+  }
+
+  const selectedCandidate = candidateById.get(selectedStoryId);
+  if (!selectedCandidate) {
+    throw new Error(`Selected story '${selectedStoryId}' does not match any generated candidate.`);
+  }
+
+  return {
+    selectedStoryId,
+    selectedStoryPath: toProjectRelativePath(projectRoot, absoluteSelectedStoryPath),
+    selectedCandidate,
+  };
+}
+
 function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): string {
   const lines: string[] = [
     '# Story Candidates',
     '',
     `- Run ID: ${result.runId}`,
-    '- Selection gate: STOP here until a human selects one story candidate.',
-    '- V1 behavior: do not auto-select the highest score and do not generate manuscript planning artifacts yet.',
+    result.selectionRequired
+      ? '- Selection gate: STOP here until a human selects one story candidate.'
+      : `- Selected story: ${result.selectedStoryId ?? 'unknown'}`,
+    result.selectionRequired
+      ? '- V1 behavior: do not auto-select the highest score and do not generate manuscript planning artifacts yet.'
+      : '- Manuscript planning artifacts have been generated for the selected story; final manuscript drafting is the next step.',
     '',
   ];
 
@@ -615,13 +988,7 @@ function resolveConcludeOutputDir(projectRoot: string, outputDir: string | undef
     return path.join(projectRoot, 'conclusions', runId);
   }
 
-  const normalizedRelative = normalizeRelativePath(requested);
-  const absoluteOutputDir = path.resolve(projectRoot, normalizedRelative);
-  const relativeToProject = normalizeRelativePath(path.relative(projectRoot, absoluteOutputDir));
-  if (relativeToProject.startsWith('..') || path.isAbsolute(relativeToProject)) {
-    throw new Error('Conclude output directory must stay within the current QDD project directory.');
-  }
-  return absoluteOutputDir;
+  return resolveProjectLocalPath(projectRoot, requested, 'Conclude output directory');
 }
 
 export async function generateConcludeStoryCandidates(
@@ -633,15 +1000,18 @@ export async function generateConcludeStoryCandidates(
     throw new Error(`Conclude preflight is blocked: ${preflight.projectBlockers.join(' ')}`);
   }
 
-  if (options.selectedStoryId) {
-    throw new Error('V1 selection gate only generates story candidates. Do not pass selectedStoryId before manuscript drafting is implemented.');
-  }
-
   const evidence = await harvestConcludeEvidence(preflight);
   const candidates = buildStoryCandidates(evidence, preflight.snapshot.contract).slice(0, 3);
   const claimSafetyAudit = collectClaimSafetyAudit(evidence);
   const runId = options.runId ?? slugifyConcludeTimestamp(options.now ?? new Date());
   const outputDir = resolveConcludeOutputDir(preflight.projectRoot, options.outputDir, runId);
+  const selectedStory = await resolveSelectedStory(preflight.projectRoot, outputDir, options, candidates);
+  const resultsClaims = selectedStory.selectedCandidate
+    ? buildResultsClaims(selectedStory.selectedCandidate, evidence, claimSafetyAudit)
+    : [];
+  const planningArtifacts = selectedStory.selectedCandidate && selectedStory.selectedStoryPath
+    ? buildPlanningArtifactPaths(outputDir, selectedStory.selectedStoryPath)
+    : null;
 
   const result: ConcludeStoryGenerationResult = {
     runId,
@@ -650,15 +1020,22 @@ export async function generateConcludeStoryCandidates(
     evidenceAuditPath: path.join(outputDir, 'evidence_audit.md'),
     claimSafetyAuditPath: path.join(outputDir, 'claim_safety_audit.md'),
     reviewerRiskAuditPath: path.join(outputDir, 'reviewer_risk_audit.md'),
-    selectionRequired: true,
-    selectedStoryId: null,
+    selectionRequired: selectedStory.selectedCandidate === null,
+    selectedStoryId: selectedStory.selectedStoryId,
+    selectedStoryPath: selectedStory.selectedStoryPath,
+    selectedCandidate: selectedStory.selectedCandidate,
+    planningArtifacts,
+    resultsClaims,
     candidates,
     evidence,
     claimSafetyAudit,
-    nextStep: 'select-story',
+    nextStep: selectedStory.selectedCandidate ? 'draft-manuscript' : 'select-story',
   };
 
   await writeConcludeStoryOutputs(result);
+  if (selectedStory.selectedCandidate && planningArtifacts) {
+    await writePlanningArtifacts(selectedStory.selectedCandidate, resultsClaims, planningArtifacts);
+  }
   return result;
 }
 
