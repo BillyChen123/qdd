@@ -6,6 +6,9 @@ import type { StudyRecord, TaskRecord } from './studies.js';
 export type ConcludeAvailability = 'available' | 'blocked';
 
 export type ConcludeRenderToolName = 'latexmk' | 'xelatex' | 'pdflatex' | 'pandoc';
+export type ConcludeEvidenceKind = 'supporting' | 'negative' | 'boundary';
+export type ConcludeClaimStrength = 'associative' | 'bounded' | 'causal';
+export type ConcludeStoryFraming = 'discovery' | 'method' | 'case-study' | 'benchmark' | 'audit-report' | 'bounded-hypothesis';
 
 export interface ConcludeRenderToolStatus {
   name: ConcludeRenderToolName;
@@ -54,6 +57,18 @@ export interface ConcludeStudyMemorySnapshot {
   content: string;
 }
 
+export interface ConcludeEvidenceItem {
+  id: string;
+  kind: ConcludeEvidenceKind;
+  sourceType: 'study' | 'task' | 'memory' | 'artifact' | 'evolution' | 'resource';
+  sourcePath: string;
+  studyId: string | null;
+  summary: string;
+  rationale: string;
+  claimStrength: ConcludeClaimStrength;
+  tags: string[];
+}
+
 export interface ConcludePreflightSnapshot {
   contract: ResearchContract | null;
   evolution: EvolutionState | null;
@@ -61,6 +76,43 @@ export interface ConcludePreflightSnapshot {
   artifactIndex: ArtifactIndex | null;
   studyMemories: ConcludeStudyMemorySnapshot[];
   studies: ConcludeStudySnapshot[];
+}
+
+export interface ConcludeStoryCandidate {
+  id: string;
+  framing: ConcludeStoryFraming;
+  centralClaim: string;
+  story: string;
+  supportingEvidence: ConcludeEvidenceItem[];
+  negativeOrBoundaryEvidence: ConcludeEvidenceItem[];
+  reviewerObjections: string[];
+  claimsAllowed: string[];
+  claimsToSoftenOrAvoid: string[];
+  suitabilityScore: number;
+  recommendedTitleStyle: string;
+}
+
+export interface ConcludeClaimSafetyAuditEntry {
+  claim: string;
+  originalStrength: ConcludeClaimStrength;
+  safeStrength: Exclude<ConcludeClaimStrength, 'causal'> | 'causal';
+  action: 'allow' | 'soften' | 'avoid';
+  rationale: string;
+}
+
+export interface ConcludeStoryGenerationResult {
+  runId: string;
+  outputDir: string;
+  storyCandidatesPath: string;
+  evidenceAuditPath: string;
+  claimSafetyAuditPath: string;
+  reviewerRiskAuditPath: string;
+  selectionRequired: true;
+  selectedStoryId: string | null;
+  candidates: ConcludeStoryCandidate[];
+  evidence: ConcludeEvidenceItem[];
+  claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
+  nextStep: 'select-story';
 }
 
 export interface ConcludeRenderStatus {
@@ -93,4 +145,10 @@ export interface ConcludePreflightResult {
 export interface ConcludePreflightOptions {
   environment?: NodeJS.ProcessEnv;
   shellPath?: string;
+}
+
+export interface GenerateConcludeStoryCandidatesOptions extends ConcludePreflightOptions {
+  selectedStoryId?: string | null;
+  runId?: string;
+  now?: Date;
 }
