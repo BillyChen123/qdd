@@ -317,6 +317,89 @@ function stripExecutionLeakage(text: string): string {
   );
 }
 
+function stripReportTone(text: string): string {
+  return sentenceCaseTrim(
+    stripExecutionLeakage(text)
+      .replace(/\binternal evidence anchors?\b[:.]?/gi, '')
+      .replace(/\bboundary evidence\b[:.]?/gi, '')
+      .replace(/\bclaim safety\b[:.]?/gi, '')
+      .replace(/\breviewer[- ]?facing\b/gi, 'review-oriented')
+      .replace(/\breviewer risk\b/gi, 'review concern')
+      .replace(/\bmanuscript[- ]native\b/gi, 'manuscript-focused')
+      .replace(/\bselection gate\b/gi, '')
+      .replace(/\baudit(?: trail)?\b/gi, 'assessment')
+      .replace(/\bpath decision\b[:.]?/gi, '')
+      .replace(/\bblocked\s*(?:->|→|[—:-])\s*pivot\b/gi, 'requires a narrowed analytical path')
+      .replace(/\bblocked\s*[—:-]\s*requires\b/gi, 'requires')
+      .replace(/\bpath decision\b[:.]?/gi, '')
+      .replace(/\bcurrent evidence package\b/gi, 'the available evidence')
+      .replace(/\bqdd evidence package\b/gi, 'the available evidence')
+      .replace(/\bqdd\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+  );
+}
+
+function splitNarrativeSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((sentence) => sentenceCaseTrim(sentence))
+    .filter((sentence) => sentence.length > 0);
+}
+
+function shortenSummary(text: string, maxLength = 240): string {
+  const normalized = stripReportTone(text);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const sentences = splitNarrativeSentences(normalized);
+  let combined = '';
+  for (const sentence of sentences) {
+    if (!sentence) {
+      continue;
+    }
+    const candidate = combined.length > 0 ? `${combined} ${sentence}` : sentence;
+    if (candidate.length > maxLength) {
+      break;
+    }
+    combined = candidate;
+  }
+
+  if (combined.length > 0) {
+    return combined;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function firstNarrativeSentence(text: string): string {
+  const normalized = stripReportTone(text);
+  const [firstSentence] = splitNarrativeSentences(normalized);
+  return firstSentence ?? normalized;
+}
+
+function removeLeadingCue(text: string): string {
+  return sentenceCaseTrim(
+    text
+      .replace(/^[A-Z][^:]{0,80}:\s*/g, '')
+      .replace(/^(Present a conservative biological arc anchored by|Lead with|Build the story around|This story is organized as a reviewer-facing evidence audit:\s*|Introduce the workflow contribution as|Open by stating what the project can already support with reusable internal evidence\.)\s*/i, '')
+      .replace(/^(The project has|Internal results support|Reusable workflow outputs validate|Boundary evidence narrows|Negative or failed validation evidence prevents|Project context remains relevant but should stay outside central Results claims:)\s+/i, '')
+  );
+}
+
+function softenCausalLanguage(text: string): string {
+  return sentenceCaseTrim(
+    text
+      .replace(/\bdrives\b/gi, 'is associated with')
+      .replace(/\bdrive\b/gi, 'associate with')
+      .replace(/\bcausal\b/gi, 'association-level')
+      .replace(/\bmechanistic\b/gi, 'mechanism-oriented')
+      .replace(/\bproves?\b/gi, 'supports')
+      .replace(/\bdefines?\b/gi, 'marks')
+      .replace(/\beffect\b/gi, 'signal')
+  );
+}
+
 function lowerCaseLead(text: string): string {
   return text.length > 0 ? `${text.slice(0, 1).toLowerCase()}${text.slice(1)}` : text;
 }
@@ -1620,28 +1703,123 @@ function renderReferencesBib(citationEntries: ConcludeExternalCitationEntry[]): 
 }
 
 function buildAbstractParagraph(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
-  const leadClaim = claims[0]?.claim ?? candidate.centralClaim;
-  return sentenceCaseTrim(
-    `${candidate.centralClaim} We summarize the selected QDD storyline as a submission-oriented draft grounded in internal evidence. The current abstract remains intentionally conservative: ${leadClaim} Negative and blocked studies stay visible to explain why stronger mechanistic language is not used.`
-  );
+  const leadClaim = firstNarrativeSentence(removeLeadingCue(claims[0]?.claim ?? candidate.centralClaim));
+  const secondClaim = claims[1] ? firstNarrativeSentence(removeLeadingCue(claims[1].claim)) : '';
+  const boundarySummary = uniqueStrings(
+    claims.flatMap((claim) => claim.boundaryEvidence.map((item) => firstNarrativeSentence(removeLeadingCue(item.summary))))
+  ).slice(0, 2);
+
+  return sentenceCaseTrim([
+    shortenSummary(softenCausalLanguage(candidate.centralClaim), 220),
+    `Across the selected evidence chain, ${lowerCaseLead(leadClaim)}${secondClaim ? `, while ${lowerCaseLead(secondClaim)}` : ''}.`,
+    boundarySummary.length > 0
+      ? `These observations remain bounded because ${lowerCaseLead(boundarySummary.join(' and '))}.`
+      : 'These observations remain bounded because stronger mechanistic validation is not yet available.',
+    'Accordingly, the draft treats the current package as hypothesis-supporting and associative rather than mechanistic proof.',
+  ].join(' '));
 }
 
 function buildIntroductionParagraph(candidate: ConcludeStoryCandidate, hasExternalCitations: boolean): string {
   const citationSuffix = hasExternalCitations
     ? 'External literature citations may be added here for background and related work using the verified bibliography entries.'
     : 'External background citations are currently unavailable and must be added later using verified BibTeX entries.';
+  const opening = shortenSummary(removeLeadingCue(candidate.story), 220);
   return sentenceCaseTrim(
-    `${candidate.story} The introduction should motivate the biological or methodological question, explain why the QDD evidence package matters, and clearly separate internal results from field context. ${citationSuffix}`
+    `${opening} The introduction frames the biological or methodological question, explains why the available evidence is synthesis-ready, and keeps field context distinct from project-derived results. ${citationSuffix}`
   );
 }
 
 function buildDiscussionParagraph(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
   const boundarySummary = uniqueStrings(
-    claims.flatMap((claim) => claim.boundaryEvidence.map((item) => item.summary))
+    claims.flatMap((claim) => claim.boundaryEvidence.map((item) => shortenSummary(removeLeadingCue(item.summary), 140)))
   ).slice(0, 3);
+  const safetySummary = uniqueStrings(
+    claims.flatMap((claim) => claim.claimSafetyNotes)
+      .map((note) => note.replace(/^[A-Z]+:\s*/i, ''))
+      .map((note) => shortenSummary(note, 120))
+  ).slice(0, 2);
   return sentenceCaseTrim(
-    `The discussion should explain how the selected story remains bounded by the available evidence, surface reviewer-facing limitations, and preserve negative evidence as a strength rather than a hidden weakness. ${boundarySummary.length > 0 ? `Key boundary evidence includes ${boundarySummary.join('; ')}.` : 'Boundary evidence should be expanded as the draft matures.'}`
+    [
+      'Taken together, the draft supports a bounded interpretation anchored in the strongest internal results while keeping unresolved validation gaps explicit.',
+      boundarySummary.length > 0
+        ? `Negative and boundary findings remain scientifically informative because ${lowerCaseLead(boundarySummary.join('; '))}.`
+        : 'Negative and boundary findings remain important and should be expanded as the manuscript matures.',
+      safetySummary.length > 0
+        ? `This framing also justifies conservative wording: ${lowerCaseLead(safetySummary.join(' '))}.`
+        : 'This framing also justifies conservative wording and argues against mechanistic over-interpretation.',
+      'Future work therefore follows directly from the current evidentiary boundary instead of retroactively inflating the present claim.',
+    ].join(' ')
   );
+}
+
+function buildResultsOpeningParagraph(claims: ConcludeResultsClaim[], figureAssets: ConcludeFigureAssetMapEntry[]): string {
+  const leadClaim = claims[0] ? firstNarrativeSentence(removeLeadingCue(claims[0].claim)) : 'the selected evidence chain remains ready for conservative synthesis';
+  const secondClaim = claims[1] ? firstNarrativeSentence(removeLeadingCue(claims[1].claim)) : '';
+  const mappedFigureCount = figureAssets.filter((asset) => asset.status === 'available').length;
+  const placeholderCount = figureAssets.filter((asset) => asset.status === 'placeholder').length;
+  const figureSentence = mappedFigureCount > 0
+    ? `${mappedFigureCount} reusable internal figure asset${mappedFigureCount === 1 ? '' : 's'} support the current Results chain${placeholderCount > 0 ? `, although ${placeholderCount} additional figure slot${placeholderCount === 1 ? '' : 's'} still require curation` : ''}.`
+    : placeholderCount > 0
+      ? `${placeholderCount} figure slot${placeholderCount === 1 ? '' : 's'} still require curated internal visual support before submission packaging.`
+      : 'Figure curation remains minimal and should be strengthened before submission packaging.';
+
+  return sentenceCaseTrim([
+    `The Results section is organized around ${lowerCaseLead(leadClaim)}${secondClaim ? `, followed by ${lowerCaseLead(secondClaim)}` : ''}.`,
+    figureSentence,
+  ].join(' '));
+}
+
+function buildResultsNarrativeParagraph(claim: ConcludeResultsClaim): string {
+  const supportSummary = uniqueStrings(
+    claim.supportingEvidence.map((item) => firstNarrativeSentence(removeLeadingCue(item.summary)))
+  ).slice(0, 3);
+  const boundarySummary = uniqueStrings(
+    claim.boundaryEvidence.map((item) => firstNarrativeSentence(removeLeadingCue(item.summary)))
+  ).slice(0, 2);
+  const safetyLine = claim.claimSafetyNotes[0]?.replace(/^[A-Z]+:\s*/i, '') ?? 'The interpretation remains bounded to the available evidence.';
+
+  return sentenceCaseTrim([
+    firstNarrativeSentence(removeLeadingCue(claim.claim)),
+    supportSummary.length > 0
+      ? `Specifically, ${lowerCaseLead(supportSummary.join('; '))}.`
+      : 'The supporting evidence should be restated more explicitly in later revision passes.',
+    boundarySummary.length > 0
+      ? `At the same time, ${lowerCaseLead(boundarySummary.join('; '))}, which keeps the interpretation bounded.`
+      : 'The interpretation remains bounded because confirmatory follow-up is still incomplete.',
+    `This section therefore remains conservative: ${lowerCaseLead(shortenSummary(safetyLine, 120))}.`,
+  ].join(' '));
+}
+
+function buildBoundaryInterpretationParagraph(claim: ConcludeResultsClaim): string | null {
+  if (claim.boundaryEvidence.length === 0) {
+    return null;
+  }
+
+  const boundarySummary = uniqueStrings(
+    claim.boundaryEvidence.map((item) => firstNarrativeSentence(removeLeadingCue(item.summary)))
+  ).slice(0, 2);
+  if (boundarySummary.length === 0) {
+    return null;
+  }
+
+  return sentenceCaseTrim(
+    `Rather than weakening the manuscript, these boundary observations clarify the present scope of inference: ${lowerCaseLead(boundarySummary.join('; '))}.`
+  );
+}
+
+function renderManuscriptEvidenceTraceComment(claim: ConcludeResultsClaim): string[] {
+  const lines = [
+    `% Evidence trace for ${claim.id}: supporting packets ${claim.supportingPacketRefs.join(', ') || 'n/a'}; boundary packets ${claim.boundaryPacketRefs.join(', ') || 'n/a'}.`,
+  ];
+
+  for (const evidence of claim.supportingEvidence) {
+    lines.push(`% Supporting anchor [${evidence.id}] ${stripReportTone(evidence.summary)} Source: ${normalizeRelativePath(evidence.sourcePath)}.`);
+  }
+  for (const evidence of claim.boundaryEvidence) {
+    lines.push(`% Boundary anchor [${evidence.id}] ${stripReportTone(evidence.summary)} Source: ${normalizeRelativePath(evidence.sourcePath)}.`);
+  }
+
+  return lines;
 }
 
 function renderMainTex(options: {
@@ -1656,11 +1834,7 @@ function renderMainTex(options: {
   const bibliographyKeys = citationEntries.map((entry) => entry.key);
   const bibliographyLine = bibliographyKeys.length > 0
     ? `Background citations available: \\cite{${bibliographyKeys.join(',')}}.`
-    : 'Background citations are intentionally omitted until verified BibTeX support is available.';
-  const placeholderFigures = figureAssets.filter((asset) => asset.status === 'placeholder').length;
-  const figureIntro = placeholderFigures === 0
-    ? 'Figure assets have been mapped from internal QDD artifacts.'
-    : `${placeholderFigures} figure slot(s) remain placeholders because no reusable figure asset was available for every Results claim.`;
+    : 'Verified background citations are not yet available for this draft and should be added once BibTeX support is confirmed.';
 
   const lines: string[] = [
     '\\documentclass[11pt]{article}',
@@ -1668,7 +1842,7 @@ function renderMainTex(options: {
     '\\usepackage{graphicx}',
     '\\usepackage{booktabs}',
     '\\usepackage[hidelinks]{hyperref}',
-    '\\title{' + latexEscape(candidate.centralClaim) + '}',
+    '\\title{' + latexEscape(softenCausalLanguage(candidate.centralClaim)) + '}',
     '\\author{QDD Conclude Draft}',
     '\\date{}',
     '',
@@ -1685,39 +1859,20 @@ function renderMainTex(options: {
     latexEscape(bibliographyLine),
     '',
     '\\section{Results}',
-    latexEscape(figureIntro),
+    latexEscape(buildResultsOpeningParagraph(claims, figureAssets)),
     '',
   ];
 
   for (const claim of claims) {
     const figureAsset = figureAssets.find((asset) => asset.resultClaimId === claim.id);
+    const boundaryInterpretation = buildBoundaryInterpretationParagraph(claim);
     lines.push(`\\subsection{${latexEscape(claim.heading)}}`);
-    lines.push(latexEscape(claim.claim));
+    lines.push(latexEscape(buildResultsNarrativeParagraph(claim)));
     lines.push('');
-    lines.push('\\paragraph{Internal Evidence Anchors.}');
-    lines.push('\\begin{itemize}');
-    for (const evidence of claim.supportingEvidence) {
-      lines.push(`  \\item [${latexEscape(evidence.id)}] ${latexEscape(evidence.summary)} Source: \\texttt{${toTexRelativePath(evidence.sourcePath)}}.`);
+    if (boundaryInterpretation) {
+      lines.push(latexEscape(boundaryInterpretation));
+      lines.push('');
     }
-    lines.push('\\end{itemize}');
-    lines.push('');
-    lines.push('\\paragraph{Boundary Evidence.}');
-    lines.push('\\begin{itemize}');
-    const boundaryEvidence = claim.boundaryEvidence.length > 0
-      ? claim.boundaryEvidence
-      : [{
-          id: 'n/a',
-          summary: 'No explicit boundary evidence was mapped; keep the wording bounded until more reviewer-facing limits are documented.',
-          sourcePath: 'n/a',
-        } as ConcludeEvidenceItem];
-    for (const evidence of boundaryEvidence) {
-      lines.push(`  \\item [${latexEscape(evidence.id)}] ${latexEscape(evidence.summary)} Source: \\texttt{${toTexRelativePath(evidence.sourcePath)}}.`);
-    }
-    lines.push('\\end{itemize}');
-    lines.push('');
-    lines.push('\\paragraph{Claim Safety.}');
-    lines.push(latexEscape(claim.claimSafetyNotes.join(' ')));
-    lines.push('');
     if (figureAsset?.targetPath) {
       lines.push('\\begin{figure}[ht]');
       lines.push('  \\centering');
@@ -1730,6 +1885,8 @@ function renderMainTex(options: {
       lines.push(`% ${claim.heading} currently has no reusable figure asset; see figures/asset_map.md.`);
       lines.push('');
     }
+    lines.push(...renderManuscriptEvidenceTraceComment(claim));
+    lines.push('');
   }
 
   lines.push('\\section{Discussion}');

@@ -908,7 +908,8 @@ test('qdd conclude CLI accepts selected story input and returns planning artifac
   assert.match(mainTexMarkdown, /\\section\{Introduction\}/);
   assert.match(mainTexMarkdown, /\\section\{Results\}/);
   assert.match(mainTexMarkdown, /\\section\{Discussion\}/);
-  assert.match(mainTexMarkdown, /Internal Evidence Anchors/);
+  assert.doesNotMatch(mainTexMarkdown, /Internal Evidence Anchors/);
+  assert.match(mainTexMarkdown, /% Evidence trace for claim-1:/);
   assert.match(referencesBib, /No verified external BibTeX entries were available/);
   assert.match(finalArtifactAudit, /# Final Artifact Audit/);
   assert.match(finalArtifactAudit, /references\.bib: GAP/);
@@ -982,7 +983,12 @@ test('runConclude keeps selection gate without final paper and writes final pack
   assert.equal(withSelection.finalPaperArtifacts?.referencesBib.status, 'gap');
   assert.ok(['blocked', 'complete'].includes(withSelection.finalPaperArtifacts?.pdf.status ?? 'blocked'));
   assert.ok(['blocked', 'complete'].includes(withSelection.finalPaperArtifacts?.word.status ?? 'blocked'));
-  assert.match(mainTex, /Source: \\texttt\{studies\//);
+  assert.doesNotMatch(mainTex, /\\paragraph\{Internal Evidence Anchors\.\}/);
+  assert.doesNotMatch(mainTex, /\\paragraph\{Boundary Evidence\.\}/);
+  assert.doesNotMatch(mainTex, /\\paragraph\{Claim Safety\.\}/);
+  assert.doesNotMatch(mainTex, /The discussion should explain how the selected story remains bounded/i);
+  assert.match(mainTex, /% Evidence trace for claim-1:/);
+  assert.match(mainTex, /% Supporting anchor \[EV-/);
   assert.match(mainTex, /\\bibliography\{references\}/);
   assert.match(figureAssetMap, /# Figure Asset Map/);
   assert.match(figureAssetMap, /Figure 1/);
