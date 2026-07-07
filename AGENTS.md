@@ -1,25 +1,275 @@
-# Repository Guidelines
+# Project Bootstrap Guide
 
-## Project Structure & Module Organization
+This file is a project-level bootstrap guide, not a feature-specific spec.
 
-This repository is the active QDD TypeScript CLI implementation. Work from the repository root.
+Keep `AGENTS.md` and `CLAUDE.md` aligned. If one changes, update the other in the same edit.
 
-Feature code lives in `src/`: `src/cli` wires the Commander entrypoint, `src/commands` owns command surfaces, `src/runtime` and `src/services` hold workflow logic, `src/file-contracts` defines managed file schemas, and `src/utils`, `src/render`, and `src/ui` contain supporting modules. Tests currently live under `src/test/` and compile into `dist/test/`.
+## Project Overview
 
-Durable QDD skill and research assets live outside `src/`: `domain-skills/` contains committed domain and planning skills, `docs/` contains product and architecture notes, `openspec/` contains planning artifacts, and `.qdd/` contains local runtime bootstrap state when present. The `.codex/` directory is local agent bootstrap state and is ignored by git; do not assume it exists in a fresh Symphony workspace unless the workflow hook installs it.
+QDD is the active TypeScript CLI implementation of Question-Driven Discovery.
 
-For the conclude skill work, treat `docs/09-qdd-conclude-prd.md` as the product source of truth.
+QDD is a research-first orchestration framework. Its core job is to keep long-running scientific work legible to both humans and agents through durable project state, bounded studies, evidence-producing tasks, reusable artifacts, and explicit question evolution.
 
-## Build, Test, and Development Commands
+Primary object model:
+
+- project
+- study
+- task
+- run
+- artifact
+- evolution event
+- memory
+
+Work from the repository root.
+
+## OpenSpec Relationship
+
+QDD reuses parts of OpenSpec as infrastructure, not as its product identity.
+
+Reuse as infrastructure:
+
+- bootstrap and agent-tooling patterns
+- command / skill projection
+- schema and template customization
+- proposal-style change writing when useful for implementation planning
+
+Do not treat as QDD's primary domain workflow:
+
+- OpenSpec proposal/spec/design/tasks as the main user-facing research objects
+- archive semantics as the core QDD lifecycle
+- software-change terminology as the primary description of research work
+
+QDD's product-facing identity stays research-native:
+
+- `Question-Driven Discovery`
+- project -> study -> task -> run -> artifact -> evolution
+
+## Core Workflow Model
+
+QDD's main workflow remains:
+
+- `qdd-start`
+- `qdd-propose`
+- `qdd-explore`
+- `qdd-apply`
+- `qdd-close`
+
+These are the core research-loop surfaces.
+
+Additional command surfaces may exist for focused capabilities. They do not redefine the main QDD object model.
+
+## Bootstrap And Init
+
+Use `qdd init` as the bootstrap installer for project scaffold plus agent-facing assets.
+
+Useful commands:
+
+```bash
+qdd init .
+qdd init . --refresh-bootstrap
+qdd init . --tool claude codex --refresh-bootstrap
+```
+
+What bootstrap is responsible for:
+
+- creating the minimal QDD project scaffold
+- refreshing `.claude` command surfaces
+- refreshing Codex prompt/skill projection
+- refreshing local workflow skill metadata
+
+Project-level guidance should stay consistent with what `qdd init` installs.
+
+## Symphony Control Plane
+
+This repository is currently configured to run with Symphony as an external automation loop.
+
+Current project configuration:
+
+- GitHub: `https://github.com/BillyChen123/qdd`
+- SSH remote: `git@github.com:BillyChen123/qdd.git`
+- base branch: `main`
+- workflow file: `WORKFLOW.md`
+- Symphony workspace root: `~/code/qdd-symphony-workspaces`
+- Linear project slug: `qdd-5bbf8f2a81d1`
+- required Linear label: `qdd-conclude`
+
+Important note:
+
+- the `qdd-conclude` label is the current Symphony filter for this repository workflow
+- that is a workflow configuration detail, not the full product identity of QDD
+- if Symphony later needs to automate other QDD workstreams, update `WORKFLOW.md` intentionally instead of silently broadening issue scope
+
+Symphony uses three control planes:
+
+1. Linear issue state and issue relations
+2. `WORKFLOW.md`
+3. GitHub branches and PRs
+
+Symphony listens to Linear issue workflow state, not Linear project status.
+
+Active issue states:
+
+- `Todo`
+- `In Progress`
+- `Rework`
+- `Merging`
+
+Pause state:
+
+- `Human Review`
+
+Terminal states:
+
+- `Done`
+- `Closed`
+- `Cancelled`
+- `Canceled`
+- `Duplicate`
+
+State rules:
+
+- `Human Review` is a human pause state and should not be active
+- `Merging` is only for merge completion and must not add new feature scope
+- issue dependencies must use real Linear `Blocked by` / `Blocks` relations
+- do not encode dependency order only in prose
+
+Branch and PR rules:
+
+- one branch per Linear issue
+- branch name starts with the lower-case issue identifier, for example `bil-20-...`
+- PR base branch is `main`
+- when Symphony is driving work, keep Linear workpad notes and PR summaries in Chinese unless the issue explicitly requests English
+
+Secret management:
+
+- never commit API keys or tokens
+- keep `LINEAR_API_KEY`, `GITHUB_TOKEN` / `GH_TOKEN`, and model-provider credentials in user-level environment files such as `~/.config/symphony/env`
+- tracked files may mention variable names, but must not contain secret values
+
+Operational reference:
+
+- `docs/10-symphony-setup-and-pitfalls.md`
+
+## Linear Issues Should Use OpenSpec-Propose Style
+
+For this repository, the right combination is:
+
+- Linear as scheduling and dependency control plane
+- OpenSpec `propose` style as the issue-writing contract
+
+That means a substantial Symphony issue should read like a compact implementation proposal, not a vague feature request.
+
+Recommended issue sections:
+
+1. `Goal`
+2. `Current State` or `Why Now`
+3. `Scope`
+4. `Non-Goals`
+5. `Implementation Notes`
+6. `Acceptance Criteria`
+7. `Validation`
+8. `Dependencies`
+9. `References`
+
+Issue-writing rules:
+
+- keep each issue to one executable slice
+- state what already exists in `main`
+- state what changes in user-visible or developer-visible behavior
+- state what must remain unchanged
+- name the relevant repo surfaces the agent is expected to touch
+- include exact validation commands when they matter
+- record dependency structure in Linear relations, not only in Markdown
+
+Preferred issue shape:
+
+```md
+## Goal
+
+One concrete outcome.
+
+## Current State
+
+What already exists in `main`, and what gap remains.
+
+## Scope
+
+- bounded change 1
+- bounded change 2
+
+## Non-Goals
+
+- explicit out-of-scope item
+
+## Implementation Notes
+
+- canonical entrypoint or interface
+- key files or contracts
+
+## Acceptance Criteria
+
+- observable outcome 1
+- observable outcome 2
+
+## Validation
+
+- `npm run build`
+- `npm test`
+- one targeted smoke path or fixture path
+
+## Dependencies
+
+- blocked by / blocks
+
+## References
+
+- PRD, prior PRs, regression cases, or issue branches
+```
+
+## Current Active Symphony Scope
+
+The current Symphony workflow is focused on issues carrying the `qdd-conclude` label.
+
+That means:
+
+- `conclude` is the current active automation workstream
+- `conclude` is not the whole project identity
+- project-level bootstrap guidance should stay generic
+- feature-specific detail should live in feature-specific PRDs, skills, workflow notes, and issues
+
+If working on the current conclude workstream, use these feature-local sources of truth:
+
+- `docs/09-qdd-conclude-prd.md`
+- `domain-skills/thesis/conclude/SKILL.md`
+- `WORKFLOW.md`
+
+## Repository Structure
+
+Feature code lives in `src/`:
+
+- `src/cli`: Commander entrypoint
+- `src/commands`: command surfaces
+- `src/runtime` and `src/services`: workflow logic and service logic
+- `src/file-contracts`: managed file schemas
+- `src/utils`, `src/render`, `src/ui`: supporting modules
+
+Other important surfaces:
+
+- `domain-skills/`: committed domain and planning skills
+- `docs/`: product and architecture notes
+- `openspec/`: planning artifacts, specs, and templates
+- `.qdd/`: local bootstrap state when present
+
+## Build, Test, And Development Commands
 
 Run package commands from the repository root:
 
-- `npm install` - install dependencies; requires Node `>=20.19.0`
-- `npm run build` - compile TypeScript into `dist/` and copy runtime assets
-- `npm test` - run Node test files from `dist/test/*.js`; run `npm run build` first
-- `npm run dev` - TypeScript watch build
+- `npm install`
+- `npm run build`
+- `npm test`
+- `npm run dev`
 
-Local CLI smoke path:
+Common smoke path:
 
 ```bash
 npm run build
@@ -27,39 +277,33 @@ node bin/qdd.js --help
 node bin/qdd.js validate --help
 ```
 
-Symphony workspace bootstrap is defined in `WORKFLOW.md` and currently runs `git clone`, `npm install`, and `npm run build`.
+## Coding Style
 
-## Coding Style & Naming Conventions
+- TypeScript with strict compiler settings
+- 2-space indentation
+- kebab-case for utility files
+- PascalCase for classes
+- camelCase for functions and variables
+- do not add static `@inquirer/*` imports outside the explicitly allowed init path; use dynamic `import()`
 
-Use TypeScript with strict compiler settings and 2-space indentation. Match existing file naming: kebab-case for utility files such as `change-utils.ts`, PascalCase for classes such as `ValidateCommand`, and camelCase for functions and variables.
+Follow nearby formatting. There is no repository Prettier config.
 
-Follow `OpenSpec/eslint.config.js`. There is no Prettier config here, so keep formatting consistent with nearby files. One repository-specific rule matters: do not add static `@inquirer/*` imports outside the explicitly allowed init path; use dynamic `import()` instead.
+## Testing Guidance
 
-## Testing Guidelines
+Add TypeScript tests under `src/test/` with the `*.test.ts` suffix when practical, then run `npm run build` before `npm test`.
 
-The current test runner is Node's built-in test runner over compiled JavaScript. Add TypeScript tests under `src/test/` with the `*.test.ts` suffix when practical, then run `npm run build` before `npm test`.
+Prefer focused tests for:
 
-Prefer focused tests for `src/file-contracts`, `src/runtime`, `src/services`, and command behavior. For CLI-facing changes, include at least one smoke path through `node bin/qdd.js ...` or a service-level test that proves the same behavior.
+- `src/file-contracts`
+- `src/runtime`
+- `src/services`
+- command behavior
 
-For conclude skill changes, validate the smallest meaningful slice:
-
-- scaffold-only changes: `npm run build`
-- parsing/harvesting logic: add or update a focused fixture/test, then `npm run build && npm test`
-- CLI command changes: include a CLI smoke command
-
-## Documentation Structure
-
-- `README.md` and `README.zh-CN.md` describe the current product surface.
-- `docs/04-installation-guide.md` covers installation.
-- `docs/09-qdd-conclude-prd.md` is the active PRD for the conclude skill.
-- `openspec/specs/` and `openspec/changes/` contain planning artifacts, but QDD's primary implementation contracts are the TypeScript file contracts and runtime behavior.
-- `domain-skills/**/SKILL.md` files are committed reusable skill instructions for research execution.
-
-Keep documentation updates close to the changed behavior. Do not add generated reports or local API keys to git.
+For feature-local work such as conclude, use the relevant PRD and workflow notes to decide the smallest meaningful validation slice.
 
 ## Self-Verification Checklist
 
-Before handing off a change, report:
+Before handoff, report:
 
 - files changed and why
 - exact validation commands run
@@ -67,13 +311,3 @@ Before handing off a change, report:
 - whether `npm test` was run or why it was not needed
 - any missing local tools or credentials
 - any follow-up issue that should be created instead of expanding scope
-
-## Commit & Pull Request Guidelines
-
-Follow the commit style already in history: concise, imperative subjects with conventional prefixes when useful, for example `fix: ...`, `test: ...`, or `docs(migration-guide): ...`.
-
-Small fixes can go straight to a PR. Larger features, workflow changes, or refactors should start with an OpenSpec proposal under `openspec/changes/<change-id>/` when the design is not already captured elsewhere. For the conclude skill, `docs/09-qdd-conclude-prd.md` is the accepted planning source unless a later OpenSpec change supersedes it.
-
-PRs should include a short summary, affected paths or commands, test evidence, and terminal output when CLI UX changes. If AI-generated code is included, disclose the agent and model in the PR description.
-
-When Symphony is driving work, keep the Linear workpad and PR summary in Chinese unless the issue asks otherwise.
