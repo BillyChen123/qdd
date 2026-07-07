@@ -118,8 +118,33 @@ Important paths:
 - `src/`: QDD CLI implementation.
 - `openspec/`: existing OpenSpec planning artifacts.
 - `package.json`: build and test commands.
+- Parkinson golden-case QDD project: `/data/chenyz/project/panrank_tmp/project/case/Parkinson`.
 
 Use the repository's existing patterns. Do not introduce a new framework or unrelated runtime.
+
+## Conclude Entry Model
+
+Keep the two conclude surfaces distinct:
+
+- `domain-skills/thesis/conclude/SKILL.md` is the durable manual skill guidance: taste, scientific guardrails, workflow intent, and PaperSpine provenance.
+- `qdd conclude` is the executable CLI entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
+
+The CLI is the testable automation surface. It should let a user run conclude inside any QDD project directory.
+
+Current CLI shape:
+
+```bash
+qdd conclude --json
+qdd conclude --output-dir conclusions/<run-id> --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-id story-1 --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions/<run-id>/selected_story.md --json
+```
+
+Current behavior:
+
+- Without a selected story, generate story candidates, evidence audit, claim safety audit, reviewer risk audit, render status, then stop at the selection gate.
+- With a selected story, generate `selected_story.md` plus manuscript-planning artifacts under `paper_rewriting_output/`.
+- Final manuscript drafting, TeX/BibTeX generation, PDF/Word rendering, and quantitative draft evaluation are future slices unless the issue explicitly implements them.
 
 ## Expected Development Posture
 
@@ -173,5 +198,37 @@ Use the smallest validation set that proves the issue slice:
 - `npm run build`
 - `npm test` when code paths are changed
 - targeted fixture or smoke test when new parsing, harvesting, or rendering behavior is added
+
+For any issue that changes conclude behavior, also run a Parkinson golden-case smoke when the project exists at `/data/chenyz/project/panrank_tmp/project/case/Parkinson`:
+
+```bash
+npm run build
+tmp_run="conclusions/symphony-${issue.identifier,,}-$(date -u +%Y%m%dT%H%M%SZ)"
+(cd /data/chenyz/project/panrank_tmp/project/case/Parkinson && node /path/to/qdd/bin/qdd.js conclude --output-dir "$tmp_run" --json)
+```
+
+Replace `/path/to/qdd` with the current Symphony workspace path. For example, from a workspace root, use `node "$PWD/bin/qdd.js"`.
+
+If the implemented slice supports selected-story planning or drafting, run a second pass with an explicit selected story:
+
+```bash
+(cd /data/chenyz/project/panrank_tmp/project/case/Parkinson && node /path/to/qdd/bin/qdd.js conclude --output-dir "$tmp_run" --selected-story-id story-1 --json)
+```
+
+Report the generated Parkinson output paths in the Linear workpad and PR summary. At minimum include:
+
+- `story_candidates.md`
+- `evidence_audit.md`
+- `claim_safety_audit.md`
+- `reviewer_risk_audit.md`
+- `render_status.md`
+- `paper_rewriting_output/` when selected-story planning is available
+
+For future draft-generation or evaluation issues, the Parkinson golden-case report must also include:
+
+- final draft path, such as `paper_rewriting_output/final_paper/main.tex`
+- render status for PDF and Word
+- quantitative rubric scores for logical coherence, novelty/significance, evidence traceability, claim safety, negative evidence use, manuscript viability, and citation integrity
+- a short Chinese note explaining what improved and what remains weak
 
 If validation cannot run because dependencies or tools are missing, report the missing dependency and the command that failed.
