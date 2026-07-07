@@ -203,6 +203,80 @@ export interface RunConcludeResult extends ConcludeStoryGenerationResult {
   finalPaperArtifacts: ConcludeFinalPaperPackage | null;
 }
 
+export type ConcludeEvalDimensionId =
+  | 'logical_coherence'
+  | 'novelty_significance'
+  | 'evidence_traceability'
+  | 'claim_safety'
+  | 'negative_evidence_use'
+  | 'manuscript_viability'
+  | 'citation_integrity';
+
+export interface ConcludeEvalDimensionScore {
+  id: ConcludeEvalDimensionId;
+  label: string;
+  score: 1 | 2 | 3 | 4 | 5;
+  rationale: string;
+}
+
+export type ConcludeEvalHardFailId =
+  | 'missing_internal_evidence_anchor'
+  | 'fabricated_citation_or_bibtex'
+  | 'associative_to_causal_overclaim';
+
+export interface ConcludeEvalHardFail {
+  id: ConcludeEvalHardFailId;
+  triggered: boolean;
+  rationale: string;
+  evidence: string[];
+}
+
+export interface ConcludeEvalOutputs {
+  outputDir: string;
+  concludeEvalJsonPath: string;
+  concludeEvalMarkdownPath: string;
+}
+
+export interface ConcludeEvalSummary {
+  scoreTotal: number;
+  scoreMaximum: number;
+  scorePercent: number;
+  hardFailTriggered: boolean;
+  triggeredHardFailCount: number;
+}
+
+export interface ConcludeEvalReport {
+  casePath: string;
+  evaluatedAt: string;
+  runId: string;
+  outputs: ConcludeEvalOutputs;
+  concludeRun: {
+    outputDir: string;
+    storyCandidatesPath: string;
+    evidenceAuditPath: string;
+    claimSafetyAuditPath: string;
+    reviewerRiskAuditPath: string;
+    renderStatusPath: string;
+    selectedStoryPath: string | null;
+    finalPaperDir: string | null;
+    mainTexPath: string | null;
+    referencesBibPath: string | null;
+    finalArtifactAuditPath: string | null;
+  };
+  dimensions: ConcludeEvalDimensionScore[];
+  hardFails: ConcludeEvalHardFail[];
+  summary: ConcludeEvalSummary;
+  keyImprovements: string[];
+}
+
+export interface RunConcludeEvalOptions extends ConcludePreflightOptions {
+  casePath: string;
+  outputDir?: string;
+  selectedStoryId?: string;
+  now?: Date;
+  runId?: string;
+}
+
 export interface ConcludeRenderStatus {
   status: ConcludeAvailability;
   reasons: string[];

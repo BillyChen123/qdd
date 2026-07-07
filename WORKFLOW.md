@@ -231,4 +231,21 @@ For future draft-generation or evaluation issues, the Parkinson golden-case repo
 - quantitative rubric scores for logical coherence, novelty/significance, evidence traceability, claim safety, negative evidence use, manuscript viability, and citation integrity
 - a short Chinese note explaining what improved and what remains weak
 
+For conclude draft evaluation issues, prefer the dedicated harness:
+
+```bash
+npm run build
+QDD_CONCLUDE_EVAL_CASE=/data/chenyz/project/panrank_tmp/project/case/Parkinson npm run conclude:eval
+```
+
+Harness behavior requirements:
+
+- If `QDD_CONCLUDE_EVAL_CASE` is unset, the helper and test harness must skip cleanly and explain why.
+- If `QDD_CONCLUDE_EVAL_CASE` is set, the harness must run the selected-story conclude draft path and generate:
+  - `conclude_eval.json`
+  - `conclude_eval.md`
+- The report must include baseline/current-score-ready fields: total score, per-dimension scores, hard-fail status, and 3-5 key improvements.
+
+Any later conclude draft or draft-evaluation issue should report the current Parkinson eval score in the Linear workpad and PR summary.
+
 If validation cannot run because dependencies or tools are missing, report the missing dependency and the command that failed.
