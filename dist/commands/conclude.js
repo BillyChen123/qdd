@@ -4,6 +4,8 @@ export async function concludeCommand(options = {}) {
     const projectRoot = resolveProjectRoot();
     const result = await runConclude(projectRoot, {
         outputDir: options.outputDir,
+        selectedStoryId: options.selectedStoryId,
+        selectedStoryPath: options.selectedStoryPath,
     });
     if (options.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -13,6 +15,13 @@ export async function concludeCommand(options = {}) {
     console.log(`Evidence audit: ${result.evidenceAuditPath}`);
     console.log(`Render status: ${result.renderStatusPath}`);
     console.log(`Next step: ${result.nextStep}`);
-    console.log('Selection gate: STOP until a human selects one story candidate.');
+    if (result.selectionRequired) {
+        console.log('Selection gate: STOP until a human selects one story candidate.');
+        return;
+    }
+    if (result.planningArtifacts) {
+        console.log(`Selected story: ${result.selectedStoryId}`);
+        console.log(`Planning artifacts: ${result.planningArtifacts.paperRewritingOutputDir}`);
+    }
 }
 //# sourceMappingURL=conclude.js.map

@@ -567,6 +567,114 @@ test('conclude generates distinct story candidates and enforces selection gate b
   assert.equal(await FileSystemUtils.directoryExists(paperRewritingOutputPath), false);
 });
 
+test('conclude generates manuscript planning artifacts after selected story is confirmed', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-selected-story-');
+
+  const discoveryStudy = await createStudy(projectRoot, {
+    question: 'Which selected story should drive the manuscript planning artifacts?',
+    hypothesis: 'A selected bounded story can drive auditable planning outputs without inventing new results.',
+    expectedArtifacts: ['One figure and one report suitable for drafting'],
+  });
+  const discoveryTask = await createTask(projectRoot, discoveryStudy.studyId, {
+    goal: 'Summarize the strongest association claim while preserving conservative wording',
+    expectedOutputs: ['One bounded synthesis note'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    discoveryStudy.studyId,
+    discoveryTask.taskId,
+    'completed',
+    'The curated cohort signal is associated with a candidate transition state, but no perturbation evidence supports mechanism.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`),
+    `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nThe association signal remains bounded because failed follow-up work removed stronger mechanism wording.\n`,
+    'utf-8'
+  );
+  const figurePath = path.join(projectRoot, 'studies', discoveryStudy.studyId, 'output', 'figures', 'bounded-claim-summary.png');
+  await fs.writeFile(figurePath, 'placeholder-figure', 'utf-8');
+  await recordArtifactCandidate(projectRoot, figurePath, {
+    studyId: discoveryStudy.studyId,
+    taskId: discoveryTask.taskId,
+    artifactType: 'figure',
+    description: 'Association summary figure that supports a bounded claim for manuscript drafting.',
+    schema: 'image',
+    promotionStatus: 'candidate-recorded',
+  });
+
+  const boundaryStudy = await createStudy(projectRoot, {
+    question: 'What boundary evidence must remain visible in manuscript planning?',
+    hypothesis: 'Blocked validation attempts should survive into reviewer-facing planning outputs.',
+    blockers: ['Mechanistic perturbation remains unavailable in the current run.'],
+  });
+  const boundaryTask = await createTask(projectRoot, boundaryStudy.studyId, {
+    goal: 'Capture why the follow-up validation stays boundary evidence',
+    expectedOutputs: ['One blocker summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    boundaryStudy.studyId,
+    boundaryTask.taskId,
+    'blocked',
+    'Follow-up validation failed to support a mechanistic effect, leaving only association-level evidence.',
+    'Mechanistic validation failed and should remain reviewer-visible boundary evidence.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${boundaryStudy.studyId}.md`),
+    `# ${boundaryStudy.studyId} Memory\n\n## Notes\n\nBlocked follow-up remains useful reviewer risk and claim safety evidence.\n`,
+    'utf-8'
+  );
+
+  const outputDir = 'conclusions/selected-story-fixture';
+  const selectedStoryPath = path.join(projectRoot, outputDir, 'selected_story.md');
+  await fs.mkdir(path.dirname(selectedStoryPath), { recursive: true });
+  await fs.writeFile(
+    selectedStoryPath,
+    '# Selected Story\n\nSelected Story ID: story-1\n\nUse the bounded story for manuscript planning.\n',
+    'utf-8'
+  );
+
+  const result = await generateConcludeStoryCandidates(projectRoot, {
+    outputDir,
+    selectedStoryPath,
+    now: new Date('2026-07-06T13:00:00.000Z'),
+  });
+
+  assert.equal(result.selectionRequired, false);
+  assert.equal(result.selectedStoryId, 'story-1');
+  assert.equal(result.selectedCandidate?.id, 'story-1');
+  assert.equal(result.selectedStoryPath, 'conclusions/selected-story-fixture/selected_story.md');
+  assert.equal(result.nextStep, 'draft-manuscript');
+  assert.ok(result.planningArtifacts);
+  assert.ok(result.resultsClaims.length >= 1);
+  assert.ok(result.resultsClaims.every((claim) => claim.supportingEvidence.length > 0));
+  assert.ok(result.resultsClaims.some((claim) => claim.boundaryEvidence.length > 0));
+
+  const confirmedContributionMarkdown = await fs.readFile(result.planningArtifacts!.confirmedContributionPath, 'utf-8');
+  const resultsValidationMarkdown = await fs.readFile(result.planningArtifacts!.resultsValidationPath, 'utf-8');
+  const reviewerAuditMarkdown = await fs.readFile(result.planningArtifacts!.reviewerAuditPath, 'utf-8');
+  const citationSupportBankMarkdown = await fs.readFile(result.planningArtifacts!.citationSupportBankPath, 'utf-8');
+  const sectionBlueprintsMarkdown = await fs.readFile(result.planningArtifacts!.sectionBlueprintsPath, 'utf-8');
+  const writingRationaleMatrixMarkdown = await fs.readFile(result.planningArtifacts!.writingRationaleMatrixPath, 'utf-8');
+  const storyCandidatesMarkdown = await fs.readFile(result.storyCandidatesPath, 'utf-8');
+
+  assert.match(confirmedContributionMarkdown, /# Confirmed Contribution/);
+  assert.match(confirmedContributionMarkdown, /Selected story: story-1/);
+  assert.match(resultsValidationMarkdown, /# Results Validation/);
+  assert.match(resultsValidationMarkdown, /Every Results claim must stay traceable to QDD internal evidence/);
+  assert.match(resultsValidationMarkdown, /Source: `studies\//);
+  assert.match(reviewerAuditMarkdown, /# Reviewer Audit/);
+  assert.match(reviewerAuditMarkdown, /Story-Level Risks/);
+  assert.match(citationSupportBankMarkdown, /# Citation Support Bank/);
+  assert.match(citationSupportBankMarkdown, /do not use literature to invent this result/);
+  assert.match(sectionBlueprintsMarkdown, /# Section Blueprints/);
+  assert.match(writingRationaleMatrixMarkdown, /\| Section \| Narrative job \| Evidence anchor \| Safety \/ reviewer rationale \|/);
+  assert.match(storyCandidatesMarkdown, /Selected story: story-1/);
+  assert.match(storyCandidatesMarkdown, /Manuscript planning artifacts have been generated/);
+});
+
 test('qdd conclude CLI emits json, writes evidence audit, and reports selection gate next step', async () => {
   const projectRoot = await createTempProject('qdd-conclude-cli-');
 
@@ -618,6 +726,120 @@ test('qdd conclude CLI emits json, writes evidence audit, and reports selection 
   assert.match(evidenceAuditMarkdown, /# Evidence Audit/);
   assert.match(evidenceAuditMarkdown, /associated with/);
   assert.match(renderStatusMarkdown, /# Render Status/);
+});
+
+test('qdd conclude CLI accepts selected story input and returns planning artifacts in json', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-cli-selected-story-');
+
+  const discoveryStudy = await createStudy(projectRoot, {
+    question: 'Can the conclude CLI resume from a selected story into planning artifacts?',
+    hypothesis: 'CLI-selected stories should unlock planning artifacts without skipping evidence traceability.',
+    expectedArtifacts: ['One reusable report'],
+  });
+  const discoveryTask = await createTask(projectRoot, discoveryStudy.studyId, {
+    goal: 'Record a bounded association result for selected-story CLI coverage',
+    expectedOutputs: ['One markdown summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    discoveryStudy.studyId,
+    discoveryTask.taskId,
+    'completed',
+    'The synthesis cohort result is associated with the candidate state, while mechanism remains unsupported.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`),
+    `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nReviewer-facing planning should preserve the bounded association wording.\n`,
+    'utf-8'
+  );
+
+  const outputDir = 'conclusions/cli-selected-story';
+  const selectedStoryPath = path.join(projectRoot, outputDir, 'selected_story.md');
+  await fs.mkdir(path.dirname(selectedStoryPath), { recursive: true });
+  await fs.writeFile(
+    selectedStoryPath,
+    '# Selected Story\n\nSelected Story ID: story-1\n',
+    'utf-8'
+  );
+
+  const { stdout } = await execFileAsync(
+    'node',
+    [
+      path.join(process.cwd(), 'bin', 'qdd.js'),
+      'conclude',
+      '--json',
+      '--output-dir',
+      outputDir,
+      '--selected-story-path',
+      selectedStoryPath,
+    ],
+    {
+      cwd: projectRoot,
+    }
+  );
+  const parsed = JSON.parse(stdout) as {
+    selectionRequired: boolean;
+    nextStep: string;
+    selectedStoryId: string | null;
+    planningArtifacts: null | {
+      paperRewritingOutputDir: string;
+      resultsValidationPath: string;
+    };
+    resultsClaims: Array<{ id: string; supportingEvidence: Array<{ id: string }> }>;
+  };
+
+  const resultsValidationMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'paper_rewriting_output', 'results_validation.md'), 'utf-8');
+
+  assert.equal(parsed.selectionRequired, false);
+  assert.equal(parsed.nextStep, 'draft-manuscript');
+  assert.equal(parsed.selectedStoryId, 'story-1');
+  assert.ok(parsed.planningArtifacts);
+  assert.ok(parsed.resultsClaims.length >= 1);
+  assert.ok(parsed.resultsClaims.every((claim) => claim.supportingEvidence.length > 0));
+  assert.match(resultsValidationMarkdown, /# Results Validation/);
+});
+
+test('conclude normalizes inline selected story input into selected_story.md output', async () => {
+  const projectRoot = await createTempProject('qdd-conclude-inline-selected-story-');
+
+  const study = await createStudy(projectRoot, {
+    question: 'Can inline selected story input still produce a standard selected_story artifact?',
+    hypothesis: 'Equivalent selection input should be normalized into the expected conclude output layout.',
+  });
+  const task = await createTask(projectRoot, study.studyId, {
+    goal: 'Record one bounded result for selected story normalization coverage',
+    expectedOutputs: ['One markdown summary'],
+  });
+
+  await setTaskState(
+    projectRoot,
+    study.studyId,
+    task.taskId,
+    'completed',
+    'The bounded cohort signal is associated with the candidate state and remains non-mechanistic.'
+  );
+  await fs.writeFile(
+    path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`),
+    `# ${study.studyId} Memory\n\n## Notes\n\nEquivalent selection input should still leave a durable selected story artifact.\n`,
+    'utf-8'
+  );
+
+  const outputDir = 'conclusions/inline-selected-story';
+  const result = await generateConcludeStoryCandidates(projectRoot, {
+    outputDir,
+    selectedStoryId: 'story-1',
+    now: new Date('2026-07-07T02:00:00.000Z'),
+  });
+
+  const selectedStoryMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'selected_story.md'), 'utf-8');
+
+  assert.equal(result.selectionRequired, false);
+  assert.equal(result.selectedStoryId, 'story-1');
+  assert.equal(result.selectedStoryPath, 'conclusions/inline-selected-story/selected_story.md');
+  assert.match(selectedStoryMarkdown, /# Selected Story/);
+  assert.match(selectedStoryMarkdown, /Selected Story ID: story-1/);
+  assert.match(selectedStoryMarkdown, /Input Source: inline-selected-story-id/);
 });
 
 test('auto orchestrator lets thesis candidates drive continuation instead of open boundaries alone', () => {
