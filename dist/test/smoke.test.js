@@ -16,7 +16,7 @@ import { readMarkdownDocument, readYamlFile, writeMarkdownDocument, writeYamlFil
 import { FileSystemUtils } from '../utils/file-system.js';
 import { recordArtifactCandidate } from '../services/artifacts.js';
 import { closeStudy } from '../services/closure.js';
-import { generateConcludeStoryCandidates, inspectConcludePreflight, renderConcludeRenderStatusMarkdown } from '../services/conclude.js';
+import { generateConcludeStoryCandidates, inspectConcludePreflight, renderConcludeRenderStatusMarkdown, runConclude } from '../services/conclude.js';
 import { listArtifacts, validateProject } from '../services/inspection.js';
 import { buildInstructions } from '../services/instructions.js';
 import { buildStatus } from '../services/status.js';
@@ -473,6 +473,32 @@ test('conclude generates manuscript planning artifacts after selected story is c
     assert.match(storyCandidatesMarkdown, /Selected story: story-1/);
     assert.match(storyCandidatesMarkdown, /Manuscript planning artifacts have been generated/);
 });
+test('conclude tolerates non-string study summary fields during evidence harvest', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-non-string-summary-');
+    const study = await createStudy(projectRoot, {
+        question: 'Can conclude remain robust when study metadata contains non-string values?',
+        hypothesis: 'Evidence harvest should stringify mixed metadata instead of throwing.',
+        expectedArtifacts: ['One markdown summary'],
+    });
+    const task = await createTask(projectRoot, study.studyId, {
+        goal: 'Record one bounded result while mixed metadata is present',
+        expectedOutputs: ['One markdown summary'],
+    });
+    await setTaskState(projectRoot, study.studyId, task.taskId, 'completed', 'The bounded signal is associated with the candidate state and remains non-mechanistic.');
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Notes\n\nMixed metadata should not crash conclude evidence harvest.\n`, 'utf-8');
+    const relativePath = `studies/${study.studyId}/study.md`;
+    const document = await readMarkdownDocument(projectRoot, relativePath);
+    await writeMarkdownDocument(projectRoot, relativePath, {
+        ...document.frontmatter,
+        expected_artifacts: ['One markdown summary', 42, { kind: 'table', status: 'draft' }],
+    }, document.body);
+    const result = await generateConcludeStoryCandidates(projectRoot, {
+        outputDir: 'conclusions/non-string-summary',
+        now: new Date('2026-07-07T03:00:00.000Z'),
+    });
+    assert.equal(result.selectionRequired, true);
+    assert.ok(result.evidence.some((item) => /42/.test(item.summary) || /table/.test(item.summary)));
+});
 test('qdd conclude CLI emits json, writes evidence audit, and reports selection gate next step', async () => {
     const projectRoot = await createTempProject('qdd-conclude-cli-');
     const discoveryStudy = await createStudy(projectRoot, {
@@ -516,6 +542,16 @@ test('qdd conclude CLI accepts selected story input and returns planning artifac
     });
     await setTaskState(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'completed', 'The synthesis cohort result is associated with the candidate state, while mechanism remains unsupported.');
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`), `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nReviewer-facing planning should preserve the bounded association wording.\n`, 'utf-8');
+    const figurePath = path.join(projectRoot, 'studies', discoveryStudy.studyId, 'output', 'figures', 'selected-story-evidence.png');
+    await fs.writeFile(figurePath, 'placeholder-figure', 'utf-8');
+    await recordArtifactCandidate(projectRoot, figurePath, {
+        studyId: discoveryStudy.studyId,
+        taskId: discoveryTask.taskId,
+        artifactType: 'figure',
+        description: 'Bounded internal evidence figure for final paper packaging.',
+        schema: 'image',
+        promotionStatus: 'candidate-recorded',
+    });
     const outputDir = 'conclusions/cli-selected-story';
     const selectedStoryPath = path.join(projectRoot, outputDir, 'selected_story.md');
     await fs.mkdir(path.dirname(selectedStoryPath), { recursive: true });
@@ -533,13 +569,90 @@ test('qdd conclude CLI accepts selected story input and returns planning artifac
     });
     const parsed = JSON.parse(stdout);
     const resultsValidationMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'paper_rewriting_output', 'results_validation.md'), 'utf-8');
+    const mainTexMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_paper', 'main.tex'), 'utf-8');
+    const referencesBib = await fs.readFile(path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_paper', 'references.bib'), 'utf-8');
+    const finalArtifactAudit = await fs.readFile(path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_artifact_audit.md'), 'utf-8');
+    const renderStatusMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'render_status.md'), 'utf-8');
     assert.equal(parsed.selectionRequired, false);
-    assert.equal(parsed.nextStep, 'draft-manuscript');
+    assert.equal(parsed.nextStep, 'review-final-draft');
     assert.equal(parsed.selectedStoryId, 'story-1');
     assert.ok(parsed.planningArtifacts);
+    assert.ok(parsed.finalPaperArtifacts);
+    assert.equal(parsed.finalPaperArtifacts?.paths.mainTexPath, path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_paper', 'main.tex'));
+    assert.equal(parsed.finalPaperArtifacts?.paths.referencesBibPath, path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_paper', 'references.bib'));
+    assert.equal(parsed.finalPaperArtifacts?.paths.figureAssetMapPath, path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_paper', 'figures', 'asset_map.md'));
+    assert.equal(parsed.finalPaperArtifacts?.paths.finalArtifactAuditPath, path.join(projectRoot, outputDir, 'paper_rewriting_output', 'final_artifact_audit.md'));
+    assert.equal(parsed.finalPaperArtifacts?.referencesBib.status, 'gap');
+    assert.equal(parsed.finalPaperArtifacts?.citationIntegrity.status, 'gap');
     assert.ok(parsed.resultsClaims.length >= 1);
     assert.ok(parsed.resultsClaims.every((claim) => claim.supportingEvidence.length > 0));
     assert.match(resultsValidationMarkdown, /# Results Validation/);
+    assert.match(mainTexMarkdown, /\\section\{Abstract\}|\\begin\{abstract\}/);
+    assert.match(mainTexMarkdown, /\\section\{Introduction\}/);
+    assert.match(mainTexMarkdown, /\\section\{Results\}/);
+    assert.match(mainTexMarkdown, /\\section\{Discussion\}/);
+    assert.match(mainTexMarkdown, /Internal Evidence Anchors/);
+    assert.match(referencesBib, /No verified external BibTeX entries were available/);
+    assert.match(finalArtifactAudit, /# Final Artifact Audit/);
+    assert.match(finalArtifactAudit, /references\.bib: GAP/);
+    assert.match(renderStatusMarkdown, /## Final Paper Package/);
+    assert.match(renderStatusMarkdown, /main\.tex: COMPLETE/);
+});
+test('runConclude keeps selection gate without final paper and writes final package after selected story', async () => {
+    const projectRoot = await createTempProject('qdd-conclude-run-final-paper-');
+    const discoveryStudy = await createStudy(projectRoot, {
+        question: 'Can conclude produce a final paper package only after story selection?',
+        hypothesis: 'The final paper package should remain gated on human story selection.',
+        expectedArtifacts: ['One figure for final paper packaging'],
+    });
+    const discoveryTask = await createTask(projectRoot, discoveryStudy.studyId, {
+        goal: 'Record one bounded association result with a reusable figure artifact',
+        expectedOutputs: ['One summary figure'],
+    });
+    await setTaskState(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'completed', 'The selected cohort signal is associated with the candidate state, while mechanistic intervention remains unavailable.');
+    await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`), `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nFinal draft packaging must preserve association-only wording and explicit limits.\n`, 'utf-8');
+    const figurePath = path.join(projectRoot, 'studies', discoveryStudy.studyId, 'output', 'figures', 'run-conclude-figure.png');
+    await fs.writeFile(figurePath, 'placeholder-figure', 'utf-8');
+    await recordArtifactCandidate(projectRoot, figurePath, {
+        studyId: discoveryStudy.studyId,
+        taskId: discoveryTask.taskId,
+        artifactType: 'figure',
+        description: 'Reusable figure for the selected conclude final package.',
+        schema: 'image',
+        promotionStatus: 'candidate-recorded',
+    });
+    const outputDirWithoutSelection = 'conclusions/run-conclude-no-selection';
+    const noSelection = await runConclude(projectRoot, {
+        outputDir: outputDirWithoutSelection,
+        now: new Date('2026-07-07T05:00:00.000Z'),
+    });
+    assert.equal(noSelection.selectionRequired, true);
+    assert.equal(noSelection.finalPaperArtifacts, null);
+    assert.equal(await FileSystemUtils.directoryExists(path.join(projectRoot, outputDirWithoutSelection, 'paper_rewriting_output', 'final_paper')), false);
+    const outputDirWithSelection = 'conclusions/run-conclude-with-selection';
+    const withSelection = await runConclude(projectRoot, {
+        outputDir: outputDirWithSelection,
+        selectedStoryId: 'story-1',
+        now: new Date('2026-07-07T05:30:00.000Z'),
+    });
+    const mainTex = await fs.readFile(path.join(projectRoot, outputDirWithSelection, 'paper_rewriting_output', 'final_paper', 'main.tex'), 'utf-8');
+    const figureAssetMap = await fs.readFile(path.join(projectRoot, outputDirWithSelection, 'paper_rewriting_output', 'final_paper', 'figures', 'asset_map.md'), 'utf-8');
+    const finalArtifactAudit = await fs.readFile(path.join(projectRoot, outputDirWithSelection, 'paper_rewriting_output', 'final_artifact_audit.md'), 'utf-8');
+    const renderStatus = await fs.readFile(path.join(projectRoot, outputDirWithSelection, 'render_status.md'), 'utf-8');
+    assert.equal(withSelection.selectionRequired, false);
+    assert.equal(withSelection.selectedStoryId, 'story-1');
+    assert.equal(withSelection.nextStep, 'review-final-draft');
+    assert.ok(withSelection.finalPaperArtifacts);
+    assert.equal(withSelection.finalPaperArtifacts?.mainTex.status, 'complete');
+    assert.equal(withSelection.finalPaperArtifacts?.referencesBib.status, 'gap');
+    assert.ok(['blocked', 'complete'].includes(withSelection.finalPaperArtifacts?.pdf.status ?? 'blocked'));
+    assert.ok(['blocked', 'complete'].includes(withSelection.finalPaperArtifacts?.word.status ?? 'blocked'));
+    assert.match(mainTex, /Source: \\texttt\{studies\//);
+    assert.match(mainTex, /\\bibliography\{references\}/);
+    assert.match(figureAssetMap, /# Figure Asset Map/);
+    assert.match(figureAssetMap, /Figure 1/);
+    assert.match(finalArtifactAudit, /citation integrity: GAP/);
+    assert.match(renderStatus, /## Final Paper Package/);
 });
 test('conclude normalizes inline selected story input into selected_story.md output', async () => {
     const projectRoot = await createTempProject('qdd-conclude-inline-selected-story-');

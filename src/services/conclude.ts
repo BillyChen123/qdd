@@ -4,8 +4,14 @@ import { spawn } from 'node:child_process';
 import type {
   ArtifactIndex,
   ConcludeClaimSafetyAuditEntry,
+  ConcludeDraftArtifactStatus,
   ConcludeClaimStrength,
   ConcludeEvidenceItem,
+  ConcludeExternalCitationEntry,
+  ConcludeFigureAssetMapEntry,
+  ConcludeFinalArtifactStatus,
+  ConcludeFinalPaperArtifactPaths,
+  ConcludeFinalPaperPackage,
   ConcludePathStatus,
   ConcludePlanningArtifactPaths,
   ConcludePreflightOptions,
@@ -43,6 +49,7 @@ const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causal|mechanism|mechanist
 const NEGATIVE_SIGNAL_PATTERN = /\b(block|blocked|negative|failed|failure|dissolv|downgrad|avoid|limit|boundary)\b/i;
 const SELECTED_STORY_FIELD_PATTERN = /\bselected(?:[_ -]?story)?[_ -]?id\b\s*[:=]\s*(story-\d+)\b/i;
 const STORY_ID_PATTERN = /\b(story-\d+)\b/i;
+const BIBTEX_ENTRY_PATTERN = /@\s*([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,[\s\S]*?\n\}/g;
 const TITLE_STYLE_BY_FRAMING: Record<ConcludeStoryFraming, string> = {
   discovery: 'Discovery-first with bounded biological scope',
   method: 'Method-forward with validation framing',
@@ -85,6 +92,25 @@ function clampScore(value: number): number {
 
 function sentenceCaseTrim(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTextValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return sentenceCaseTrim(value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (Array.isArray(value)) {
+    return sentenceCaseTrim(value.map((entry) => normalizeTextValue(entry)).filter((entry) => entry.length > 0).join(', '));
+  }
+  if (typeof value === 'object') {
+    return sentenceCaseTrim(JSON.stringify(value));
+  }
+  return sentenceCaseTrim(String(value));
 }
 
 function normalizeRelativePath(value: string): string {
@@ -153,12 +179,12 @@ function summarizeFirstMeaningfulLine(content: string, fallback: string): string
 
 function summarizeStudyRecord(study: ConcludeStudySnapshot): string {
   const parts = [
-    study.record.question,
-    study.record.hypothesis,
+    normalizeTextValue(study.record.question),
+    normalizeTextValue(study.record.hypothesis),
     study.record.status ? `status ${study.record.status}` : '',
-    ...(study.record.blockers ?? []),
-    ...(study.record.expected_artifacts ?? []),
-  ].filter((value) => value && value.trim().length > 0);
+    ...(study.record.blockers ?? []).map((value) => normalizeTextValue(value)),
+    ...(study.record.expected_artifacts ?? []).map((value) => normalizeTextValue(value)),
+  ].filter((value) => value.length > 0);
   return sentenceCaseTrim(parts.join('. '));
 }
 
@@ -201,6 +227,18 @@ function formatEvidenceReferences(evidence: ConcludeEvidenceItem[]): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => sentenceCaseTrim(value)).filter((value) => value.length > 0))];
+}
+
+function latexEscape(value: string): string {
+  return value
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/([{}%$#&_])/g, '\\$1')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/~/g, '\\textasciitilde{}');
+}
+
+function toTexRelativePath(value: string): string {
+  return normalizeRelativePath(value).replace(/_/g, '\\_');
 }
 
 function uniqueEvidenceItems(values: ConcludeEvidenceItem[]): ConcludeEvidenceItem[] {
@@ -808,6 +846,23 @@ function buildPlanningArtifactPaths(outputDir: string, selectedStoryPath: string
   };
 }
 
+function buildFinalPaperArtifactPaths(artifactPaths: ConcludePlanningArtifactPaths): ConcludeFinalPaperArtifactPaths {
+  const finalPaperDir = path.join(artifactPaths.paperRewritingOutputDir, 'final_paper');
+  const figuresDir = path.join(finalPaperDir, 'figures');
+  return {
+    finalArtifactAuditPath: path.join(artifactPaths.paperRewritingOutputDir, 'final_artifact_audit.md'),
+    finalPaperDir,
+    mainTexPath: path.join(finalPaperDir, 'main.tex'),
+    referencesBibPath: path.join(finalPaperDir, 'references.bib'),
+    figuresDir,
+    figureAssetMapPath: path.join(figuresDir, 'asset_map.md'),
+    paperPdfPath: path.join(finalPaperDir, 'paper.pdf'),
+    paperDocxPath: path.join(finalPaperDir, 'paper.docx'),
+    pdfRenderLogPath: path.join(finalPaperDir, 'pdf_render.log'),
+    wordRenderLogPath: path.join(finalPaperDir, 'word_render.log'),
+  };
+}
+
 async function writePlanningArtifacts(
   candidate: ConcludeStoryCandidate,
   claims: ConcludeResultsClaim[],
@@ -840,6 +895,537 @@ async function writePlanningArtifacts(
       renderWritingRationaleMatrixMarkdown(candidate, claims)
     ),
   ]);
+}
+
+function buildFinalArtifactStatus(
+  status: ConcludeDraftArtifactStatus,
+  pathValue: string | null,
+  details: string,
+  notes: string[] = []
+): ConcludeFinalArtifactStatus {
+  return {
+    status,
+    path: pathValue,
+    details,
+    notes,
+  };
+}
+
+function extractCitationEntries(text: string): ConcludeExternalCitationEntry[] {
+  const matches = text.matchAll(BIBTEX_ENTRY_PATTERN);
+  return [...matches].map((match) => ({
+    key: match[2],
+    entryType: match[1].toLowerCase(),
+    rawBibtex: match[0].trim(),
+  }));
+}
+
+async function collectCitationEntries(artifactPaths: ConcludePlanningArtifactPaths): Promise<ConcludeExternalCitationEntry[]> {
+  const candidatePaths = [
+    artifactPaths.citationSupportBankPath,
+    artifactPaths.confirmedContributionPath,
+    artifactPaths.resultsValidationPath,
+    artifactPaths.reviewerAuditPath,
+    artifactPaths.sectionBlueprintsPath,
+    artifactPaths.writingRationaleMatrixPath,
+  ];
+
+  const entries: ConcludeExternalCitationEntry[] = [];
+  for (const candidatePath of candidatePaths) {
+    if (!(await FileSystemUtils.fileExists(candidatePath))) {
+      continue;
+    }
+    const content = await FileSystemUtils.readFile(candidatePath);
+    entries.push(...extractCitationEntries(content));
+  }
+
+  const uniqueByKey = new Map<string, ConcludeExternalCitationEntry>();
+  for (const entry of entries) {
+    if (!uniqueByKey.has(entry.key)) {
+      uniqueByKey.set(entry.key, entry);
+    }
+  }
+  return [...uniqueByKey.values()];
+}
+
+async function materializeFigureAssets(
+  projectRoot: string,
+  claims: ConcludeResultsClaim[],
+  finalPaths: ConcludeFinalPaperArtifactPaths
+): Promise<ConcludeFigureAssetMapEntry[]> {
+  await FileSystemUtils.createDirectory(finalPaths.figuresDir);
+  const figureAssets: ConcludeFigureAssetMapEntry[] = [];
+  let figureIndex = 1;
+
+  for (const claim of claims) {
+    const figureEvidence = uniqueEvidenceItems(claim.supportingEvidence)
+      .filter((item) => item.sourceType === 'artifact' && /\.(png|jpe?g|pdf|svg)$/i.test(item.sourcePath))
+      .slice(0, 1);
+
+    if (figureEvidence.length === 0) {
+      figureAssets.push({
+        label: `Figure ${figureIndex}`,
+        resultClaimId: claim.id,
+        evidenceId: null,
+        sourcePath: null,
+        targetPath: null,
+        status: 'placeholder',
+        recommendedUse: `Add one figure for ${claim.heading} to visualize the internal evidence anchor.`,
+        notes: ['No figure-like internal artifact was detected for this claim; placeholder only.'],
+      });
+      figureIndex += 1;
+      continue;
+    }
+
+    for (const evidence of figureEvidence) {
+      const sourceAbsolutePath = path.join(projectRoot, evidence.sourcePath);
+      const extension = path.extname(evidence.sourcePath) || '.dat';
+      const targetFileName = `figure-${String(figureIndex).padStart(2, '0')}${extension}`;
+      const targetAbsolutePath = path.join(finalPaths.figuresDir, targetFileName);
+      let status: 'available' | 'placeholder' = 'available';
+      const notes: string[] = [];
+
+      if (await FileSystemUtils.fileExists(sourceAbsolutePath)) {
+        await fs.copyFile(sourceAbsolutePath, targetAbsolutePath);
+      } else {
+        status = 'placeholder';
+        notes.push(`Source artifact was referenced at \`${evidence.sourcePath}\` but not found during final package generation.`);
+      }
+
+      figureAssets.push({
+        label: `Figure ${figureIndex}`,
+        resultClaimId: claim.id,
+        evidenceId: evidence.id,
+        sourcePath: evidence.sourcePath,
+        targetPath: status === 'available' ? path.join('figures', targetFileName) : null,
+        status,
+        recommendedUse: `Use this asset to support ${claim.heading} without introducing claims beyond the internal evidence.`,
+        notes,
+      });
+      figureIndex += 1;
+    }
+  }
+
+  if (figureAssets.length === 0) {
+    figureAssets.push({
+      label: 'Figure 1',
+      resultClaimId: 'none',
+      evidenceId: null,
+      sourcePath: null,
+      targetPath: null,
+      status: 'placeholder',
+      recommendedUse: 'Add a minimal figure or table placeholder before external submission.',
+      notes: ['No Results claims were available to map into figure assets.'],
+    });
+  }
+
+  return figureAssets;
+}
+
+function renderFigureAssetMapMarkdown(figureAssets: ConcludeFigureAssetMapEntry[]): string {
+  const lines: string[] = [
+    '# Figure Asset Map',
+    '',
+    '| Label | Result Claim | Evidence ID | Source Path | Final Paper Path | Status | Recommended Use | Notes |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  ];
+
+  for (const asset of figureAssets) {
+    lines.push(
+      `| ${asset.label} | ${asset.resultClaimId} | ${asset.evidenceId ?? 'n/a'} | ${asset.sourcePath ?? 'n/a'} | ${asset.targetPath ?? 'placeholder'} | ${asset.status.toUpperCase()} | ${asset.recommendedUse} | ${asset.notes.join(' ') || 'n/a'} |`
+    );
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderReferencesBib(citationEntries: ConcludeExternalCitationEntry[]): string {
+  if (citationEntries.length === 0) {
+    return '% No verified external BibTeX entries were available. Keep bibliography empty until real citations are added.\n';
+  }
+  return `${citationEntries.map((entry) => entry.rawBibtex).join('\n\n')}\n`;
+}
+
+function buildAbstractParagraph(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const leadClaim = claims[0]?.claim ?? candidate.centralClaim;
+  return sentenceCaseTrim(
+    `${candidate.centralClaim} We summarize the selected QDD storyline as a submission-oriented draft grounded in internal evidence. The current abstract remains intentionally conservative: ${leadClaim} Negative and blocked studies stay visible to explain why stronger mechanistic language is not used.`
+  );
+}
+
+function buildIntroductionParagraph(candidate: ConcludeStoryCandidate, hasExternalCitations: boolean): string {
+  const citationSuffix = hasExternalCitations
+    ? 'External literature citations may be added here for background and related work using the verified bibliography entries.'
+    : 'External background citations are currently unavailable and must be added later using verified BibTeX entries.';
+  return sentenceCaseTrim(
+    `${candidate.story} The introduction should motivate the biological or methodological question, explain why the QDD evidence package matters, and clearly separate internal results from field context. ${citationSuffix}`
+  );
+}
+
+function buildDiscussionParagraph(candidate: ConcludeStoryCandidate, claims: ConcludeResultsClaim[]): string {
+  const boundarySummary = uniqueStrings(
+    claims.flatMap((claim) => claim.boundaryEvidence.map((item) => item.summary))
+  ).slice(0, 3);
+  return sentenceCaseTrim(
+    `The discussion should explain how the selected story remains bounded by the available evidence, surface reviewer-facing limitations, and preserve negative evidence as a strength rather than a hidden weakness. ${boundarySummary.length > 0 ? `Key boundary evidence includes ${boundarySummary.join('; ')}.` : 'Boundary evidence should be expanded as the draft matures.'}`
+  );
+}
+
+function renderMainTex(options: {
+  candidate: ConcludeStoryCandidate;
+  claims: ConcludeResultsClaim[];
+  figureAssets: ConcludeFigureAssetMapEntry[];
+  citationEntries: ConcludeExternalCitationEntry[];
+  citationGaps: string[];
+  selectedStoryPath: string;
+}): string {
+  const { candidate, claims, figureAssets, citationEntries, citationGaps, selectedStoryPath } = options;
+  const bibliographyKeys = citationEntries.map((entry) => entry.key);
+  const bibliographyLine = bibliographyKeys.length > 0
+    ? `Background citations available: \\cite{${bibliographyKeys.join(',')}}.`
+    : 'Background citations are intentionally omitted until verified BibTeX support is available.';
+  const placeholderFigures = figureAssets.filter((asset) => asset.status === 'placeholder').length;
+  const figureIntro = placeholderFigures === 0
+    ? 'Figure assets have been mapped from internal QDD artifacts.'
+    : `${placeholderFigures} figure slot(s) remain placeholders because no reusable figure asset was available for every Results claim.`;
+
+  const lines: string[] = [
+    '\\documentclass[11pt]{article}',
+    '\\usepackage[margin=1in]{geometry}',
+    '\\usepackage{graphicx}',
+    '\\usepackage{booktabs}',
+    '\\usepackage[hidelinks]{hyperref}',
+    '\\title{' + latexEscape(candidate.centralClaim) + '}',
+    '\\author{QDD Conclude Draft}',
+    '\\date{}',
+    '',
+    '\\begin{document}',
+    '\\maketitle',
+    '',
+    '\\begin{abstract}',
+    latexEscape(buildAbstractParagraph(candidate, claims)),
+    '\\end{abstract}',
+    '',
+    '\\section{Introduction}',
+    latexEscape(buildIntroductionParagraph(candidate, citationEntries.length > 0)),
+    '',
+    latexEscape(bibliographyLine),
+    '',
+    '\\section{Results}',
+    latexEscape(figureIntro),
+    '',
+  ];
+
+  for (const claim of claims) {
+    const figureAsset = figureAssets.find((asset) => asset.resultClaimId === claim.id);
+    lines.push(`\\subsection{${latexEscape(claim.heading)}}`);
+    lines.push(latexEscape(claim.claim));
+    lines.push('');
+    lines.push('\\paragraph{Internal Evidence Anchors.}');
+    lines.push('\\begin{itemize}');
+    for (const evidence of claim.supportingEvidence) {
+      lines.push(`  \\item [${latexEscape(evidence.id)}] ${latexEscape(evidence.summary)} Source: \\texttt{${toTexRelativePath(evidence.sourcePath)}}.`);
+    }
+    lines.push('\\end{itemize}');
+    lines.push('');
+    lines.push('\\paragraph{Boundary Evidence.}');
+    lines.push('\\begin{itemize}');
+    const boundaryEvidence = claim.boundaryEvidence.length > 0
+      ? claim.boundaryEvidence
+      : [{
+          id: 'n/a',
+          summary: 'No explicit boundary evidence was mapped; keep the wording bounded until more reviewer-facing limits are documented.',
+          sourcePath: 'n/a',
+        } as ConcludeEvidenceItem];
+    for (const evidence of boundaryEvidence) {
+      lines.push(`  \\item [${latexEscape(evidence.id)}] ${latexEscape(evidence.summary)} Source: \\texttt{${toTexRelativePath(evidence.sourcePath)}}.`);
+    }
+    lines.push('\\end{itemize}');
+    lines.push('');
+    lines.push('\\paragraph{Claim Safety.}');
+    lines.push(latexEscape(claim.claimSafetyNotes.join(' ')));
+    lines.push('');
+    if (figureAsset?.targetPath) {
+      lines.push('\\begin{figure}[ht]');
+      lines.push('  \\centering');
+      lines.push(`  \\includegraphics[width=0.8\\linewidth]{${toTexRelativePath(figureAsset.targetPath)}}`);
+      lines.push(`  \\caption{${latexEscape(`${figureAsset.label}. Internal evidence asset mapped to ${claim.heading}.`)}`);
+      lines.push(`  \\label{fig:${latexEscape(claim.id)}}`);
+      lines.push('\\end{figure}');
+      lines.push('');
+    } else {
+      lines.push(`% ${claim.heading} currently has no reusable figure asset; see figures/asset_map.md.`);
+      lines.push('');
+    }
+  }
+
+  lines.push('\\section{Discussion}');
+  lines.push(latexEscape(buildDiscussionParagraph(candidate, claims)));
+  lines.push('');
+  if (citationGaps.length > 0) {
+    lines.push('% Citation gaps remain:');
+    for (const gap of citationGaps) {
+      lines.push(`% - ${gap}`);
+    }
+    lines.push('');
+  }
+  lines.push(`% Selected story source: ${toTexRelativePath(selectedStoryPath)}`);
+  lines.push('\\bibliographystyle{plain}');
+  lines.push('\\bibliography{references}');
+  lines.push('\\end{document}');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function determineOverallFinalStatus(statuses: ConcludeFinalArtifactStatus[]): ConcludeDraftArtifactStatus {
+  if (statuses.some((status) => status.status === 'blocked')) {
+    return 'blocked';
+  }
+  if (statuses.some((status) => status.status === 'gap')) {
+    return 'gap';
+  }
+  return 'complete';
+}
+
+async function tryRenderPdf(
+  finalPaths: ConcludeFinalPaperArtifactPaths,
+  preflight: ConcludePreflightResult
+): Promise<ConcludeFinalArtifactStatus> {
+  if (preflight.render.pdf.status !== 'available') {
+    return buildFinalArtifactStatus(
+      'blocked',
+      null,
+      'PDF rendering is blocked because the local TeX toolchain is incomplete.',
+      preflight.render.pdf.reasons
+    );
+  }
+
+  const command = preflight.render.tools.latexmk.available ? 'latexmk' : preflight.render.tools.xelatex.available ? 'xelatex' : 'pdflatex';
+  const args = command === 'latexmk'
+    ? ['-pdf', '-interaction=nonstopmode', '-halt-on-error', 'main.tex']
+    : ['-interaction=nonstopmode', '-halt-on-error', 'main.tex'];
+
+  const execution = await runCommand(command, args, {
+    cwd: finalPaths.finalPaperDir,
+    env: process.env,
+  });
+  await FileSystemUtils.writeFile(finalPaths.pdfRenderLogPath, execution.combinedOutput);
+
+  if (execution.exitCode !== 0 || !(await FileSystemUtils.fileExists(finalPaths.paperPdfPath))) {
+    return buildFinalArtifactStatus(
+      'blocked',
+      null,
+      `PDF rendering failed when running ${command}.`,
+      [`See \`${path.basename(finalPaths.pdfRenderLogPath)}\` for details.`]
+    );
+  }
+
+  return buildFinalArtifactStatus(
+    'complete',
+    finalPaths.paperPdfPath,
+    `PDF rendering succeeded via ${command}.`,
+    [`Render log: \`${path.basename(finalPaths.pdfRenderLogPath)}\`.`]
+  );
+}
+
+async function tryRenderWord(
+  finalPaths: ConcludeFinalPaperArtifactPaths,
+  preflight: ConcludePreflightResult
+): Promise<ConcludeFinalArtifactStatus> {
+  if (preflight.render.word.status !== 'available') {
+    return buildFinalArtifactStatus(
+      'blocked',
+      null,
+      'Word rendering is blocked because pandoc is unavailable.',
+      preflight.render.word.reasons
+    );
+  }
+
+  const execution = await runCommand('pandoc', ['main.tex', '-o', 'paper.docx'], {
+    cwd: finalPaths.finalPaperDir,
+    env: process.env,
+  });
+  await FileSystemUtils.writeFile(finalPaths.wordRenderLogPath, execution.combinedOutput);
+
+  if (execution.exitCode !== 0 || !(await FileSystemUtils.fileExists(finalPaths.paperDocxPath))) {
+    return buildFinalArtifactStatus(
+      'blocked',
+      null,
+      'Word rendering failed when running pandoc.',
+      [`See \`${path.basename(finalPaths.wordRenderLogPath)}\` for details.`]
+    );
+  }
+
+  return buildFinalArtifactStatus(
+    'complete',
+    finalPaths.paperDocxPath,
+    'Word rendering succeeded via pandoc.',
+    [`Render log: \`${path.basename(finalPaths.wordRenderLogPath)}\`.`]
+  );
+}
+
+function renderFinalArtifactAuditMarkdown(finalPaper: ConcludeFinalPaperPackage): string {
+  const lines: string[] = [
+    '# Final Artifact Audit',
+    '',
+    `- Overall status: ${finalPaper.overallStatus.toUpperCase()}`,
+    '',
+    '## Package Outputs',
+    '',
+    `- main.tex: ${finalPaper.mainTex.status.toUpperCase()} - ${finalPaper.mainTex.details}`,
+    `- references.bib: ${finalPaper.referencesBib.status.toUpperCase()} - ${finalPaper.referencesBib.details}`,
+    `- figures asset map: ${finalPaper.figures.status.toUpperCase()} - ${finalPaper.figures.details}`,
+    `- citation integrity: ${finalPaper.citationIntegrity.status.toUpperCase()} - ${finalPaper.citationIntegrity.details}`,
+    `- PDF render: ${finalPaper.pdf.status.toUpperCase()} - ${finalPaper.pdf.details}`,
+    `- Word render: ${finalPaper.word.status.toUpperCase()} - ${finalPaper.word.details}`,
+    '',
+    '## Citation Support',
+    '',
+    `- Verified BibTeX entries: ${finalPaper.citationEntries.length}`,
+  ];
+
+  if (finalPaper.citationEntries.length > 0) {
+    lines.push(...finalPaper.citationEntries.map((entry) => `- ${entry.key} (${entry.entryType})`));
+  }
+  if (finalPaper.citationGaps.length > 0) {
+    lines.push('');
+    lines.push('## Citation Gaps');
+    lines.push('');
+    lines.push(...finalPaper.citationGaps.map((gap) => `- ${gap}`));
+  }
+
+  lines.push('');
+  lines.push('## Figure Assets');
+  lines.push('');
+  lines.push(...finalPaper.figureAssets.map((asset) => `- ${asset.label}: ${asset.status.toUpperCase()} (${asset.resultClaimId}) ${asset.targetPath ?? 'placeholder only'}`));
+  lines.push('');
+
+  const noteSections: Array<{ title: string; notes: string[] }> = [
+    { title: 'main.tex notes', notes: finalPaper.mainTex.notes },
+    { title: 'references.bib notes', notes: finalPaper.referencesBib.notes },
+    { title: 'figures notes', notes: finalPaper.figures.notes },
+    { title: 'PDF notes', notes: finalPaper.pdf.notes },
+    { title: 'Word notes', notes: finalPaper.word.notes },
+  ];
+
+  for (const section of noteSections) {
+    if (section.notes.length === 0) {
+      continue;
+    }
+    lines.push(`## ${section.title}`);
+    lines.push('');
+    lines.push(...section.notes.map((note) => `- ${note}`));
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+async function generateFinalPaperPackage(
+  projectRoot: string,
+  candidate: ConcludeStoryCandidate,
+  claims: ConcludeResultsClaim[],
+  artifactPaths: ConcludePlanningArtifactPaths,
+  preflight: ConcludePreflightResult
+): Promise<ConcludeFinalPaperPackage> {
+  const finalPaths = buildFinalPaperArtifactPaths(artifactPaths);
+  await FileSystemUtils.createDirectory(finalPaths.finalPaperDir);
+  await FileSystemUtils.createDirectory(finalPaths.figuresDir);
+
+  const citationEntries = await collectCitationEntries(artifactPaths);
+  const citationGaps = citationEntries.length > 0
+    ? []
+    : [
+        'No verified BibTeX entries were found in the selected-story planning artifacts.',
+        'Background, related work, and discussion citations must be added manually before submission.',
+      ];
+  const figureAssets = await materializeFigureAssets(projectRoot, claims, finalPaths);
+
+  const mainTexContent = renderMainTex({
+    candidate,
+    claims,
+    figureAssets,
+    citationEntries,
+    citationGaps,
+    selectedStoryPath: artifactPaths.selectedStoryPath,
+  });
+  const referencesBibContent = renderReferencesBib(citationEntries);
+  const figureAssetMapMarkdown = renderFigureAssetMapMarkdown(figureAssets);
+
+  await Promise.all([
+    FileSystemUtils.writeFile(finalPaths.mainTexPath, mainTexContent),
+    FileSystemUtils.writeFile(finalPaths.referencesBibPath, referencesBibContent),
+    FileSystemUtils.writeFile(finalPaths.figureAssetMapPath, figureAssetMapMarkdown),
+  ]);
+
+  const mainTex = buildFinalArtifactStatus(
+    'complete',
+    finalPaths.mainTexPath,
+    'Generated a reviewable TeX manuscript skeleton with Abstract, Introduction, Results, and Discussion.',
+    claims.length > 0
+      ? ['Every Results subsection includes internal evidence anchors drawn from QDD artifacts.']
+      : ['No Results claims were available; inspect upstream story selection and evidence harvest.']
+  );
+  const referencesBib = citationEntries.length > 0
+    ? buildFinalArtifactStatus(
+        'complete',
+        finalPaths.referencesBibPath,
+        `Generated references.bib with ${citationEntries.length} verified BibTeX entr${citationEntries.length === 1 ? 'y' : 'ies'}.`,
+        ['Only verified BibTeX entries were emitted; no placeholder citations were fabricated.']
+      )
+    : buildFinalArtifactStatus(
+        'gap',
+        finalPaths.referencesBibPath,
+        'Generated an empty bibliography scaffold because no verified BibTeX entries were available.',
+        citationGaps
+      );
+  const figures = figureAssets.some((asset) => asset.status === 'placeholder')
+    ? buildFinalArtifactStatus(
+        'gap',
+        finalPaths.figureAssetMapPath,
+        'Generated a figure asset map, but one or more Results claims still rely on placeholders.',
+        ['Review `figures/asset_map.md` before submission packaging.']
+      )
+    : buildFinalArtifactStatus(
+        'complete',
+        finalPaths.figureAssetMapPath,
+        'Generated figure asset map with reusable internal evidence assets.',
+        [`Mapped ${figureAssets.length} figure asset entr${figureAssets.length === 1 ? 'y' : 'ies'}.`]
+      );
+  const citationIntegrity = citationGaps.length > 0
+    ? buildFinalArtifactStatus(
+        'gap',
+        finalPaths.referencesBibPath,
+        'Citation integrity is incomplete because verified external bibliography support is missing.',
+        citationGaps
+      )
+    : buildFinalArtifactStatus(
+        'complete',
+        finalPaths.referencesBibPath,
+        'Citation integrity is currently satisfied for external statements that use verified BibTeX support.',
+        ['Results claims remain anchored to internal QDD evidence only.']
+      );
+
+  const pdf = await tryRenderPdf(finalPaths, preflight);
+  const word = await tryRenderWord(finalPaths, preflight);
+
+  const finalPaper: ConcludeFinalPaperPackage = {
+    paths: finalPaths,
+    overallStatus: determineOverallFinalStatus([mainTex, referencesBib, figures, pdf, word, citationIntegrity]),
+    mainTex,
+    referencesBib,
+    figures,
+    pdf,
+    word,
+    citationIntegrity,
+    citationEntries,
+    citationGaps,
+    figureAssets,
+  };
+
+  await FileSystemUtils.writeFile(finalPaths.finalArtifactAuditPath, renderFinalArtifactAuditMarkdown(finalPaper));
+  return finalPaper;
 }
 
 async function writeSelectedStoryOutput(
@@ -1109,13 +1695,24 @@ export async function runConclude(projectRoot: string, options: RunConcludeOptio
   }
 
   const baseResult = await generateConcludeStoryCandidates(projectRoot, options);
+  const finalPaperArtifacts = baseResult.selectedCandidate && baseResult.planningArtifacts
+    ? await generateFinalPaperPackage(
+        preflight.projectRoot,
+        baseResult.selectedCandidate,
+        baseResult.resultsClaims,
+        baseResult.planningArtifacts,
+        preflight
+      )
+    : null;
   const renderStatusPath = path.join(baseResult.outputDir, 'render_status.md');
-  await FileSystemUtils.writeFile(renderStatusPath, renderConcludeRenderStatusMarkdown(preflight));
+  await FileSystemUtils.writeFile(renderStatusPath, renderConcludeRenderStatusMarkdown(preflight, finalPaperArtifacts));
 
   return {
     ...baseResult,
+    nextStep: finalPaperArtifacts ? 'review-final-draft' : baseResult.nextStep,
     preflight,
     renderStatusPath,
+    finalPaperArtifacts,
   };
 }
 
@@ -1315,7 +1912,10 @@ function renderPathSummary(status: ConcludePathStatus): string {
   return `- ${status.path}: ${status.status.toUpperCase()}${countSuffix} - ${status.details}`;
 }
 
-export function renderConcludeRenderStatusMarkdown(result: ConcludePreflightResult): string {
+export function renderConcludeRenderStatusMarkdown(
+  result: ConcludePreflightResult,
+  finalPaper: ConcludeFinalPaperPackage | null = null
+): string {
   const render = result.render;
   return [
     '# Render Status',
@@ -1361,7 +1961,77 @@ export function renderConcludeRenderStatusMarkdown(result: ConcludePreflightResu
           '',
         ]
       : []),
+    ...(finalPaper
+      ? [
+          '## Final Paper Package',
+          '',
+          `- Overall: ${finalPaper.overallStatus.toUpperCase()}`,
+          `- main.tex: ${finalPaper.mainTex.status.toUpperCase()} - ${finalPaper.mainTex.details}`,
+          `- references.bib: ${finalPaper.referencesBib.status.toUpperCase()} - ${finalPaper.referencesBib.details}`,
+          `- figures asset map: ${finalPaper.figures.status.toUpperCase()} - ${finalPaper.figures.details}`,
+          `- citation integrity: ${finalPaper.citationIntegrity.status.toUpperCase()} - ${finalPaper.citationIntegrity.details}`,
+          `- PDF render: ${finalPaper.pdf.status.toUpperCase()} - ${finalPaper.pdf.details}`,
+          `- Word render: ${finalPaper.word.status.toUpperCase()} - ${finalPaper.word.details}`,
+          '',
+        ]
+      : []),
   ].join('\n');
+}
+
+async function runCommand(
+  command: string,
+  args: string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+  }
+): Promise<{ exitCode: number; stdout: string; stderr: string; combinedOutput: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+
+    child.on('error', (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const errorMessage = (error as Error).message;
+      resolve({
+        exitCode: 1,
+        stdout,
+        stderr: `${stderr}${stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n'}${errorMessage}\n`,
+        combinedOutput: [stdout, stderr, errorMessage].filter((value) => value.length > 0).join('\n'),
+      });
+    });
+
+    child.on('close', (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({
+        exitCode: code ?? 1,
+        stdout,
+        stderr,
+        combinedOutput: [stdout, stderr].filter((value) => value.length > 0).join('\n'),
+      });
+    });
+  });
 }
 
 export async function inspectConcludePreflight(projectRoot: string, options: ConcludePreflightOptions = {}): Promise<ConcludePreflightResult> {

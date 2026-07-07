@@ -3,6 +3,7 @@ import type { ResearchContract } from './core.js';
 import type { EvolutionState } from './evolution.js';
 import type { StudyRecord, TaskRecord } from './studies.js';
 export type ConcludeAvailability = 'available' | 'blocked';
+export type ConcludeDraftArtifactStatus = 'complete' | 'blocked' | 'gap';
 export type ConcludeRenderToolName = 'latexmk' | 'xelatex' | 'pdflatex' | 'pandoc';
 export type ConcludeEvidenceKind = 'supporting' | 'negative' | 'boundary';
 export type ConcludeClaimStrength = 'associative' | 'bounded' | 'causal';
@@ -108,6 +109,52 @@ export interface ConcludePlanningArtifactPaths {
     sectionBlueprintsPath: string;
     writingRationaleMatrixPath: string;
 }
+export interface ConcludeExternalCitationEntry {
+    key: string;
+    entryType: string;
+    rawBibtex: string;
+}
+export interface ConcludeFigureAssetMapEntry {
+    label: string;
+    resultClaimId: string;
+    evidenceId: string | null;
+    sourcePath: string | null;
+    targetPath: string | null;
+    status: 'available' | 'placeholder';
+    recommendedUse: string;
+    notes: string[];
+}
+export interface ConcludeFinalArtifactStatus {
+    status: ConcludeDraftArtifactStatus;
+    path: string | null;
+    details: string;
+    notes: string[];
+}
+export interface ConcludeFinalPaperArtifactPaths {
+    finalArtifactAuditPath: string;
+    finalPaperDir: string;
+    mainTexPath: string;
+    referencesBibPath: string;
+    figuresDir: string;
+    figureAssetMapPath: string;
+    paperPdfPath: string;
+    paperDocxPath: string;
+    pdfRenderLogPath: string;
+    wordRenderLogPath: string;
+}
+export interface ConcludeFinalPaperPackage {
+    paths: ConcludeFinalPaperArtifactPaths;
+    overallStatus: ConcludeDraftArtifactStatus;
+    mainTex: ConcludeFinalArtifactStatus;
+    referencesBib: ConcludeFinalArtifactStatus;
+    figures: ConcludeFinalArtifactStatus;
+    pdf: ConcludeFinalArtifactStatus;
+    word: ConcludeFinalArtifactStatus;
+    citationIntegrity: ConcludeFinalArtifactStatus;
+    citationEntries: ConcludeExternalCitationEntry[];
+    citationGaps: string[];
+    figureAssets: ConcludeFigureAssetMapEntry[];
+}
 export interface ConcludeStoryGenerationResult {
     runId: string;
     outputDir: string;
@@ -124,13 +171,14 @@ export interface ConcludeStoryGenerationResult {
     candidates: ConcludeStoryCandidate[];
     evidence: ConcludeEvidenceItem[];
     claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
-    nextStep: 'select-story' | 'draft-manuscript';
+    nextStep: 'select-story' | 'draft-manuscript' | 'review-final-draft';
 }
 export interface RunConcludeOptions extends GenerateConcludeStoryCandidatesOptions {
 }
 export interface RunConcludeResult extends ConcludeStoryGenerationResult {
     preflight: ConcludePreflightResult;
     renderStatusPath: string;
+    finalPaperArtifacts: ConcludeFinalPaperPackage | null;
 }
 export interface ConcludeRenderStatus {
     status: ConcludeAvailability;
