@@ -126,10 +126,11 @@ Use the repository's existing patterns. Do not introduce a new framework or unre
 
 Keep the two conclude surfaces distinct:
 
-- `domain-skills/thesis/conclude/SKILL.md` is the durable manual skill guidance: taste, scientific guardrails, workflow intent, and PaperSpine provenance.
-- `qdd conclude` is the executable CLI entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
+- `domain-skills/thesis/conclude/SKILL.md` is the durable conclude guidance: taste, scientific guardrails, workflow intent, and PaperSpine provenance expectations.
+- `qdd conclude` is the executable and canonical product entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
 
 The CLI is the testable automation surface. It should let a user run conclude inside any QDD project directory.
+The skill assets are not a second product entrypoint.
 
 Current CLI shape:
 
@@ -144,7 +145,9 @@ Current behavior:
 
 - Without a selected story, generate story candidates, evidence audit, claim safety audit, reviewer risk audit, render status, then stop at the selection gate.
 - Without a selected story, also generate `evidence_packets.md` so story candidates can refer to manuscript-native compressed evidence instead of raw study/task prose.
-- With a selected story, generate a machine-readable `selected_story.md`, manuscript-planning artifacts under `paper_rewriting_output/`, the current final paper package, and render status updates.
+- With a selected story, generate a machine-readable `selected_story.md`, manuscript-planning artifacts under `paper_rewriting_output/`, and the final paper package centered on `paper_rewriting_output/final_paper/main.tex`.
+- PDF and Word rendering remain dependency-sensitive outputs: if TeX or pandoc is unavailable, render status must report the package as blocked rather than complete.
+- Quantitative draft evaluation is already available through the dedicated Parkinson conclude eval harness and should be used when a drafting-quality issue changes final-paper behavior.
 - Final manuscript quality and regression gates can still improve in later issues, but conclude's main spine is already implemented in `main`; do not reopen old scaffold/preflight/harvest/planning/draft slices unless a new issue explicitly identifies a regression.
 
 ## Expected Development Posture
@@ -182,12 +185,28 @@ The `conclude` skill must preserve these product constraints:
 
 Do not silently convert associative evidence into causal or mechanistic claims.
 
+## Recommended Issue Shape
+
+Prefer issue descriptions written in OpenSpec propose style:
+
+1. `Goal`
+2. `Current State`
+3. `Scope`
+4. `Non-Goals`
+5. `Implementation Notes`
+6. `Acceptance Criteria`
+7. `Validation`
+8. `Dependencies`
+9. `References`
+
 ## Recommended Issue Slices
 
 Use these as the intended decomposition unless the Linear issue states a narrower slice:
 
 1. Align the conclude product contract and rebuild the manuscript-native story pipeline.
 2. Upgrade manuscript drafting quality and tighten Parkinson regression gates.
+
+Avoid reopening already-completed historical slices such as scaffold-only setup, preflight-only work, harvest-only work, or first-pass draft packaging unless the new issue explicitly identifies a regression in `main`.
 
 ## Validation
 
@@ -221,6 +240,7 @@ Report the generated Parkinson output paths in the Linear workpad and PR summary
 - `reviewer_risk_audit.md`
 - `render_status.md`
 - `paper_rewriting_output/` when selected-story planning is available
+- `paper_rewriting_output/final_paper/main.tex` when final drafting is available
 
 For future draft-generation or evaluation issues, the Parkinson golden-case report must also include:
 
@@ -243,6 +263,7 @@ Harness behavior requirements:
   - `conclude_eval.json`
   - `conclude_eval.md`
 - The report must include baseline/current-score-ready fields: total score, per-dimension scores, hard-fail status, and 3-5 key improvements.
+- Regression checks should be strong enough to catch raw task-study leakage, report-tone drift, and associative-to-causal overclaim when those behaviors are relevant to the changed slice.
 
 Any later conclude draft or draft-evaluation issue should report the current Parkinson eval score in the Linear workpad and PR summary.
 

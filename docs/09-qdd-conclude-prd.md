@@ -13,10 +13,14 @@ The core product idea is not to force every result into a rigid evidence schema.
 - Generate 2-3 candidate biological or research storylines from existing QDD evidence.
 - Score storylines by biological coherence, evidence strength, novelty, reviewer risk, claim safety, and usefulness of negative evidence.
 - Stop for user story selection before drafting.
+- Convert raw QDD project records into manuscript-oriented evidence packets rather than directly pasting task or study text into the paper.
+- Produce manuscript-planning artifacts after story selection.
+- Produce a submission-style TeX manuscript package centered on `main.tex`.
 - Produce a submission-style TeX manuscript after selection.
 - Use both internal QDD evidence and external literature citations.
 - Preserve an audit trail explaining what evidence was used, downgraded, ignored, or treated as negative.
 - Produce PDF and Word outputs when the local environment supports them.
+- Support reproducible golden-case evaluation for manuscript-quality regression checks.
 
 ## Non-Goals
 
@@ -26,6 +30,7 @@ The core product idea is not to force every result into a rigid evidence schema.
 - Do not claim PDF or Word completion when local TeX or pandoc dependencies are missing.
 - Do not silently convert weak biological signals into strong mechanism claims.
 - Do not make `conclude` responsible for generating new biological analyses; it writes from existing evidence.
+- Do not expose an internal drafting adapter or agent engine as a second user-facing product.
 
 ## Entry Point
 
@@ -70,7 +75,7 @@ Also detect local rendering tools:
 
 The skill must report whether final PDF and Word rendering can be completed in the current environment.
 
-### 2. Evidence Harvest
+### 2. Evidence Harvest And Compression
 
 Gather QDD artifacts, study memories, figures, tables, reports, code provenance, and reusable context.
 
@@ -147,6 +152,15 @@ Always generate `main.tex`.
 
 If TeX is available, compile PDF and check it. If pandoc is available, generate Word when requested. If rendering dependencies are missing, the manuscript package should be marked `BLOCKED` for rendering, not complete.
 
+### 7. Regression Evaluation
+
+Conclude should support golden-case regression evaluation so manuscript-quality improvements and regressions can be measured over time.
+
+The canonical evaluation target today is the Parkinson golden case used by the repository conclude eval harness.
+Configure its project path through `QDD_CONCLUDE_EVAL_CASE` or the current workflow instructions in `WORKFLOW.md`.
+
+The evaluation harness should generate machine-readable and human-readable reports and should specifically track claim safety, evidence traceability, manuscript viability, and regression signals such as raw task-study leakage or report-tone drift.
+
 ## Taste Rubric
 
 The skill should reason with a qualitative multi-dimensional rubric rather than requiring new structured evidence fields.
@@ -191,7 +205,7 @@ Requirements:
   - citation support bank
   - LaTeX guard
   - final artifact audit
-- Replace PaperSpine generic intake/material scan with QDD evidence harvesting.
+- Replace PaperSpine generic intake/material scan with QDD evidence harvesting and compression.
 - Add QDD-specific story candidate scoring and user selection gate before manuscript drafting.
 
 The intended direction is a practical fork/vendor, not a thin wrapper around an external installation. QDD should be able to modify the writing workflow around its own research state and taste requirements.
@@ -231,6 +245,13 @@ paper_rewriting_output/
 
 `paper.pdf` and `paper.docx` are present only when rendering succeeds.
 
+Golden-case evaluation runs may additionally emit:
+
+```text
+conclude_eval.json
+conclude_eval.md
+```
+
 ## Internal And External Citations
 
 The manuscript should use two evidence channels:
@@ -248,11 +269,12 @@ Every major Results claim should point to internal QDD evidence. Every literatur
 - It explicitly reports downgraded claims and unused or negative evidence.
 - It stops for user story selection before drafting.
 - The selected story is stable enough to restore and continue drafting through packet refs rather than raw task/study text reuse.
-- After selection, it produces a coherent TeX manuscript and bibliography.
+- After selection, it produces manuscript-planning artifacts and a coherent TeX manuscript package.
 - Every major Results claim points to QDD evidence.
 - External literature citations have real BibTeX entries.
 - Missing TeX or pandoc dependencies produce a clear `BLOCKED` rendering status.
 - Vendored PaperSpine license and upstream provenance are preserved.
+- Golden-case evaluation can report current conclude manuscript quality and regression signals.
 
 ## Future Integration
 

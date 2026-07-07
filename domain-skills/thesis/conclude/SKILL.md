@@ -1,6 +1,6 @@
 ---
 name: thesis/conclude
-description: Durable QDD conclude guidance for turning accumulated project evidence into an auditable manuscript-oriented package. The canonical executable surface is `qdd conclude`; this skill captures taste, scientific guardrails, manuscript-native workflow intent, and PaperSpine provenance expectations.
+description: Durable QDD conclude guidance for turning accumulated project evidence into an auditable manuscript-oriented package through the `qdd conclude` CLI. This skill captures taste, scientific guardrails, manuscript-native workflow intent, and PaperSpine provenance expectations without becoming a second user-facing product entrypoint.
 ---
 
 # thesis/conclude
@@ -14,6 +14,7 @@ description: Durable QDD conclude guidance for turning accumulated project evide
 - current status: active guidance for the implemented conclude pipeline
 
 This repository stores the durable conclude guidance here, while the runnable automation surface lives in the CLI implementation under `src/commands/conclude.ts` and `src/services/conclude.ts`.
+It does not replace the CLI. Users run `qdd conclude`; the skill assets here constrain how conclude should reason and what it should preserve.
 
 ## When To Use
 
@@ -24,6 +25,7 @@ Typical moments:
 - the project has accumulated reusable figures, tables, reports, and study memories
 - the frontier is synthesis-ready or close to synthesis-ready
 - the user wants an auditable writing package built from existing QDD evidence rather than new analysis
+- the user wants to compare multiple story candidates before choosing one for drafting
 
 Treat this skill as the durable taste and guardrail layer for the CLI workflow, not as a separate non-CLI product or as a manual-only scaffold.
 Do not write `thesis/conclude` into task `skills:` for ordinary task execution; conclude remains a project-level synthesis surface.
@@ -39,6 +41,7 @@ Current conclude behavior in `main`:
 - restores a selected story from `--selected-story-id` or `--selected-story-path`
 - writes manuscript-planning artifacts and the current final paper package after selection
 - reports blocked PDF/Word rendering status when TeX or pandoc dependencies are missing
+- uses a dedicated Parkinson conclude eval harness when draft-quality issues need quantitative regression checks
 
 Current limitations that still matter:
 
@@ -59,6 +62,7 @@ Especially preserve these guardrails:
 - keep negative, dissolved, blocked, or downgraded studies as usable boundary evidence
 - downgrade weak associative claims instead of overstating mechanism
 - report missing TeX or pandoc tooling as blocked rendering status
+- keep internal evidence anchors traceable back to QDD artifacts
 - keep raw study/task execution language out of central claim, story, and selected-story narrative bodies
 - prefer manuscript-native evidence packets and story packets over direct reuse of raw `StudyRecord` / `TaskRecord` text
 
@@ -74,11 +78,28 @@ The intended conclude boundary is:
 
 This workflow should stay manuscript-native even when internal provenance remains rich.
 
+That means:
+
+- raw QDD records remain valuable as provenance
+- narrative outputs should be based on compressed evidence packets
+- story candidates should differ in real narrative arc, not just framing label
+- selected story should be stable and recoverable as a machine-readable drafting input
+- final drafting quality may improve through internal adapters or agent-backed drafting, but those remain implementation details of `qdd conclude`
+
+## Boundary Rules
+
+- Do not write `thesis/conclude` into task `skills:`.
+- Do not treat this skill as a second interactive surface separate from `qdd conclude`.
+- Do not claim PDF or Word success when required tooling is missing.
+- Do not use external literature to invent results that QDD did not produce.
+- Do not let workflow status text such as `TASK-xxx`, `status closed`, `None.`, or checklist fragments become central manuscript prose.
+
 ## Skill Layout
 
 ```text
 domain-skills/thesis/conclude/
 ├── SKILL.md
+├── README.md
 └── vendor/
     └── paperspine/
         ├── PROVENANCE.md
