@@ -2,21 +2,26 @@
 
 ## Summary
 
-`conclude` is a QDD-native writing skill for turning accumulated QDD research evidence into an auditable, submission-oriented manuscript draft. It can be invoked mid-project for audit or at the end of a project for final synthesis.
+`qdd conclude` is the canonical QDD-native synthesis surface for turning accumulated QDD research evidence into an auditable, submission-oriented manuscript package.
 
-The skill vendors and modifies PaperSpine, keeping its contribution-first, results-validation, reviewer-audit, citation, and LaTeX/PDF discipline, but replacing generic material intake with QDD-aware evidence reading and biological story selection.
+It can be invoked mid-project for evidence audit and story selection, or near the end of a project for final manuscript drafting.
 
-The core product idea is not to force every result into a rigid evidence schema. QDD already keeps a strong research trace through studies, memories, artifacts, and evolution. `conclude` should use that trace with scientific taste: gather related evidence, compare possible stories, downgrade weak claims, surface negative evidence, and only then write.
+QDD keeps the durable scientific guardrails for conclude under `domain-skills/thesis/conclude/`, but the product entrypoint is the CLI command `qdd conclude`, not a separate manual-only product.
+
+The core product idea is not to force every result into a rigid evidence schema. QDD already keeps a strong research trace through studies, memories, artifacts, and evolution. `conclude` should use that trace with scientific taste: gather related evidence, compress raw project records into manuscript-native evidence packets, compare possible stories, downgrade weak claims, surface negative evidence, and only then draft.
 
 ## Goals
 
 - Generate 2-3 candidate biological or research storylines from existing QDD evidence.
 - Score storylines by biological coherence, evidence strength, novelty, reviewer risk, claim safety, and usefulness of negative evidence.
 - Stop for user story selection before drafting.
-- Produce a submission-style TeX manuscript after selection.
+- Convert raw QDD project records into manuscript-oriented evidence packets rather than directly pasting task or study text into the paper.
+- Produce manuscript-planning artifacts after story selection.
+- Produce a submission-style TeX manuscript package centered on `main.tex`.
 - Use both internal QDD evidence and external literature citations.
 - Preserve an audit trail explaining what evidence was used, downgraded, ignored, or treated as negative.
 - Produce PDF and Word outputs when the local environment supports them.
+- Support reproducible golden-case evaluation for manuscript-quality regression checks.
 
 ## Non-Goals
 
@@ -26,17 +31,26 @@ The core product idea is not to force every result into a rigid evidence schema.
 - Do not claim PDF or Word completion when local TeX or pandoc dependencies are missing.
 - Do not silently convert weak biological signals into strong mechanism claims.
 - Do not make `conclude` responsible for generating new biological analyses; it writes from existing evidence.
+- Do not expose an internal drafting adapter or agent engine as a second user-facing product.
 
 ## Entry Point
 
-The user invokes one skill: `conclude`.
+The canonical user-facing entrypoint is:
 
-It supports both use cases through the same workflow:
+```bash
+qdd conclude
+```
 
-- Mid-project: produce story candidates, audit evidence, and optionally draft a progress/report manuscript.
-- Final project: produce story candidates, selected final narrative, and a submission-oriented manuscript package.
+Current CLI shape:
 
-V1 is manual only. CLI/lifecycle integration can be considered later.
+```bash
+qdd conclude --json
+qdd conclude --output-dir conclusions/<run-id> --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-id story-1 --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions/<run-id>/selected_story.md --json
+```
+
+The durable skill assets in `domain-skills/thesis/conclude/` provide scientific guardrails, workflow intent, and PaperSpine provenance. They are not a second product entrypoint.
 
 ## Core Workflow
 
@@ -59,15 +73,17 @@ Also detect local rendering tools:
 - `pdflatex`
 - `pandoc`
 
-The skill must report whether final PDF and Word rendering can be completed in the current environment.
+The workflow must report whether final PDF and Word rendering can be completed in the current environment.
 
-### 2. Evidence Harvest
+### 2. Evidence Harvest And Compression
 
 Gather QDD artifacts, study memories, figures, tables, reports, code provenance, and reusable context.
 
 Study outputs and artifacts are authoritative for project claims. External literature can support background, field context, related work, and discussion, but it must not invent results that QDD did not produce.
 
 Negative, dissolved, blocked, or downgraded studies should be treated as useful boundary evidence. A good final paper may be a story about hypothesis refinement, candidate downgrade, failed mechanism search, or evidence-bounded frontier convergence, not only a strong discovery story.
+
+Conclude should not directly draft from raw `StudyRecord` or `TaskRecord` text. It should compress those records into manuscript-native evidence packets that preserve provenance while reducing execution-language leakage.
 
 ### 3. Story Candidate Generation
 
@@ -86,13 +102,15 @@ Each candidate should include:
 - recommended title style
 - whether the story is best framed as discovery, method/protocol, case study, benchmark, audit report, or bounded biological hypothesis
 
+The candidates should be meaningfully different in narrative arc, not merely the same evidence with renamed framing labels.
+
 ### 4. User Selection Gate
 
 Stop after story candidates.
 
 The user chooses one storyline or asks for revision. V1 must not auto-select the top-scoring story, because biological taste and claim strength require human confirmation before a submission-style draft.
 
-### 5. Drafting
+### 5. Manuscript Planning
 
 After user selection, generate manuscript-planning artifacts before writing the final TeX:
 
@@ -103,13 +121,35 @@ After user selection, generate manuscript-planning artifacts before writing the 
 - `section_blueprints.md`
 - `writing_rationale_matrix.md`
 
-Then generate the TeX manuscript, BibTeX file, figure/table asset map, and audit reports.
+### 6. Final Draft Package
 
-### 6. Rendering And Audit
+After planning, generate a final paper package centered on:
+
+- `main.tex`
+- `references.bib`
+- figure/table asset map
+- final artifact audit
+- render status
+
+Internal drafting may use a rule-based or agent-backed engine, but that is an implementation detail of `qdd conclude`, not a separate product surface.
+
+### 7. Rendering And Audit
 
 Always generate `main.tex`.
 
 If TeX is available, compile PDF and check it. If pandoc is available, generate Word when requested. If rendering dependencies are missing, the manuscript package should be marked `BLOCKED` for rendering, not complete.
+
+### 8. Regression Evaluation
+
+Conclude should support golden-case regression evaluation so manuscript-quality improvements and regressions can be measured over time.
+
+The canonical local case today is the Parkinson project at:
+
+```text
+/data/chenyz/project/panrank_tmp/project/case/Parkinson
+```
+
+The evaluation harness should generate machine-readable and human-readable reports and should specifically track claim safety, evidence traceability, manuscript viability, and regression signals such as raw task-study leakage or report-tone drift.
 
 ## Taste Rubric
 
@@ -137,7 +177,7 @@ Examples:
 - Use "supports a bounded hypothesis" instead of "proves" when validation is proxy-based.
 - Use negative studies to explain why stronger claims were not made.
 
-The skill should explicitly name downgraded claims in `claim_safety_audit.md`.
+The workflow should explicitly name downgraded claims in `claim_safety_audit.md`.
 
 ## PaperSpine Vendor Strategy
 
@@ -155,7 +195,7 @@ Requirements:
   - citation support bank
   - LaTeX guard
   - final artifact audit
-- Replace PaperSpine generic intake/material scan with QDD evidence harvesting.
+- Replace PaperSpine generic intake/material scan with QDD evidence harvesting and compression.
 - Add QDD-specific story candidate scoring and user selection gate before manuscript drafting.
 
 The intended direction is a practical fork/vendor, not a thin wrapper around an external installation. QDD should be able to modify the writing workflow around its own research state and taste requirements.
@@ -194,6 +234,13 @@ paper_rewriting_output/
 
 `paper.pdf` and `paper.docx` are present only when rendering succeeds.
 
+Golden-case evaluation runs may additionally emit:
+
+```text
+conclude_eval.json
+conclude_eval.md
+```
+
 ## Internal And External Citations
 
 The manuscript should use two evidence channels:
@@ -209,11 +256,13 @@ Every major Results claim should point to internal QDD evidence. Every literatur
 - It does not force a strong mechanism story when evidence only supports association or candidate status.
 - It explicitly reports downgraded claims and unused or negative evidence.
 - It stops for user story selection before drafting.
-- After selection, it produces a coherent TeX manuscript and bibliography.
+- After selection, it produces manuscript-planning artifacts and a coherent TeX manuscript package.
 - Every major Results claim points to QDD evidence.
-- External literature citations have real BibTeX entries.
+- External literature citations have real BibTeX entries when cited.
 - Missing TeX or pandoc dependencies produce a clear `BLOCKED` rendering status.
 - Vendored PaperSpine license and upstream provenance are preserved.
+- Narrative outputs avoid direct raw execution leakage such as unchecked task/status language becoming central manuscript prose.
+- Golden-case evaluation can report current conclude manuscript quality and regression signals.
 
 ## Future Integration
 
@@ -221,6 +270,5 @@ Possible v2 additions:
 
 - `qdd-close` suggests running `conclude` when the project is synthesis-ready.
 - `qdd auto` can stop at synthesis-ready and prompt the user to run `conclude`.
-- A future CLI command may wrap the skill.
 - Selected final `conclude` outputs may be registerable as QDD report artifacts.
 - Story candidate scores may later inform thesis-manager stop/continue decisions, but should not become a required schema in v1.

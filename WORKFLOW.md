@@ -126,10 +126,11 @@ Use the repository's existing patterns. Do not introduce a new framework or unre
 
 Keep the two conclude surfaces distinct:
 
-- `domain-skills/thesis/conclude/SKILL.md` is the durable manual skill guidance: taste, scientific guardrails, workflow intent, and PaperSpine provenance.
-- `qdd conclude` is the executable CLI entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
+- `domain-skills/thesis/conclude/SKILL.md` is the durable conclude guardrail: scientific taste, claim-safety constraints, workflow intent, and PaperSpine provenance expectations.
+- `qdd conclude` is the executable and canonical product entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
 
 The CLI is the testable automation surface. It should let a user run conclude inside any QDD project directory.
+The skill assets are not a second product entrypoint.
 
 Current CLI shape:
 
@@ -143,8 +144,9 @@ qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions
 Current behavior:
 
 - Without a selected story, generate story candidates, evidence audit, claim safety audit, reviewer risk audit, render status, then stop at the selection gate.
-- With a selected story, generate `selected_story.md` plus manuscript-planning artifacts under `paper_rewriting_output/`.
-- Final manuscript drafting, TeX/BibTeX generation, PDF/Word rendering, and quantitative draft evaluation are future slices unless the issue explicitly implements them.
+- With a selected story, generate `selected_story.md`, manuscript-planning artifacts under `paper_rewriting_output/`, and the final paper package centered on `paper_rewriting_output/final_paper/main.tex`.
+- PDF and Word rendering remain dependency-sensitive outputs: if TeX or pandoc is unavailable, render status must report the package as blocked rather than complete.
+- Quantitative draft evaluation is already available through the dedicated Parkinson conclude eval harness and should be used when a drafting-quality issue changes final-paper behavior.
 
 ## Expected Development Posture
 
@@ -181,15 +183,26 @@ The `conclude` skill must preserve these product constraints:
 
 Do not silently convert associative evidence into causal or mechanistic claims.
 
-## Recommended Issue Slices
+## Recommended Issue Shape
 
-Use these as the intended decomposition unless the Linear issue states a narrower slice:
+Prefer issue descriptions written in OpenSpec propose style:
 
-1. Scaffold the `conclude` skill and PaperSpine vendor provenance.
-2. Implement QDD preflight and evidence harvesting.
-3. Generate and score story candidates with a selection gate.
-4. Generate manuscript-planning artifacts after story selection.
-5. Generate TeX/BibTeX outputs and rendering status audit.
+1. `Goal`
+2. `Current State`
+3. `Scope`
+4. `Non-Goals`
+5. `Implementation Notes`
+6. `Acceptance Criteria`
+7. `Validation`
+8. `Dependencies`
+9. `References`
+
+For the current conclude workstream, the preferred decomposition is:
+
+1. Align the conclude product contract and rebuild the manuscript-native story pipeline.
+2. Upgrade manuscript drafting quality and tighten Parkinson regression gates.
+
+Avoid reopening already-completed historical slices such as scaffold-only setup, preflight-only work, harvest-only work, or first-pass draft packaging unless the new issue explicitly identifies a regression in `main`.
 
 ## Validation
 
@@ -209,7 +222,7 @@ tmp_run="conclusions/symphony-${issue.identifier,,}-$(date -u +%Y%m%dT%H%M%SZ)"
 
 Replace `/path/to/qdd` with the current Symphony workspace path. For example, from a workspace root, use `node "$PWD/bin/qdd.js"`.
 
-If the implemented slice supports selected-story planning or drafting, run a second pass with an explicit selected story:
+If the implemented slice changes story selection, selected-story recovery, planning artifacts, or final drafting, run a second pass with an explicit selected story:
 
 ```bash
 (cd /data/chenyz/project/panrank_tmp/project/case/Parkinson && node /path/to/qdd/bin/qdd.js conclude --output-dir "$tmp_run" --selected-story-id story-1 --json)
@@ -223,8 +236,9 @@ Report the generated Parkinson output paths in the Linear workpad and PR summary
 - `reviewer_risk_audit.md`
 - `render_status.md`
 - `paper_rewriting_output/` when selected-story planning is available
+- `paper_rewriting_output/final_paper/main.tex` when final drafting is available
 
-For future draft-generation or evaluation issues, the Parkinson golden-case report must also include:
+For drafting-quality or regression-gate issues, the Parkinson golden-case report must also include:
 
 - final draft path, such as `paper_rewriting_output/final_paper/main.tex`
 - render status for PDF and Word
@@ -245,6 +259,7 @@ Harness behavior requirements:
   - `conclude_eval.json`
   - `conclude_eval.md`
 - The report must include baseline/current-score-ready fields: total score, per-dimension scores, hard-fail status, and 3-5 key improvements.
+- Regression checks should be strong enough to catch raw task-study leakage, report-tone drift, and associative-to-causal overclaim when those behaviors are relevant to the changed slice.
 
 Any later conclude draft or draft-evaluation issue should report the current Parkinson eval score in the Linear workpad and PR summary.
 

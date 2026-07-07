@@ -1,25 +1,23 @@
-# conclude scaffold
+# conclude guardrail
 
-This directory is the committed source of truth for the first-phase QDD `conclude` manual synthesis skill scaffold.
+This directory is the committed source of truth for the durable QDD conclude guardrails and PaperSpine provenance.
 
-Current state: documentation and vendor provenance placeholders only.
-It is not a task executor surface in this phase.
+Current state:
 
-Included in this phase:
+- conclude is an active CLI product surfaced through `qdd conclude`
+- this directory stores guardrails, workflow intent, and vendor provenance
+- this directory is not a second product entrypoint
 
-- entry guidance in `SKILL.md`
-- manual-synthesis boundary notes for future implementation work
-- PaperSpine vendor provenance placeholders under `vendor/paperspine/`
+Included here:
 
-Not included in this phase:
+- guardrail contract in `SKILL.md`
+- PaperSpine vendor provenance placeholders and metadata under `vendor/paperspine/`
+- durable conclude-facing documentation that should stay aligned with the product PRD
 
-- QDD preflight
-- evidence harvest
-- story candidate generation
-- user story selection gate
-- drafting artifacts
-- rendering logic
-- CLI or lifecycle integration
-- vendored upstream PaperSpine source files
+Not included here:
 
-Use [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md) as the product source of truth for later phases.
+- a separate manual-only conclude workflow
+- task executor registration through task `skills:`
+- a second conclude product outside the CLI
+
+Use [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md) as the product source of truth and [`WORKFLOW.md`](../../../WORKFLOW.md) as the Symphony execution contract.
