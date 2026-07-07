@@ -384,6 +384,7 @@ test('conclude generates distinct story candidates and enforces selection gate b
         now: new Date('2026-07-06T12:00:00.000Z'),
     });
     const storyCandidatesMarkdown = await fs.readFile(result.storyCandidatesPath, 'utf-8');
+    const evidencePacketsMarkdown = await fs.readFile(result.evidencePacketsPath, 'utf-8');
     const claimSafetyMarkdown = await fs.readFile(result.claimSafetyAuditPath, 'utf-8');
     const paperRewritingOutputPath = path.join(result.outputDir, 'paper_rewriting_output');
     assert.equal(result.selectionRequired, true);
@@ -391,12 +392,23 @@ test('conclude generates distinct story candidates and enforces selection gate b
     assert.equal(result.nextStep, 'select-story');
     assert.equal(result.candidates.length, 3);
     assert.equal(new Set(result.candidates.map((candidate) => candidate.framing)).size, 3);
+    assert.ok(result.evidencePackets.length >= 2);
     assert.ok(result.candidates.every((candidate) => candidate.supportingEvidence.length > 0));
     assert.ok(result.candidates.some((candidate) => candidate.negativeOrBoundaryEvidence.length > 0));
+    assert.ok(result.candidates.every((candidate) => candidate.narrativeArc.length >= 3));
+    assert.ok(result.candidates.every((candidate) => candidate.claimBundle.length >= 2));
+    assert.notEqual(result.candidates[0]?.centralClaim, result.candidates[1]?.centralClaim);
+    assert.notEqual(result.candidates[0]?.story, result.candidates[1]?.story);
     assert.ok(result.claimSafetyAudit.some((entry) => entry.action === 'soften' && /mechanism|driver|effect/i.test(entry.rationale + entry.claim)));
     assert.match(storyCandidatesMarkdown, /Selection gate: STOP here until a human selects one story candidate\./);
     assert.match(storyCandidatesMarkdown, /do not auto-select the highest score/);
-    assert.match(storyCandidatesMarkdown, /associated with/);
+    assert.match(storyCandidatesMarkdown, /Narrative Arc/);
+    assert.match(storyCandidatesMarkdown, /Claim Bundle/);
+    assert.match(evidencePacketsMarkdown, /# Evidence Packets/);
+    assert.doesNotMatch(storyCandidatesMarkdown, /\bTASK-\d+\b/);
+    assert.doesNotMatch(storyCandidatesMarkdown, /\bstatus closed\b/i);
+    assert.doesNotMatch(storyCandidatesMarkdown, /\bNone\./);
+    assert.doesNotMatch(storyCandidatesMarkdown, /\bexpected_artifacts\b/i);
     assert.match(claimSafetyMarkdown, /SOFTEN:/);
     assert.equal(await FileSystemUtils.directoryExists(paperRewritingOutputPath), false);
 });
@@ -459,11 +471,15 @@ test('conclude generates manuscript planning artifacts after selected story is c
     const sectionBlueprintsMarkdown = await fs.readFile(result.planningArtifacts.sectionBlueprintsPath, 'utf-8');
     const writingRationaleMatrixMarkdown = await fs.readFile(result.planningArtifacts.writingRationaleMatrixPath, 'utf-8');
     const storyCandidatesMarkdown = await fs.readFile(result.storyCandidatesPath, 'utf-8');
+    const selectedStoryMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'selected_story.md'), 'utf-8');
     assert.match(confirmedContributionMarkdown, /# Confirmed Contribution/);
     assert.match(confirmedContributionMarkdown, /Selected story: story-1/);
+    assert.match(confirmedContributionMarkdown, /## Narrative Arc/);
+    assert.match(confirmedContributionMarkdown, /## Claim Bundle/);
     assert.match(resultsValidationMarkdown, /# Results Validation/);
     assert.match(resultsValidationMarkdown, /Every Results claim must stay traceable to QDD internal evidence/);
     assert.match(resultsValidationMarkdown, /Source: `studies\//);
+    assert.match(resultsValidationMarkdown, /Supporting packet refs:/);
     assert.match(reviewerAuditMarkdown, /# Reviewer Audit/);
     assert.match(reviewerAuditMarkdown, /Story-Level Risks/);
     assert.match(citationSupportBankMarkdown, /# Citation Support Bank/);
@@ -472,6 +488,12 @@ test('conclude generates manuscript planning artifacts after selected story is c
     assert.match(writingRationaleMatrixMarkdown, /\| Section \| Narrative job \| Evidence anchor \| Safety \/ reviewer rationale \|/);
     assert.match(storyCandidatesMarkdown, /Selected story: story-1/);
     assert.match(storyCandidatesMarkdown, /Manuscript planning artifacts have been generated/);
+    assert.match(selectedStoryMarkdown, /kind: qdd-conclude-selected-story/);
+    assert.match(selectedStoryMarkdown, /story_id: story-1/);
+    assert.match(selectedStoryMarkdown, /## Supporting Packet Refs/);
+    assert.doesNotMatch(selectedStoryMarkdown, /\bTASK-\d+\b/);
+    assert.doesNotMatch(selectedStoryMarkdown, /\bstatus closed\b/i);
+    assert.doesNotMatch(selectedStoryMarkdown, /\bNone\./);
 });
 test('conclude tolerates non-string study summary fields during evidence harvest', async () => {
     const projectRoot = await createTempProject('qdd-conclude-non-string-summary-');
@@ -497,7 +519,9 @@ test('conclude tolerates non-string study summary fields during evidence harvest
         now: new Date('2026-07-07T03:00:00.000Z'),
     });
     assert.equal(result.selectionRequired, true);
-    assert.ok(result.evidence.some((item) => /42/.test(item.summary) || /table/.test(item.summary)));
+    assert.equal(result.selectionRequired, true);
+    assert.ok(result.evidence.every((item) => !/expected_artifacts/i.test(item.summary)));
+    assert.ok(result.candidates.some((candidate) => candidate.supportingPacketRefs.length > 0));
 });
 test('qdd conclude CLI emits json, writes evidence audit, and reports selection gate next step', async () => {
     const projectRoot = await createTempProject('qdd-conclude-cli-');
@@ -520,6 +544,7 @@ test('qdd conclude CLI emits json, writes evidence audit, and reports selection 
     const evidenceAuditMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'evidence_audit.md'), 'utf-8');
     const renderStatusMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'render_status.md'), 'utf-8');
     assert.equal(parsed.outputDir, path.join(projectRoot, outputDir));
+    assert.equal(parsed.evidencePacketsPath, path.join(projectRoot, outputDir, 'evidence_packets.md'));
     assert.equal(parsed.evidenceAuditPath, path.join(projectRoot, outputDir, 'evidence_audit.md'));
     assert.equal(parsed.renderStatusPath, path.join(projectRoot, outputDir, 'render_status.md'));
     assert.equal(parsed.selectionRequired, true);
@@ -676,6 +701,8 @@ test('conclude normalizes inline selected story input into selected_story.md out
     assert.equal(result.selectionRequired, false);
     assert.equal(result.selectedStoryId, 'story-1');
     assert.equal(result.selectedStoryPath, 'conclusions/inline-selected-story/selected_story.md');
+    assert.match(selectedStoryMarkdown, /kind: qdd-conclude-selected-story/);
+    assert.match(selectedStoryMarkdown, /version: 1/);
     assert.match(selectedStoryMarkdown, /# Selected Story/);
     assert.match(selectedStoryMarkdown, /Selected Story ID: story-1/);
     assert.match(selectedStoryMarkdown, /Input Source: inline-selected-story-id/);

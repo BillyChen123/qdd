@@ -29,14 +29,23 @@ The core product idea is not to force every result into a rigid evidence schema.
 
 ## Entry Point
 
-The user invokes one skill: `conclude`.
+The canonical product entry point is the CLI command `qdd conclude`.
+
+The durable skill assets under `domain-skills/thesis/conclude/` remain important, but they are guidance and provenance for the CLI surface rather than a second standalone product entry.
 
 It supports both use cases through the same workflow:
 
-- Mid-project: produce story candidates, audit evidence, and optionally draft a progress/report manuscript.
-- Final project: produce story candidates, selected final narrative, and a submission-oriented manuscript package.
+- Mid-project: produce story candidates, evidence packets, audits, and stop at the selection gate.
+- Final project: produce story candidates, a selected manuscript story packet, manuscript-planning artifacts, and a submission-oriented manuscript package.
 
-V1 is manual only. CLI/lifecycle integration can be considered later.
+Current CLI shape:
+
+```bash
+qdd conclude --json
+qdd conclude --output-dir conclusions/<run-id> --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-id story-1 --json
+qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions/<run-id>/selected_story.md --json
+```
 
 ## Core Workflow
 
@@ -69,6 +78,15 @@ Study outputs and artifacts are authoritative for project claims. External liter
 
 Negative, dissolved, blocked, or downgraded studies should be treated as useful boundary evidence. A good final paper may be a story about hypothesis refinement, candidate downgrade, failed mechanism search, or evidence-bounded frontier convergence, not only a strong discovery story.
 
+The raw QDD records are not themselves the manuscript narrative boundary. `conclude` should compress them into manuscript-oriented evidence packets that preserve provenance while removing raw execution leakage from central claims and story prose.
+
+Evidence packets should distinguish at least:
+
+- supporting evidence
+- boundary evidence
+- negative validation evidence
+- project or resource context that should stay outside central Results claims
+
 ### 3. Story Candidate Generation
 
 Produce 2-3 candidate storylines before drafting.
@@ -77,14 +95,19 @@ Each candidate should include:
 
 - central claim
 - biological or methodological story
-- key supporting evidence
-- negative or boundary evidence
+- narrative arc
+- claim bundle
+- supporting evidence packet references
+- boundary evidence packet references
 - likely reviewer objections
 - claims allowed
+- claim safety limits
 - claims to soften or avoid
 - suitability score
 - recommended title style
 - whether the story is best framed as discovery, method/protocol, case study, benchmark, audit report, or bounded biological hypothesis
+
+The candidates must be substantively different in central claim and narrative arc, not merely the same evidence relabeled with different framing names.
 
 ### 4. User Selection Gate
 
@@ -104,6 +127,19 @@ After user selection, generate manuscript-planning artifacts before writing the 
 - `writing_rationale_matrix.md`
 
 Then generate the TeX manuscript, BibTeX file, figure/table asset map, and audit reports.
+
+The selected story should be a stable, machine-readable manuscript story packet with at least:
+
+- selected story id
+- central claim
+- narrative arc
+- claim bundle
+- supporting packet refs
+- boundary packet refs
+- reviewer objections
+- claim safety limits
+
+Backward-compatible parsing of older selected-story markdown is acceptable, but the canonical restored object should be the manuscript-native story packet.
 
 ### 6. Rendering And Audit
 
@@ -172,6 +208,7 @@ Expected outputs:
 
 ```text
 story_candidates.md
+evidence_packets.md
 selected_story.md
 evidence_audit.md
 claim_safety_audit.md
@@ -206,9 +243,11 @@ Every major Results claim should point to internal QDD evidence. Every literatur
 ## Acceptance Criteria
 
 - Given a QDD project with mixed positive and negative evidence, `conclude` produces multiple distinct story candidates.
+- Story candidates and selected story outputs do not leak raw execution-language fragments such as `TASK-xxx`, `status closed`, `None.`, or `expected_artifacts` in their narrative body.
 - It does not force a strong mechanism story when evidence only supports association or candidate status.
 - It explicitly reports downgraded claims and unused or negative evidence.
 - It stops for user story selection before drafting.
+- The selected story is stable enough to restore and continue drafting through packet refs rather than raw task/study text reuse.
 - After selection, it produces a coherent TeX manuscript and bibliography.
 - Every major Results claim points to QDD evidence.
 - External literature citations have real BibTeX entries.

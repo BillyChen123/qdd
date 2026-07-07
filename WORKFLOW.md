@@ -143,8 +143,9 @@ qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions
 Current behavior:
 
 - Without a selected story, generate story candidates, evidence audit, claim safety audit, reviewer risk audit, render status, then stop at the selection gate.
-- With a selected story, generate `selected_story.md` plus manuscript-planning artifacts under `paper_rewriting_output/`.
-- Final manuscript drafting, TeX/BibTeX generation, PDF/Word rendering, and quantitative draft evaluation are future slices unless the issue explicitly implements them.
+- Without a selected story, also generate `evidence_packets.md` so story candidates can refer to manuscript-native compressed evidence instead of raw study/task prose.
+- With a selected story, generate a machine-readable `selected_story.md`, manuscript-planning artifacts under `paper_rewriting_output/`, the current final paper package, and render status updates.
+- Final manuscript quality and regression gates can still improve in later issues, but conclude's main spine is already implemented in `main`; do not reopen old scaffold/preflight/harvest/planning/draft slices unless a new issue explicitly identifies a regression.
 
 ## Expected Development Posture
 
@@ -185,11 +186,8 @@ Do not silently convert associative evidence into causal or mechanistic claims.
 
 Use these as the intended decomposition unless the Linear issue states a narrower slice:
 
-1. Scaffold the `conclude` skill and PaperSpine vendor provenance.
-2. Implement QDD preflight and evidence harvesting.
-3. Generate and score story candidates with a selection gate.
-4. Generate manuscript-planning artifacts after story selection.
-5. Generate TeX/BibTeX outputs and rendering status audit.
+1. Align the conclude product contract and rebuild the manuscript-native story pipeline.
+2. Upgrade manuscript drafting quality and tighten Parkinson regression gates.
 
 ## Validation
 

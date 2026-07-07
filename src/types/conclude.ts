@@ -10,6 +10,13 @@ export type ConcludeRenderToolName = 'latexmk' | 'xelatex' | 'pdflatex' | 'pando
 export type ConcludeEvidenceKind = 'supporting' | 'negative' | 'boundary';
 export type ConcludeClaimStrength = 'associative' | 'bounded' | 'causal';
 export type ConcludeStoryFraming = 'discovery' | 'method' | 'case-study' | 'benchmark' | 'audit-report' | 'bounded-hypothesis';
+export type ConcludeEvidenceFocus =
+  | 'data-readiness'
+  | 'biological-signal'
+  | 'workflow-validation'
+  | 'claim-boundary'
+  | 'negative-validation'
+  | 'resource-context';
 
 export interface ConcludeRenderToolStatus {
   name: ConcludeRenderToolName;
@@ -70,6 +77,20 @@ export interface ConcludeEvidenceItem {
   tags: string[];
 }
 
+export interface ConcludeEvidencePacket {
+  id: string;
+  kind: ConcludeEvidenceKind;
+  focus: ConcludeEvidenceFocus;
+  label: string;
+  manuscriptSummary: string;
+  rationale: string;
+  claimStrength: ConcludeClaimStrength;
+  evidenceIds: string[];
+  sourcePaths: string[];
+  studyIds: string[];
+  tags: string[];
+}
+
 export interface ConcludePreflightSnapshot {
   contract: ResearchContract | null;
   evolution: EvolutionState | null;
@@ -84,13 +105,26 @@ export interface ConcludeStoryCandidate {
   framing: ConcludeStoryFraming;
   centralClaim: string;
   story: string;
+  narrativeArc: string[];
+  claimBundle: ConcludeStoryClaimBundleEntry[];
+  supportingPacketRefs: string[];
+  boundaryPacketRefs: string[];
   supportingEvidence: ConcludeEvidenceItem[];
   negativeOrBoundaryEvidence: ConcludeEvidenceItem[];
   reviewerObjections: string[];
   claimsAllowed: string[];
+  claimSafetyLimits: string[];
   claimsToSoftenOrAvoid: string[];
   suitabilityScore: number;
   recommendedTitleStyle: string;
+}
+
+export interface ConcludeStoryClaimBundleEntry {
+  id: string;
+  statement: string;
+  evidencePacketRefs: string[];
+  boundaryPacketRefs: string[];
+  validationFocus: string;
 }
 
 export interface ConcludeClaimSafetyAuditEntry {
@@ -106,6 +140,8 @@ export interface ConcludeResultsClaim {
   heading: string;
   claim: string;
   claimStrength: ConcludeClaimStrength;
+  supportingPacketRefs: string[];
+  boundaryPacketRefs: string[];
   supportingEvidence: ConcludeEvidenceItem[];
   boundaryEvidence: ConcludeEvidenceItem[];
   validationFocus: string;
@@ -179,6 +215,7 @@ export interface ConcludeStoryGenerationResult {
   runId: string;
   outputDir: string;
   storyCandidatesPath: string;
+  evidencePacketsPath: string;
   evidenceAuditPath: string;
   claimSafetyAuditPath: string;
   reviewerRiskAuditPath: string;
@@ -190,6 +227,7 @@ export interface ConcludeStoryGenerationResult {
   resultsClaims: ConcludeResultsClaim[];
   candidates: ConcludeStoryCandidate[];
   evidence: ConcludeEvidenceItem[];
+  evidencePackets: ConcludeEvidencePacket[];
   claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
   nextStep: 'select-story' | 'draft-manuscript' | 'review-final-draft';
 }
