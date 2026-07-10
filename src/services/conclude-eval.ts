@@ -18,9 +18,52 @@ const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causal|mechanism|mechanist
 const NEGATIVE_SIGNAL_PATTERN = /\b(block|blocked|negative|failed|failure|dissolv|downgrad|avoid|limit|boundary)\b/i;
 const BIBTEX_ENTRY_PATTERN = /@\s*([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,[\s\S]*?\n\}/g;
 const CITE_COMMAND_PATTERN = /\\cite\{([^}]+)\}/g;
+const RAW_LEAKAGE_PATTERNS = [
+  /\bTASK-\d+\b/gi,
+  /\bSTUDY-\d+\b/gi,
+  /\bstatus\s+(created|confirmed|running|blocked|completed|closed)\b/gi,
+  /\bexpected_artifacts\b/gi,
+  /\bblocked\s*(?:->|→)\s*pivot\b/gi,
+  /\bselected story id\b/gi,
+  /\binternal evidence anchors?\b/gi,
+  /\bboundary evidence\b/gi,
+  /\bclaim safety\b/gi,
+] as const;
+const REPORT_TONE_PATTERNS = [
+  /\bthe abstract remains intentionally conservative\b/gi,
+  /\bthe introduction should\b/gi,
+  /\bthe discussion should\b/gi,
+  /\bbackground citations are intentionally omitted\b/gi,
+  /\bselection gate\b/gi,
+  /\breviewer-facing\b/gi,
+  /\bsubmission-oriented draft\b/gi,
+  /\bmanuscript-native\b/gi,
+] as const;
+const CAUSAL_GUARD_PATTERN = /\b(no|not|without|rather than|instead of|cannot|can't|does not|do not|did not|remains bounded|associative|bounded hypothesis)\b/i;
 
 function normalizeLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function stripLatexComments(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const commentIndex = line.indexOf('%');
+      return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+    })
+    .join('\n');
+}
+
+function extractVisibleManuscriptText(mainTex: string): string {
+  return normalizeLine(
+    stripLatexComments(mainTex)
+      .replace(/\\[a-zA-Z*]+\[[^\]]*\]\{([^}]*)\}/g, ' $1 ')
+      .replace(/\\[a-zA-Z*]+\{([^}]*)\}/g, ' $1 ')
+      .replace(/\\[a-zA-Z*]+/g, ' ')
+      .replace(/[{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+  );
 }
 
 function clampFivePointScore(value: number): 1 | 2 | 3 | 4 | 5 {
@@ -68,6 +111,39 @@ function collectAssociativeToCausalOverclaims(claims: ConcludeResultsClaim[], au
     .map((claim) => `${claim.id}: ${normalizeLine(claim.claim)}`);
 }
 
+function collectRawTaskStudyLeakage(visibleText: string): string[] {
+  const findings: string[] = [];
+
+  for (const pattern of RAW_LEAKAGE_PATTERNS) {
+    const matches = [...visibleText.matchAll(pattern)].map((match) => normalizeLine(match[0]));
+    for (const match of matches) {
+      findings.push(match);
+    }
+  }
+
+  return [...new Set(findings)];
+}
+
+function collectReportToneSignals(visibleText: string): string[] {
+  const findings: string[] = [];
+
+  for (const pattern of REPORT_TONE_PATTERNS) {
+    const matches = [...visibleText.matchAll(pattern)].map((match) => normalizeLine(match[0]));
+    for (const match of matches) {
+      findings.push(match);
+    }
+  }
+
+  return [...new Set(findings)];
+}
+
+function collectVisibleCausalOverclaims(visibleText: string): string[] {
+  const sentences = visibleText.match(/[^.!?]+[.!?]?/g)?.map((sentence) => normalizeLine(sentence)) ?? [];
+  return sentences
+    .filter((sentence) => CAUSAL_SIGNAL_PATTERN.test(sentence) && !CAUSAL_GUARD_PATTERN.test(sentence))
+    .slice(0, 5);
+}
+
 function collectSuspiciousCitationSignals(run: RunConcludeResult, mainTexContent: string, referencesBibContent: string): string[] {
   const findings: string[] = [];
   const referencesCount = countBibtexEntries(referencesBibContent);
@@ -109,20 +185,21 @@ function buildDimensionScore(id: ConcludeEvalDimensionId, score: number, rationa
   };
 }
 
-function scoreLogicalCoherence(mainTex: string, claims: ConcludeResultsClaim[]): ConcludeEvalDimensionScore {
+function scoreLogicalCoherence(mainTex: string, claims: ConcludeResultsClaim[], visibleText: string): ConcludeEvalDimensionScore {
   const sectionCount =
     Number(/\\section\{Introduction\}/.test(mainTex))
     + Number(/\\section\{Results\}/.test(mainTex))
     + Number(/\\section\{Discussion\}/.test(mainTex))
     + Number(/\\begin\{abstract\}/.test(mainTex));
   const subsectionCount = (mainTex.match(/\\subsection\{/g) ?? []).length;
-  const score = 2 + Math.min(2, sectionCount - 2) + (subsectionCount >= Math.max(1, claims.length - 1) ? 1 : 0);
+  const prosePenalty = /\b(the introduction should|the discussion should|the abstract remains intentionally conservative)\b/i.test(visibleText) ? 1 : 0;
+  const score = 2 + Math.min(2, sectionCount - 2) + (subsectionCount >= Math.max(1, claims.length - 1) ? 1 : 0) - prosePenalty;
   return buildDimensionScore(
     'logical_coherence',
     score,
-    sectionCount >= 4
-      ? 'The draft preserves a recognizable manuscript arc from abstract through discussion.'
-      : 'The manuscript skeleton exists but still needs a more complete scientific narrative arc.'
+    sectionCount >= 4 && prosePenalty === 0
+      ? 'The draft preserves a recognizable manuscript arc and reads more like continuous prose than a planning checklist.'
+      : 'The manuscript skeleton exists, but some sections still read like instructions or planning notes rather than narrative.'
   );
 }
 
@@ -145,13 +222,14 @@ function scoreNoveltySignificance(run: RunConcludeResult): ConcludeEvalDimension
 
 function scoreEvidenceTraceability(run: RunConcludeResult, mainTex: string): ConcludeEvalDimensionScore {
   const anchoredClaims = run.resultsClaims.filter((claim) => claim.supportingEvidence.length > 0).length;
-  const anchorMentions = (mainTex.match(/Internal Evidence Anchors/g) ?? []).length;
-  const score = 1 + Math.min(3, anchoredClaims) + (anchorMentions >= Math.max(1, anchoredClaims) ? 1 : 0);
+  const traceComments = (mainTex.match(/% Evidence trace for/g) ?? []).length;
+  const supportingComments = (mainTex.match(/% Supporting anchor \[/g) ?? []).length;
+  const score = 1 + Math.min(2, anchoredClaims) + (traceComments >= Math.max(1, anchoredClaims) ? 1 : 0) + (supportingComments >= Math.max(1, anchoredClaims) ? 1 : 0);
   return buildDimensionScore(
     'evidence_traceability',
     score,
     anchoredClaims === run.resultsClaims.length && run.resultsClaims.length > 0
-      ? 'Each Results claim retains an internal evidence anchor in the draft package.'
+      ? 'Each Results claim retains an internal evidence anchor, now preserved as provenance without overwhelming visible manuscript prose.'
       : 'Some Results claims remain under-anchored and need clearer traceability back to QDD evidence.'
   );
 }
@@ -169,9 +247,9 @@ function scoreClaimSafety(run: RunConcludeResult): ConcludeEvalDimensionScore {
   );
 }
 
-function scoreNegativeEvidenceUse(run: RunConcludeResult, mainTex: string): ConcludeEvalDimensionScore {
+function scoreNegativeEvidenceUse(run: RunConcludeResult, visibleText: string): ConcludeEvalDimensionScore {
   const negativeEvidenceCount = run.resultsClaims.reduce((total, claim) => total + claim.boundaryEvidence.length, 0);
-  const explicitBoundaryMentions = (mainTex.match(/Boundary Evidence/g) ?? []).length + (mainTex.match(NEGATIVE_SIGNAL_PATTERN) ?? []).length;
+  const explicitBoundaryMentions = (visibleText.match(NEGATIVE_SIGNAL_PATTERN) ?? []).length;
   const score = 1 + Math.min(2, negativeEvidenceCount) + (explicitBoundaryMentions > 0 ? 2 : 0);
   return buildDimensionScore(
     'negative_evidence_use',
@@ -182,17 +260,18 @@ function scoreNegativeEvidenceUse(run: RunConcludeResult, mainTex: string): Conc
   );
 }
 
-function scoreManuscriptViability(run: RunConcludeResult, mainTex: string): ConcludeEvalDimensionScore {
+function scoreManuscriptViability(run: RunConcludeResult, mainTex: string, visibleText: string): ConcludeEvalDimensionScore {
   const hasFinalPackage = Boolean(run.finalPaperArtifacts?.mainTex.path);
   const resultsClaims = run.resultsClaims.length;
   const figurePlaceholders = run.finalPaperArtifacts?.figureAssets.filter((asset) => asset.status === 'placeholder').length ?? 0;
-  const score = (hasFinalPackage ? 2 : 1) + Math.min(2, resultsClaims) + (figurePlaceholders === 0 ? 1 : 0);
+  const reportTonePenalty = collectReportToneSignals(visibleText).length > 0 ? 1 : 0;
+  const score = (hasFinalPackage ? 2 : 1) + Math.min(2, resultsClaims) + (figurePlaceholders === 0 ? 1 : 0) - reportTonePenalty;
   return buildDimensionScore(
     'manuscript_viability',
     score,
-    /\\bibliography\{references\}/.test(mainTex)
-      ? 'The manuscript package is structurally reviewable, though remaining citation or figure gaps may still limit submission readiness.'
-      : 'The draft exists, but its manuscript packaging is still incomplete.'
+    /\\bibliography\{references\}/.test(mainTex) && reportTonePenalty === 0
+      ? 'The manuscript package is structurally reviewable and closer to a paper draft, though citation or figure gaps may still limit submission readiness.'
+      : 'The draft exists, but some visible prose still reads more like reporting scaffolding than a submission-oriented manuscript.'
   );
 }
 
@@ -364,18 +443,22 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
   const finalArtifactAuditContent = finalArtifactAuditPath && await FileSystemUtils.fileExists(finalArtifactAuditPath)
     ? await FileSystemUtils.readFile(finalArtifactAuditPath)
     : '';
+  const visibleMainTexText = extractVisibleManuscriptText(mainTexContent);
 
   const missingEvidenceAnchors = collectMissingEvidenceAnchors(concludeRun.resultsClaims);
   const associativeToCausalOverclaims = collectAssociativeToCausalOverclaims(concludeRun.resultsClaims, concludeRun.claimSafetyAudit);
+  const visibleCausalOverclaims = collectVisibleCausalOverclaims(visibleMainTexText);
+  const rawTaskStudyLeakage = collectRawTaskStudyLeakage(visibleMainTexText);
+  const reportToneSignals = collectReportToneSignals(visibleMainTexText);
   const suspiciousCitationSignals = collectSuspiciousCitationSignals(concludeRun, mainTexContent, referencesBibContent);
 
   const dimensions: ConcludeEvalDimensionScore[] = [
-    scoreLogicalCoherence(mainTexContent, concludeRun.resultsClaims),
+    scoreLogicalCoherence(mainTexContent, concludeRun.resultsClaims, visibleMainTexText),
     scoreNoveltySignificance(concludeRun),
     scoreEvidenceTraceability(concludeRun, mainTexContent),
     scoreClaimSafety(concludeRun),
-    scoreNegativeEvidenceUse(concludeRun, mainTexContent),
-    scoreManuscriptViability(concludeRun, mainTexContent),
+    scoreNegativeEvidenceUse(concludeRun, visibleMainTexText),
+    scoreManuscriptViability(concludeRun, mainTexContent, visibleMainTexText),
     scoreCitationIntegrity(concludeRun, referencesBibContent),
   ];
 
@@ -394,9 +477,21 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
     ),
     buildHardFail(
       'associative_to_causal_overclaim',
-      associativeToCausalOverclaims.length > 0,
+      associativeToCausalOverclaims.length > 0 || visibleCausalOverclaims.length > 0,
       'Associative evidence must not be written as a proven causal mechanism.',
-      associativeToCausalOverclaims
+      [...associativeToCausalOverclaims, ...visibleCausalOverclaims]
+    ),
+    buildHardFail(
+      'raw_task_study_leakage',
+      rawTaskStudyLeakage.length > 0,
+      'Visible manuscript prose must not leak raw task/study execution markers or audit headings.',
+      rawTaskStudyLeakage
+    ),
+    buildHardFail(
+      'report_tone_dominates_manuscript',
+      reportToneSignals.length >= 2,
+      'Visible manuscript prose must read like a paper draft rather than instructions, audit scaffolding, or report-tone meta commentary.',
+      reportToneSignals
     ),
   ];
 
@@ -481,3 +576,9 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
 
   return report;
 }
+
+export const __testOnly = {
+  extractVisibleManuscriptText,
+  collectRawTaskStudyLeakage,
+  collectReportToneSignals,
+};

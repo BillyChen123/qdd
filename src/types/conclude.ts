@@ -260,7 +260,9 @@ export interface ConcludeEvalDimensionScore {
 export type ConcludeEvalHardFailId =
   | 'missing_internal_evidence_anchor'
   | 'fabricated_citation_or_bibtex'
-  | 'associative_to_causal_overclaim';
+  | 'associative_to_causal_overclaim'
+  | 'raw_task_study_leakage'
+  | 'report_tone_dominates_manuscript';
 
 export interface ConcludeEvalHardFail {
   id: ConcludeEvalHardFailId;

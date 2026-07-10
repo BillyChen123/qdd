@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
-import { runConcludeEval } from '../services/conclude-eval.js';
+import { __testOnly, runConcludeEval } from '../services/conclude-eval.js';
 const PARKINSON_CASE_ENV = 'QDD_CONCLUDE_EVAL_CASE';
 test('Parkinson conclude golden-case eval writes JSON and Markdown reports when case path is configured', async (t) => {
     const casePath = process.env[PARKINSON_CASE_ENV]?.trim();
@@ -53,5 +53,18 @@ test('Parkinson conclude golden-case eval writes JSON and Markdown reports when 
     }
     assert.equal(path.dirname(report.outputs.concludeEvalJsonPath), report.outputs.outputDir);
     assert.equal(path.dirname(report.outputs.concludeEvalMarkdownPath), report.outputs.outputDir);
+});
+test('conclude eval visible-text detectors catch raw leakage and report-tone scaffolding', () => {
+    const visibleText = __testOnly.extractVisibleManuscriptText(`
+    \\section{Results}
+    The discussion should explain how the selected story remains bounded. TASK-999 remained blocked.
+    % TASK-001 in comment should be ignored
+    \\section{Discussion}
+  `);
+    const rawLeakageSignals = __testOnly.collectRawTaskStudyLeakage(visibleText);
+    const reportToneSignals = __testOnly.collectReportToneSignals(visibleText);
+    assert.ok(rawLeakageSignals.some((signal) => /TASK-999/.test(signal)));
+    assert.ok(reportToneSignals.some((signal) => /the discussion should/i.test(signal)));
+    assert.ok(rawLeakageSignals.every((signal) => !/TASK-001/.test(signal)));
 });
 //# sourceMappingURL=conclude-eval.test.js.map
