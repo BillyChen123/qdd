@@ -3,67 +3,472 @@ import type {
   ConcludeClaimSafetyAuditEntry,
   ConcludeEvalDimensionId,
   ConcludeEvalDimensionScore,
+  ConcludeEvalFinding,
+  ConcludeEvalGate,
   ConcludeEvalHardFail,
   ConcludeEvalHardFailId,
+  ConcludeEvalOracle,
   ConcludeEvalReport,
+  ConcludeFigureAssetMapEntry,
   ConcludeResultsClaim,
   RunConcludeEvalOptions,
   RunConcludeResult,
 } from '../types.js';
 import { FileSystemUtils } from '../utils/file-system.js';
+import { loadConcludeEvalOracle } from './conclude-eval-oracle.js';
 import { runConclude } from './conclude.js';
 
-const ASSOCIATIVE_SIGNAL_PATTERN = /\b(associate|associated|association|correlate|correlated|correlation|candidate state|candidate marker|proxy|trend)\b/i;
-const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causal|mechanism|mechanistic|proof|prove|proves|define|defines|defined|effect)\b/i;
+const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causes|caused|causal|mechanism|mechanistic|proof|prove|proves|proven|define|defines|defined)\b/i;
+const CAUSAL_GUARD_PATTERN = /\b(no|not|without|rather than|instead of|cannot|can't|does not|do not|did not|associative|association|bounded|compatible|hypothesis|requires? validation)\b/i;
 const NEGATIVE_SIGNAL_PATTERN = /\b(block|blocked|negative|failed|failure|dissolv|downgrad|avoid|limit|boundary)\b/i;
-const BIBTEX_ENTRY_PATTERN = /@\s*([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,[\s\S]*?\n\}/g;
-const CITE_COMMAND_PATTERN = /\\cite\{([^}]+)\}/g;
-const RAW_LEAKAGE_PATTERNS = [
-  /\bTASK-\d+\b/gi,
-  /\bSTUDY-\d+\b/gi,
-  /\bstatus\s+(created|confirmed|running|blocked|completed|closed)\b/gi,
-  /\bexpected_artifacts\b/gi,
-  /\bblocked\s*(?:->|→)\s*pivot\b/gi,
-  /\bselected story id\b/gi,
-  /\binternal evidence anchors?\b/gi,
-  /\bboundary evidence\b/gi,
-  /\bclaim safety\b/gi,
+const BIBTEX_ENTRY_PATTERN = /@\s*([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,[\s\S]*?\n?\}/g;
+const CITE_COMMAND_PATTERN = /\\(?:cite|citep|citet|parencite|textcite|autocite)\w*\{([^}]+)\}/g;
+const QUANTITATIVE_ANCHOR_PATTERN = /(?:\d+(?:\.\d+)?\\?%|\b(?:FDR|q(?:-value)?|p(?:-value)?|log2FC|CI)\s*[=<>]|\b\d[\d,]*(?:\.\d+)?\s+(?:donors?|samples?|nuclei|spots|transcripts?|genes?|loci|events?)\b)/i;
+const FIGURE_TABLE_ANCHOR_PATTERN = /(?:\\(?:ref|autoref|cref)\{[^}]+\}|\b(?:figure|fig\.|table)\s*(?:\\?\d+|reference)\b)/i;
+const INVENTORY_DESCRIPTOR_PATTERN = /\b(?:analysis matrix|abundance summary|autocorrelation statistics|correlation|artifact descriptions?|dataset descriptions?|evidence chain|per-pseudo-bulk QC metrics|nuclei count and fraction)\b/gi;
+const META_WRITING_PATTERNS = [
+  /\bthe (?:abstract|introduction|results|discussion|section) (?:should|frames?|remains|is organized)\b/gi,
+  /\b(?:citations?|bibtex entries?) (?:are|is) (?:currently )?(?:unavailable|not yet available|missing)\b/gi,
+  /\b(?:should|must|will|need to) be added (?:later|manually|before submission)\b/gi,
+  /\b(?:selection gate|reviewer-facing|submission-oriented|manuscript-native|writing commentary|drafting instructions?)\b/gi,
 ] as const;
-const REPORT_TONE_PATTERNS = [
-  /\bthe abstract remains intentionally conservative\b/gi,
-  /\bthe introduction should\b/gi,
-  /\bthe discussion should\b/gi,
-  /\bbackground citations are intentionally omitted\b/gi,
-  /\bselection gate\b/gi,
-  /\breviewer-facing\b/gi,
-  /\bsubmission-oriented draft\b/gi,
-  /\bmanuscript-native\b/gi,
+const METADATA_PROSE_PATTERNS = [
+  /[.!?]\s*[,.;:!?]+/g,
+  /…\s*[;,.]/g,
+  /;\s*(?:requires?|contains?|loads?|extracts?|exports?)\b/gi,
+  /\b(?:status|expected_artifacts|source path|study id|task id|artifact id)\s*[:=]/gi,
 ] as const;
-const CAUSAL_GUARD_PATTERN = /\b(no|not|without|rather than|instead of|cannot|can't|does not|do not|did not|remains bounded|associative|bounded hypothesis)\b/i;
+
+interface VisibleManuscriptLine {
+  filePath: string;
+  line: number;
+  raw: string;
+  text: string;
+}
+
+interface ManuscriptQualityInput {
+  oracle: ConcludeEvalOracle;
+  mainTexContent: string;
+  referencesBibContent: string;
+  mainTexPath: string;
+  referencesBibPath: string;
+  resultsClaims: ConcludeResultsClaim[];
+  figureAssets: ConcludeFigureAssetMapEntry[];
+}
+
+interface ManuscriptQualityResult {
+  visibleText: string;
+  hardFails: ConcludeEvalHardFail[];
+  gate: ConcludeEvalGate;
+}
 
 function normalizeLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function truncateExcerpt(value: string): string {
+  const normalized = normalizeLine(value);
+  return normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
+}
+
+function excerptAroundMatch(value: string, matchedText?: string): string {
+  const normalized = normalizeLine(value);
+  if (!matchedText || normalized.length <= 320) {
+    return truncateExcerpt(normalized);
+  }
+  const matchIndex = normalized.toLowerCase().indexOf(normalizeLine(matchedText).toLowerCase());
+  if (matchIndex < 0) {
+    return truncateExcerpt(normalized);
+  }
+  const start = Math.max(0, matchIndex - 120);
+  const end = Math.min(normalized.length, Math.max(matchIndex + matchedText.length + 120, start + 317));
+  return `${start > 0 ? '...' : ''}${normalized.slice(start, end)}${end < normalized.length ? '...' : ''}`;
+}
+
+function findLatexCommentStart(line: string): number {
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] !== '%') {
+      continue;
+    }
+    let precedingBackslashes = 0;
+    for (let cursor = index - 1; cursor >= 0 && line[cursor] === '\\'; cursor -= 1) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 === 0) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function stripLatexComments(text: string): string {
   return text
     .split('\n')
     .map((line) => {
-      const commentIndex = line.indexOf('%');
+      const commentIndex = findLatexCommentStart(line);
       return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
     })
     .join('\n');
 }
 
-function extractVisibleManuscriptText(mainTex: string): string {
+function latexLineToVisibleText(line: string): string {
   return normalizeLine(
-    stripLatexComments(mainTex)
-      .replace(/\\[a-zA-Z*]+\[[^\]]*\]\{([^}]*)\}/g, ' $1 ')
-      .replace(/\\[a-zA-Z*]+\{([^}]*)\}/g, ' $1 ')
-      .replace(/\\[a-zA-Z*]+/g, ' ')
+    line
+      .replace(/\\(?:cite|citep|citet|parencite|textcite|autocite)\w*\{[^}]*\}/g, ' ')
+      .replace(/\\(?:label|bibliography|bibliographystyle|includegraphics|input|include)\*?(?:\[[^\]]*\])?\{[^}]*\}/g, ' ')
+      .replace(/\\(?:ref|autoref|cref)\*?\{[^}]*\}/g, ' figure reference ')
+      .replace(/\\(?:begin|end)\{[^}]*\}/g, ' ')
+      .replace(/\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}/g, ' $1 ')
+      .replace(/\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?/g, ' ')
+      .replace(/\\([%&#_$])/g, '$1')
       .replace(/[{}]/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/~/g, ' ')
   );
+}
+
+function extractVisibleManuscriptLines(mainTex: string, filePath: string): VisibleManuscriptLine[] {
+  return mainTex.split('\n').flatMap((rawLine, index) => {
+    const commentIndex = findLatexCommentStart(rawLine);
+    const uncommented = commentIndex >= 0 ? rawLine.slice(0, commentIndex) : rawLine;
+    const text = latexLineToVisibleText(uncommented);
+    if (!text) {
+      return [];
+    }
+    return [{ filePath, line: index + 1, raw: uncommented, text }];
+  });
+}
+
+function extractVisibleManuscriptText(mainTex: string): string {
+  return normalizeLine(extractVisibleManuscriptLines(mainTex, 'main.tex').map((line) => line.text).join(' '));
+}
+
+function makeFinding(line: VisibleManuscriptLine, reason: string, matchedText?: string): ConcludeEvalFinding {
+  const rawMatchIndex = matchedText
+    ? line.raw.toLowerCase().indexOf(matchedText.toLowerCase())
+    : -1;
+  return {
+    filePath: line.filePath,
+    line: line.line,
+    column: rawMatchIndex >= 0 ? rawMatchIndex + 1 : 1,
+    excerpt: excerptAroundMatch(line.text, matchedText),
+    reason: normalizeLine(reason),
+  };
+}
+
+function makeFileFinding(filePath: string, excerpt: string, reason: string, line = 1, column = 1): ConcludeEvalFinding {
+  return {
+    filePath,
+    line,
+    column,
+    excerpt: truncateExcerpt(excerpt),
+    reason: normalizeLine(reason),
+  };
+}
+
+function uniqueFindings(findings: ConcludeEvalFinding[]): ConcludeEvalFinding[] {
+  const seen = new Set<string>();
+  return findings.filter((finding) => {
+    const key = `${finding.filePath}:${finding.line}:${finding.reason}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function collectRegexFindings(
+  lines: VisibleManuscriptLine[],
+  patterns: readonly RegExp[],
+  reason: string
+): ConcludeEvalFinding[] {
+  const findings: ConcludeEvalFinding[] = [];
+  for (const line of lines) {
+    for (const pattern of patterns) {
+      const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+      const matches = line.text.matchAll(new RegExp(pattern.source, flags));
+      for (const match of matches) {
+        findings.push(makeFinding(line, reason, match[0]));
+      }
+    }
+  }
+  return uniqueFindings(findings);
+}
+
+function collectEvidenceInventoryFindings(lines: VisibleManuscriptLine[]): ConcludeEvalFinding[] {
+  const findings: ConcludeEvalFinding[] = [];
+  for (const line of lines) {
+    const descriptorCount = [...line.text.matchAll(new RegExp(INVENTORY_DESCRIPTOR_PATTERN.source, 'gi'))].length;
+    const selectedEvidenceChain = /\bacross the selected evidence chain\b/i.test(line.text);
+    const semicolonInventory = /\bspecifically\b/i.test(line.text) && (line.text.match(/;/g) ?? []).length >= 2;
+    const concatenatedDescriptors = descriptorCount >= 2 && /(?:;|\bwhile\b|\bfollowed by\b)/i.test(line.text);
+    if (selectedEvidenceChain || semicolonInventory || concatenatedDescriptors) {
+      const matchedText = selectedEvidenceChain
+        ? 'Across the selected evidence chain'
+        : semicolonInventory
+          ? 'Specifically'
+          : undefined;
+      findings.push(makeFinding(
+        line,
+        'Visible prose enumerates evidence or artifact descriptions instead of stating a synthesized scientific result.',
+        matchedText
+      ));
+    }
+  }
+  return uniqueFindings(findings);
+}
+
+function oraclePatternIsQddIdentifier(pattern: string): boolean {
+  return /(?:EV-)?(?:ART|STUDY|TASK)-/i.test(pattern);
+}
+
+function collectOraclePatternFindings(
+  lines: VisibleManuscriptLine[],
+  patterns: string[],
+  selectPattern: (pattern: string) => boolean,
+  reason: string
+): ConcludeEvalFinding[] {
+  return collectRegexFindings(
+    lines,
+    patterns.filter(selectPattern).map((pattern) => new RegExp(pattern, 'gi')),
+    reason
+  );
+}
+
+function collectFragmentedOrMetadataFindings(
+  lines: VisibleManuscriptLine[],
+  oracle: ConcludeEvalOracle
+): ConcludeEvalFinding[] {
+  return uniqueFindings([
+    ...collectRegexFindings(
+      lines,
+      METADATA_PROSE_PATTERNS,
+      'Visible prose contains broken punctuation, a sentence fragment, or metadata-shaped field text.'
+    ),
+    ...collectOraclePatternFindings(
+      lines,
+      oracle.forbiddenVisiblePatterns,
+      oraclePatternIsQddIdentifier,
+      'A QDD study, task, or artifact identifier is exposed in reader-visible manuscript prose.'
+    ),
+  ]);
+}
+
+function collectMetaWritingFindings(lines: VisibleManuscriptLine[], oracle: ConcludeEvalOracle): ConcludeEvalFinding[] {
+  return uniqueFindings([
+    ...collectRegexFindings(
+      lines,
+      META_WRITING_PATTERNS,
+      'Reader-visible prose exposes drafting instructions, audit language, or a future-work placeholder.'
+    ),
+    ...collectOraclePatternFindings(
+      lines,
+      oracle.forbiddenVisiblePatterns,
+      (pattern) => !oraclePatternIsQddIdentifier(pattern),
+      'Reader-visible prose matches an Oracle-forbidden meta-writing or workflow phrase.'
+    ),
+  ]);
+}
+
+function collectUnsupportedCentralClaimFindings(lines: VisibleManuscriptLine[]): ConcludeEvalFinding[] {
+  const findings: ConcludeEvalFinding[] = [];
+  for (const line of lines) {
+    const sentences = line.text.match(/[^.!?]+[.!?]?/g) ?? [];
+    for (const sentence of sentences) {
+      const normalized = normalizeLine(sentence);
+      if (CAUSAL_SIGNAL_PATTERN.test(normalized) && !CAUSAL_GUARD_PATTERN.test(normalized)) {
+        findings.push(makeFinding(
+          { ...line, text: normalized },
+          'A visible central statement uses causal or mechanistic language without an explicit evidence-bounded guard.'
+        ));
+      }
+    }
+  }
+  return uniqueFindings(findings);
+}
+
+function lineForClaim(lines: VisibleManuscriptLine[], claim: ConcludeResultsClaim): VisibleManuscriptLine | undefined {
+  const normalizedClaim = normalizeLine(claim.claim).toLowerCase();
+  const searchText = normalizedClaim.slice(0, Math.min(80, normalizedClaim.length));
+  return lines.find((line) => line.text.toLowerCase().includes(searchText))
+    ?? lines.find((line) => line.text.toLowerCase().includes(normalizeLine(claim.heading).toLowerCase()));
+}
+
+function hasResultAnchor(text: string): boolean {
+  return QUANTITATIVE_ANCHOR_PATTERN.test(text) || FIGURE_TABLE_ANCHOR_PATTERN.test(text);
+}
+
+function collectMissingResultAnchorFindings(
+  lines: VisibleManuscriptLine[],
+  mainTexPath: string,
+  resultsClaims: ConcludeResultsClaim[],
+  figureAssets: ConcludeFigureAssetMapEntry[],
+  inventoryFindings: ConcludeEvalFinding[]
+): ConcludeEvalFinding[] {
+  if (lines.length === 0) {
+    return [makeFileFinding(
+      mainTexPath,
+      '<empty or missing manuscript>',
+      'No reader-visible manuscript prose exists from which a major Results claim can be grounded.'
+    )];
+  }
+
+  const findings: ConcludeEvalFinding[] = [];
+  if (resultsClaims.length > 0) {
+    for (const claim of resultsClaims) {
+      const claimLine = lineForClaim(lines, claim);
+      if (!claimLine) {
+        continue;
+      }
+      const availableFigure = figureAssets.some(
+        (asset) => asset.resultClaimId === claim.id && asset.status === 'available'
+      );
+      if (!availableFigure && !hasResultAnchor(`${claim.claim} ${claimLine.raw}`)) {
+        findings.push(makeFinding(
+          claimLine,
+          `Major Results claim ${claim.id} has no usable figure, table, or verifiable quantitative value in visible prose.`
+        ));
+      }
+    }
+  } else {
+    for (const inventoryFinding of inventoryFindings) {
+      const line = lines.find((candidate) => candidate.line === inventoryFinding.line);
+      if (line && !hasResultAnchor(line.raw)) {
+        findings.push(makeFinding(
+          line,
+          'The evidence-inventory statement has no usable figure, table, or verifiable quantitative value grounding it as a Results claim.'
+        ));
+      }
+    }
+  }
+  return uniqueFindings(findings);
+}
+
+function extractBibtexKeys(content: string): string[] {
+  return [...content.matchAll(new RegExp(BIBTEX_ENTRY_PATTERN.source, 'g'))].map((match) => match[2]);
+}
+
+function extractCiteKeys(content: string): string[] {
+  return [...content.matchAll(new RegExp(CITE_COMMAND_PATTERN.source, 'g'))]
+    .flatMap((match) => match[1].split(','))
+    .map((key) => normalizeLine(key))
+    .filter((key) => key.length > 0);
+}
+
+function collectInvalidCitationFindings(
+  lines: VisibleManuscriptLine[],
+  mainTexContent: string,
+  referencesBibContent: string,
+  referencesBibPath: string
+): ConcludeEvalFinding[] {
+  const findings: ConcludeEvalFinding[] = [];
+  const bibtexKeys = new Set(extractBibtexKeys(referencesBibContent));
+  const citeKeys = extractCiteKeys(mainTexContent);
+  const missingCiteKeys = [...new Set(citeKeys.filter((key) => !bibtexKeys.has(key)))];
+
+  if (bibtexKeys.size === 0) {
+    findings.push(makeFileFinding(
+      referencesBibPath,
+      referencesBibContent.trim() || '<empty bibliography>',
+      'No parseable, verified BibTeX entry is available; an empty bibliography cannot be reported as citation-viable.'
+    ));
+  }
+
+  if ((referencesBibContent.match(/@/g) ?? []).length > bibtexKeys.size) {
+    const malformedLineIndex = referencesBibContent.split('\n').findIndex((line) => line.includes('@'));
+    const malformedLine = referencesBibContent.split('\n')[Math.max(0, malformedLineIndex)] ?? '<malformed BibTeX>';
+    findings.push(makeFileFinding(
+      referencesBibPath,
+      malformedLine,
+      'references.bib contains an entry that cannot be parsed as BibTeX.',
+      Math.max(0, malformedLineIndex) + 1
+    ));
+  }
+
+  for (const missingKey of missingCiteKeys) {
+    const line = lines.find((candidate) => candidate.raw.includes(missingKey));
+    findings.push(line
+      ? makeFinding(line, `TeX citation key ${missingKey} is unresolved in references.bib.`, missingKey)
+      : makeFileFinding(referencesBibPath, missingKey, `TeX citation key ${missingKey} is unresolved in references.bib.`));
+  }
+  return uniqueFindings(findings);
+}
+
+function buildHardFail(
+  oracle: ConcludeEvalOracle,
+  id: ConcludeEvalHardFailId,
+  findings: ConcludeEvalFinding[]
+): ConcludeEvalHardFail {
+  const oracleFailure = oracle.hardFailures.find((failure) => failure.id === id);
+  if (!oracleFailure) {
+    throw new Error(`Conclude eval oracle does not define hard failure ${id}.`);
+  }
+  return {
+    id,
+    triggered: findings.length > 0,
+    rationale: oracleFailure.description,
+    findings: uniqueFindings(findings),
+  };
+}
+
+function buildGate(hardFails: ConcludeEvalHardFail[]): ConcludeEvalGate {
+  const triggeredIds = hardFails.filter((failure) => failure.triggered).map((failure) => failure.id);
+  if (triggeredIds.length > 0) {
+    return {
+      status: 'fail',
+      passing: false,
+      reason: `Hard-fail override: ${triggeredIds.join(', ')}. Aggregate scores remain diagnostic only.`,
+    };
+  }
+  return {
+    status: 'pass',
+    passing: true,
+    reason: 'No Oracle hard failure was detected; aggregate scores remain diagnostic only.',
+  };
+}
+
+function evaluateManuscriptQuality(input: ManuscriptQualityInput): ManuscriptQualityResult {
+  const visibleLines = extractVisibleManuscriptLines(input.mainTexContent, input.mainTexPath);
+  const inventoryFindings = collectEvidenceInventoryFindings(visibleLines);
+  const fragmentedFindings = collectFragmentedOrMetadataFindings(visibleLines, input.oracle);
+  const unsupportedClaimFindings = collectUnsupportedCentralClaimFindings(visibleLines);
+  const missingResultAnchorFindings = collectMissingResultAnchorFindings(
+    visibleLines,
+    input.mainTexPath,
+    input.resultsClaims,
+    input.figureAssets,
+    inventoryFindings
+  );
+  const invalidCitationFindings = collectInvalidCitationFindings(
+    visibleLines,
+    input.mainTexContent,
+    input.referencesBibContent,
+    input.referencesBibPath
+  );
+  const metaWritingFindings = collectMetaWritingFindings(visibleLines, input.oracle);
+
+  const detectedHardFails = [
+    buildHardFail(input.oracle, 'evidence-inventory-prose', inventoryFindings),
+    buildHardFail(input.oracle, 'fragmented-or-metadata-prose', fragmentedFindings),
+    buildHardFail(input.oracle, 'unsupported-central-claim', unsupportedClaimFindings),
+    buildHardFail(input.oracle, 'missing-result-anchor', missingResultAnchorFindings),
+    buildHardFail(input.oracle, 'invalid-citation', invalidCitationFindings),
+    buildHardFail(input.oracle, 'meta-writing', metaWritingFindings),
+  ];
+  const gate = buildGate(detectedHardFails);
+  const falsePositiveFindings = gate.passing && detectedHardFails.some((failure) => failure.triggered)
+    ? [makeFileFinding(input.mainTexPath, '<gate invariant violation>', 'The evaluator marked a hard-failing manuscript as passing.')]
+    : [];
+  const hardFails = [
+    ...detectedHardFails,
+    buildHardFail(input.oracle, 'false-positive-evaluation', falsePositiveFindings),
+  ];
+
+  return {
+    visibleText: normalizeLine(visibleLines.map((line) => line.text).join(' ')),
+    hardFails,
+    gate: buildGate(hardFails),
+  };
 }
 
 function clampFivePointScore(value: number): 1 | 2 | 3 | 4 | 5 {
@@ -75,175 +480,86 @@ function slugifyTimestamp(date: Date): string {
 }
 
 function countBibtexEntries(content: string): number {
-  return [...content.matchAll(BIBTEX_ENTRY_PATTERN)].length;
-}
-
-function extractBibtexKeys(content: string): string[] {
-  return [...content.matchAll(BIBTEX_ENTRY_PATTERN)].map((match) => match[2]);
-}
-
-function extractCiteKeys(content: string): string[] {
-  return [...content.matchAll(CITE_COMMAND_PATTERN)]
-    .flatMap((match) => match[1].split(','))
-    .map((key) => normalizeLine(key))
-    .filter((key) => key.length > 0);
-}
-
-function collectMissingEvidenceAnchors(claims: ConcludeResultsClaim[]): string[] {
-  return claims
-    .filter((claim) => claim.supportingEvidence.length === 0)
-    .map((claim) => `${claim.id}: ${normalizeLine(claim.claim)}`);
-}
-
-function collectAssociativeToCausalOverclaims(claims: ConcludeResultsClaim[], audit: ConcludeClaimSafetyAuditEntry[]): string[] {
-  const softenedClaims = new Set(
-    audit
-      .filter((entry) => entry.action === 'soften')
-      .map((entry) => normalizeLine(entry.claim).toLowerCase())
-  );
-
-  return claims
-    .filter((claim) => {
-      const normalizedClaim = normalizeLine(claim.claim).toLowerCase();
-      return softenedClaims.has(normalizedClaim)
-        || (ASSOCIATIVE_SIGNAL_PATTERN.test(claim.claim) && CAUSAL_SIGNAL_PATTERN.test(claim.claim));
-    })
-    .map((claim) => `${claim.id}: ${normalizeLine(claim.claim)}`);
-}
-
-function collectRawTaskStudyLeakage(visibleText: string): string[] {
-  const findings: string[] = [];
-
-  for (const pattern of RAW_LEAKAGE_PATTERNS) {
-    const matches = [...visibleText.matchAll(pattern)].map((match) => normalizeLine(match[0]));
-    for (const match of matches) {
-      findings.push(match);
-    }
-  }
-
-  return [...new Set(findings)];
-}
-
-function collectReportToneSignals(visibleText: string): string[] {
-  const findings: string[] = [];
-
-  for (const pattern of REPORT_TONE_PATTERNS) {
-    const matches = [...visibleText.matchAll(pattern)].map((match) => normalizeLine(match[0]));
-    for (const match of matches) {
-      findings.push(match);
-    }
-  }
-
-  return [...new Set(findings)];
-}
-
-function collectVisibleCausalOverclaims(visibleText: string): string[] {
-  const sentences = visibleText.match(/[^.!?]+[.!?]?/g)?.map((sentence) => normalizeLine(sentence)) ?? [];
-  return sentences
-    .filter((sentence) => CAUSAL_SIGNAL_PATTERN.test(sentence) && !CAUSAL_GUARD_PATTERN.test(sentence))
-    .slice(0, 5);
-}
-
-function collectSuspiciousCitationSignals(run: RunConcludeResult, mainTexContent: string, referencesBibContent: string): string[] {
-  const findings: string[] = [];
-  const referencesCount = countBibtexEntries(referencesBibContent);
-  const bibliographyUses = (referencesBibContent.match(/@/g) ?? []).length;
-  const bibtexKeys = new Set(extractBibtexKeys(referencesBibContent));
-  const citeKeys = extractCiteKeys(mainTexContent);
-  const missingCiteKeys = citeKeys.filter((key) => !bibtexKeys.has(key));
-
-  if (run.finalPaperArtifacts?.citationIntegrity.status === 'gap' && referencesCount > 0 && bibliographyUses === 0) {
-    findings.push('references.bib contains malformed entries that did not parse as valid BibTeX.');
-  }
-
-  if (run.finalPaperArtifacts?.citationIntegrity.status === 'complete' && referencesCount === 0) {
-    findings.push('Citation integrity was marked complete without any parseable BibTeX entry.');
-  }
-
-  if (missingCiteKeys.length > 0) {
-    findings.push(`main.tex cites missing BibTeX key(s): ${[...new Set(missingCiteKeys)].join(', ')}.`);
-  }
-
-  return findings;
+  return extractBibtexKeys(content).length;
 }
 
 function buildDimensionScore(id: ConcludeEvalDimensionId, score: number, rationale: string): ConcludeEvalDimensionScore {
-  const labels: Record<ConcludeEvalDimensionId, string> = {
-    logical_coherence: 'logical_coherence',
-    novelty_significance: 'novelty_significance',
-    evidence_traceability: 'evidence_traceability',
-    claim_safety: 'claim_safety',
-    negative_evidence_use: 'negative_evidence_use',
-    manuscript_viability: 'manuscript_viability',
-    citation_integrity: 'citation_integrity',
-  };
   return {
     id,
-    label: labels[id],
+    label: id,
     score: clampFivePointScore(score),
     rationale: normalizeLine(rationale),
   };
 }
 
-function scoreLogicalCoherence(mainTex: string, claims: ConcludeResultsClaim[], visibleText: string): ConcludeEvalDimensionScore {
-  const sectionCount =
-    Number(/\\section\{Introduction\}/.test(mainTex))
-    + Number(/\\section\{Results\}/.test(mainTex))
-    + Number(/\\section\{Discussion\}/.test(mainTex))
-    + Number(/\\begin\{abstract\}/.test(mainTex));
-  const subsectionCount = (mainTex.match(/\\subsection\{/g) ?? []).length;
-  const prosePenalty = /\b(the introduction should|the discussion should|the abstract remains intentionally conservative)\b/i.test(visibleText) ? 1 : 0;
-  const score = 2 + Math.min(2, sectionCount - 2) + (subsectionCount >= Math.max(1, claims.length - 1) ? 1 : 0) - prosePenalty;
+function triggeredFindingCount(hardFails: ConcludeEvalHardFail[], id: ConcludeEvalHardFailId): number {
+  return hardFails.find((failure) => failure.id === id)?.findings.length ?? 0;
+}
+
+function scoreLogicalCoherence(mainTex: string, hardFails: ConcludeEvalHardFail[]): ConcludeEvalDimensionScore {
+  const requiredStructureCount = [
+    /\\begin\{abstract\}/.test(mainTex),
+    /\\section\{Introduction\}/.test(mainTex),
+    /\\section\{Results\}/.test(mainTex),
+    /\\section\{Discussion\}/.test(mainTex),
+  ].filter(Boolean).length;
+  const inventoryPenalty = triggeredFindingCount(hardFails, 'evidence-inventory-prose') > 0 ? 2 : 0;
+  const fragmentedPenalty = triggeredFindingCount(hardFails, 'fragmented-or-metadata-prose') > 0 ? 2 : 0;
+  const metaPenalty = triggeredFindingCount(hardFails, 'meta-writing') > 0 ? 1 : 0;
+  const groundingPenalty = triggeredFindingCount(hardFails, 'missing-result-anchor') > 0 ? 1 : 0;
+  const structurePenalty = requiredStructureCount < 4 ? 1 : 0;
+  const score = 5 - inventoryPenalty - fragmentedPenalty - metaPenalty - groundingPenalty - structurePenalty;
+  const semanticFailureCount = inventoryPenalty + fragmentedPenalty + metaPenalty + groundingPenalty;
   return buildDimensionScore(
     'logical_coherence',
     score,
-    sectionCount >= 4 && prosePenalty === 0
-      ? 'The draft preserves a recognizable manuscript arc and reads more like continuous prose than a planning checklist.'
-      : 'The manuscript skeleton exists, but some sections still read like instructions or planning notes rather than narrative.'
+    semanticFailureCount > 0
+      ? 'The diagnostic score is reduced by evidence-inventory, prose-integrity, meta-writing, or result-grounding failures; section presence does not restore coherence.'
+      : requiredStructureCount === 4
+        ? 'Required sections exist and no deterministic semantic coherence failure was detected.'
+        : 'The draft lacks required manuscript structure and cannot receive a high coherence diagnostic.'
   );
 }
 
 function scoreNoveltySignificance(run: RunConcludeResult): ConcludeEvalDimensionScore {
   const candidate = run.selectedCandidate;
   const objectionPenalty = Math.min(2, candidate?.reviewerObjections.length ?? 0);
-  const framingBonus =
-    candidate?.framing === 'discovery' ? 2 :
-    candidate?.framing === 'bounded-hypothesis' ? 1 :
-    0;
-  const score = 2 + framingBonus + Math.max(0, 1 - objectionPenalty);
+  const framingBonus = candidate?.framing === 'discovery' ? 2 : candidate?.framing === 'bounded-hypothesis' ? 1 : 0;
   return buildDimensionScore(
     'novelty_significance',
-    score,
+    2 + framingBonus + Math.max(0, 1 - objectionPenalty),
     candidate
-      ? `The selected ${candidate.framing} framing shows some manuscript value, but reviewer objections still bound the significance claim.`
-      : 'No selected story was available to judge novelty and significance.'
+      ? `The selected ${candidate.framing} framing is diagnostic context only; reviewer objections continue to bound significance.`
+      : 'No selected story was available to diagnose novelty and significance.'
   );
 }
 
-function scoreEvidenceTraceability(run: RunConcludeResult, mainTex: string): ConcludeEvalDimensionScore {
-  const anchoredClaims = run.resultsClaims.filter((claim) => claim.supportingEvidence.length > 0).length;
-  const traceComments = (mainTex.match(/% Evidence trace for/g) ?? []).length;
-  const supportingComments = (mainTex.match(/% Supporting anchor \[/g) ?? []).length;
-  const score = 1 + Math.min(2, anchoredClaims) + (traceComments >= Math.max(1, anchoredClaims) ? 1 : 0) + (supportingComments >= Math.max(1, anchoredClaims) ? 1 : 0);
+function scoreEvidenceTraceability(run: RunConcludeResult, hardFails: ConcludeEvalHardFail[]): ConcludeEvalDimensionScore {
+  const missingAnchorCount = triggeredFindingCount(hardFails, 'missing-result-anchor');
+  const claimCount = run.resultsClaims.length;
+  const score = claimCount === 0 ? 1 : 5 - Math.min(4, missingAnchorCount * 2);
   return buildDimensionScore(
     'evidence_traceability',
     score,
-    anchoredClaims === run.resultsClaims.length && run.resultsClaims.length > 0
-      ? 'Each Results claim retains an internal evidence anchor, now preserved as provenance without overwhelming visible manuscript prose.'
-      : 'Some Results claims remain under-anchored and need clearer traceability back to QDD evidence.'
+    missingAnchorCount > 0
+      ? `${missingAnchorCount} major Results claim(s) lack reader-visible figure, table, or value grounding; provenance comments alone are insufficient.`
+      : claimCount > 0
+        ? 'Major Results claims retain internal provenance and reader-visible grounding.'
+        : 'No Results claims were available to trace.'
   );
 }
 
-function scoreClaimSafety(run: RunConcludeResult): ConcludeEvalDimensionScore {
+function scoreClaimSafety(run: RunConcludeResult, hardFails: ConcludeEvalHardFail[]): ConcludeEvalDimensionScore {
+  const unsupportedCount = triggeredFindingCount(hardFails, 'unsupported-central-claim');
   const softenedCount = run.claimSafetyAudit.filter((entry) => entry.action === 'soften').length;
-  const causalClaimCount = run.resultsClaims.filter((claim) => CAUSAL_SIGNAL_PATTERN.test(claim.claim)).length;
-  const score = 5 - Math.min(3, softenedCount + causalClaimCount);
   return buildDimensionScore(
     'claim_safety',
-    score,
-    softenedCount > 0
-      ? `The audits still had to soften ${softenedCount} claim(s), so the draft needs tighter wording discipline.`
-      : 'The draft mostly stays within bounded or associative language.'
+    5 - Math.min(4, unsupportedCount * 2 + Math.min(2, softenedCount)),
+    unsupportedCount > 0
+      ? `${unsupportedCount} reader-visible causal or mechanistic statement(s) exceed the bounded claim contract.`
+      : softenedCount > 0
+        ? `The audit still identifies ${softenedCount} claim(s) requiring softer wording.`
+        : 'No deterministic claim-limit violation was detected.'
   );
 }
 
@@ -255,50 +571,49 @@ function scoreNegativeEvidenceUse(run: RunConcludeResult, visibleText: string): 
     'negative_evidence_use',
     score,
     negativeEvidenceCount > 0
-      ? 'Negative or boundary evidence is visible in the draft, which helps keep the story bounded.'
-      : 'The draft does not yet make strong use of negative or boundary evidence.'
+      ? 'The diagnostic detects boundary evidence in the draft; prose-quality hard failures still override this score.'
+      : 'The draft does not yet make clear use of negative or boundary evidence.'
   );
 }
 
-function scoreManuscriptViability(run: RunConcludeResult, mainTex: string, visibleText: string): ConcludeEvalDimensionScore {
+function scoreManuscriptViability(run: RunConcludeResult, hardFails: ConcludeEvalHardFail[]): ConcludeEvalDimensionScore {
+  const triggeredCount = hardFails.filter((failure) => failure.triggered).length;
   const hasFinalPackage = Boolean(run.finalPaperArtifacts?.mainTex.path);
-  const resultsClaims = run.resultsClaims.length;
   const figurePlaceholders = run.finalPaperArtifacts?.figureAssets.filter((asset) => asset.status === 'placeholder').length ?? 0;
-  const reportTonePenalty = collectReportToneSignals(visibleText).length > 0 ? 1 : 0;
-  const score = (hasFinalPackage ? 2 : 1) + Math.min(2, resultsClaims) + (figurePlaceholders === 0 ? 1 : 0) - reportTonePenalty;
+  const score = triggeredCount > 0 ? (triggeredCount === 1 ? 2 : 1) : hasFinalPackage && figurePlaceholders === 0 ? 5 : 3;
   return buildDimensionScore(
     'manuscript_viability',
     score,
-    /\\bibliography\{references\}/.test(mainTex) && reportTonePenalty === 0
-      ? 'The manuscript package is structurally reviewable and closer to a paper draft, though citation or figure gaps may still limit submission readiness.'
-      : 'The draft exists, but some visible prose still reads more like reporting scaffolding than a submission-oriented manuscript.'
+    triggeredCount > 0
+      ? `${triggeredCount} Oracle hard failure(s) make the manuscript non-passing; section and file existence cannot imply viability.`
+      : hasFinalPackage && figurePlaceholders === 0
+        ? 'No deterministic hard failure or figure placeholder prevents manuscript viability.'
+        : 'The package remains diagnostically incomplete even though no hard failure was detected.'
   );
 }
 
-function scoreCitationIntegrity(run: RunConcludeResult, referencesBibContent: string): ConcludeEvalDimensionScore {
+function scoreCitationIntegrity(referencesBibContent: string, hardFails: ConcludeEvalHardFail[]): ConcludeEvalDimensionScore {
   const bibtexEntries = countBibtexEntries(referencesBibContent);
-  const citationIntegrityStatus = run.finalPaperArtifacts?.citationIntegrity.status ?? 'gap';
-  const score =
-    citationIntegrityStatus === 'complete' && bibtexEntries > 0 ? 5 :
-    citationIntegrityStatus === 'gap' && bibtexEntries > 0 ? 3 :
-    citationIntegrityStatus === 'gap' ? 2 :
-    1;
+  const invalidCitationCount = triggeredFindingCount(hardFails, 'invalid-citation');
   return buildDimensionScore(
     'citation_integrity',
-    score,
-    bibtexEntries > 0
-      ? `The draft includes ${bibtexEntries} parseable BibTeX entr${bibtexEntries === 1 ? 'y' : 'ies'}, but integrity still depends on conservative citation use.`
-      : 'No verified BibTeX support was available, so external citation integrity remains incomplete.'
+    invalidCitationCount > 0 ? 1 : bibtexEntries > 0 ? 5 : 2,
+    invalidCitationCount > 0
+      ? `${invalidCitationCount} citation-integrity failure(s) keep the gate non-passing.`
+      : `The draft includes ${bibtexEntries} parseable BibTeX entr${bibtexEntries === 1 ? 'y' : 'ies'} with no unresolved TeX key.`
   );
 }
 
-function buildHardFail(id: ConcludeEvalHardFailId, triggered: boolean, rationale: string, evidence: string[]): ConcludeEvalHardFail {
-  return {
-    id,
-    triggered,
-    rationale: normalizeLine(rationale),
-    evidence: evidence.map((entry) => normalizeLine(entry)),
-  };
+function collectAssociativeToCausalOverclaims(
+  claims: ConcludeResultsClaim[],
+  audit: ConcludeClaimSafetyAuditEntry[]
+): string[] {
+  const unsafeClaims = new Set(
+    audit.filter((entry) => entry.action === 'avoid').map((entry) => normalizeLine(entry.claim).toLowerCase())
+  );
+  return claims
+    .filter((claim) => claim.claimStrength === 'causal' || unsafeClaims.has(normalizeLine(claim.claim).toLowerCase()))
+    .map((claim) => `${claim.id}: ${normalizeLine(claim.claim)}`);
 }
 
 function buildKeyImprovements(report: {
@@ -307,45 +622,41 @@ function buildKeyImprovements(report: {
   finalPaperAuditHints: string[];
 }): string[] {
   const improvements: string[] = [];
-  const weakestDimensions = [...report.dimensions].sort((left, right) => left.score - right.score).slice(0, 3);
-
-  for (const dimension of weakestDimensions) {
-    if (dimension.id === 'citation_integrity') {
-      improvements.push('补齐真实且可解析的 BibTeX 条目，避免 external statement 无引用支撑。');
-      continue;
-    }
-    if (dimension.id === 'claim_safety') {
-      improvements.push('继续收紧 Results 段落措辞，把任何关联性证据从机制/因果表述降级为 bounded wording。');
-      continue;
-    }
-    if (dimension.id === 'negative_evidence_use') {
-      improvements.push('把负结果、blocked study 和 boundary evidence 更明确地写进 Results/Discussion，而不是只留在审计文件里。');
-      continue;
-    }
-    if (dimension.id === 'evidence_traceability') {
-      improvements.push('为每个 major claim 补足更直观的 internal evidence anchor，确保正文和 QDD 产物可双向追踪。');
-      continue;
-    }
-    if (dimension.id === 'logical_coherence') {
-      improvements.push('加强段落之间的过渡和结果链条，让 manuscript 从问题、证据到结论的逻辑更顺滑。');
-      continue;
-    }
-    if (dimension.id === 'novelty_significance') {
-      improvements.push('更清楚地区分“workflow completion”和“scientific contribution”，把 significance 收束在真正有证据支撑的范围内。');
-      continue;
-    }
-    improvements.push('补强 manuscript 可读性与结构完整性，减少 placeholder 痕迹。');
+  const triggeredIds = new Set(report.hardFails.filter((failure) => failure.triggered).map((failure) => failure.id));
+  if (triggeredIds.has('evidence-inventory-prose')) {
+    improvements.push('把 artifact/study 清单重写为带比较、数值、图表锚点和边界解释的科学结果链。');
   }
-
-  if (report.hardFails.some((item) => item.triggered)) {
-    improvements.push('先消除所有 hard-fail，再比较分数变化；hard-fail 存在时总分提升不代表 draft 已可接受。');
+  if (triggeredIds.has('fragmented-or-metadata-prose')) {
+    improvements.push('清理句子碎片、重复标点、metadata 字段和所有 reader-visible QDD 标识符。');
   }
-
-  for (const hint of report.finalPaperAuditHints.slice(0, 2)) {
+  if (triggeredIds.has('meta-writing')) {
+    improvements.push('从可见正文移除写作指令、审计语言和未来补齐 placeholder。');
+  }
+  if (triggeredIds.has('missing-result-anchor')) {
+    improvements.push('为每个 major Results claim 补足可用 figure/table 或可核验的定量值。');
+  }
+  if (triggeredIds.has('invalid-citation')) {
+    improvements.push('补齐可解析、可核验且与 TeX citation key 一致的真实 BibTeX 条目。');
+  }
+  if (triggeredIds.has('unsupported-central-claim')) {
+    improvements.push('把超出证据边界的因果/机制表述降级为关联性或 bounded hypothesis。');
+  }
+  if (triggeredIds.size > 0) {
+    improvements.push('先消除所有 hard-fail；aggregate score 只用于诊断，不能覆盖 gate。');
+  }
+  for (const hint of report.finalPaperAuditHints) {
     improvements.push(hint);
   }
-
-  return [...new Set(improvements)].slice(0, 5);
+  if (improvements.length < 3) {
+    const weakest = [...report.dimensions].sort((left, right) => left.score - right.score);
+    for (const dimension of weakest) {
+      improvements.push(`继续改进 ${dimension.label}：${dimension.rationale}`);
+      if (improvements.length >= 3) {
+        break;
+      }
+    }
+  }
+  return [...new Set(improvements)].slice(0, 6);
 }
 
 function renderConcludeEvalMarkdown(report: ConcludeEvalReport): string {
@@ -357,9 +668,21 @@ function renderConcludeEvalMarkdown(report: ConcludeEvalReport): string {
     `- Run ID: ${report.runId}`,
     `- Conclude output: \`${report.concludeRun.outputDir}\``,
     '',
-    '## Summary',
+    '## Oracle',
     '',
-    `- Total score: ${report.summary.scoreTotal}/${report.summary.scoreMaximum} (${report.summary.scorePercent}%)`,
+    `- Schema version: ${report.oracle.schemaVersion}`,
+    `- Case ID: \`${report.oracle.caseId}\``,
+    `- Oracle path: \`${report.oracle.oraclePath}\``,
+    '',
+    '## Quality Gate',
+    '',
+    `- Gate status: **${report.gate.status.toUpperCase()}**`,
+    `- Passing: ${report.gate.passing ? 'YES' : 'NO'}`,
+    `- Reason: ${report.gate.reason}`,
+    '',
+    '## Diagnostic Summary',
+    '',
+    `- Aggregate score: ${report.summary.scoreTotal}/${report.summary.scoreMaximum} (${report.summary.scorePercent}%)`,
     `- Hard fail triggered: ${report.summary.hardFailTriggered ? 'YES' : 'NO'}`,
     `- Triggered hard fails: ${report.summary.triggeredHardFailCount}`,
     '',
@@ -373,32 +696,25 @@ function renderConcludeEvalMarkdown(report: ConcludeEvalReport): string {
     lines.push(`| ${dimension.label} | ${dimension.score}/5 | ${dimension.rationale} |`);
   }
 
-  lines.push('');
-  lines.push('## Hard Fails');
-  lines.push('');
+  lines.push('', '## Hard Fails', '');
   for (const hardFail of report.hardFails) {
-    lines.push(`### ${hardFail.id}`);
-    lines.push('');
+    lines.push(`### ${hardFail.id}`, '');
     lines.push(`- Triggered: ${hardFail.triggered ? 'YES' : 'NO'}`);
     lines.push(`- Rationale: ${hardFail.rationale}`);
-    if (hardFail.evidence.length > 0) {
-      lines.push('- Evidence:');
-      for (const evidence of hardFail.evidence) {
-        lines.push(`  - ${evidence}`);
-      }
+    for (const finding of hardFail.findings) {
+      lines.push(`- Location: \`${finding.filePath}:${finding.line}:${finding.column}\``);
+      lines.push(`- Visible excerpt: ${finding.excerpt}`);
+      lines.push(`- Reason: ${finding.reason}`);
     }
     lines.push('');
   }
 
-  lines.push('## Key Improvements');
-  lines.push('');
+  lines.push('## Key Improvements', '');
   for (const improvement of report.keyImprovements) {
     lines.push(`- ${improvement}`);
   }
 
-  lines.push('');
-  lines.push('## Output Paths');
-  lines.push('');
+  lines.push('', '## Output Paths', '');
   lines.push(`- story_candidates.md: \`${report.concludeRun.storyCandidatesPath}\``);
   lines.push(`- evidence_audit.md: \`${report.concludeRun.evidenceAuditPath}\``);
   lines.push(`- claim_safety_audit.md: \`${report.concludeRun.claimSafetyAuditPath}\``);
@@ -408,9 +724,7 @@ function renderConcludeEvalMarkdown(report: ConcludeEvalReport): string {
     lines.push(`- final_paper/: \`${report.concludeRun.finalPaperDir}\``);
   }
   lines.push(`- conclude_eval.json: \`${report.outputs.concludeEvalJsonPath}\``);
-  lines.push(`- conclude_eval.md: \`${report.outputs.concludeEvalMarkdownPath}\``);
-  lines.push('');
-
+  lines.push(`- conclude_eval.md: \`${report.outputs.concludeEvalMarkdownPath}\``, '');
   return lines.join('\n');
 }
 
@@ -420,6 +734,7 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
   const outputDir = options.outputDir
     ? path.resolve(options.casePath, options.outputDir)
     : path.resolve(options.casePath, 'conclusions', runId);
+  const { oracle, oraclePath } = await loadConcludeEvalOracle(options.oraclePath);
 
   const concludeRun = await runConclude(options.casePath, {
     environment: options.environment,
@@ -430,74 +745,40 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
     runId,
   });
 
-  const mainTexPath = concludeRun.finalPaperArtifacts?.paths.mainTexPath;
-  const referencesBibPath = concludeRun.finalPaperArtifacts?.paths.referencesBibPath;
+  const mainTexPath = concludeRun.finalPaperArtifacts?.paths.mainTexPath
+    ?? path.join(outputDir, 'paper_rewriting_output', 'final_paper', 'main.tex');
+  const referencesBibPath = concludeRun.finalPaperArtifacts?.paths.referencesBibPath
+    ?? path.join(outputDir, 'paper_rewriting_output', 'final_paper', 'references.bib');
   const finalArtifactAuditPath = concludeRun.finalPaperArtifacts?.paths.finalArtifactAuditPath;
-
-  const mainTexContent = mainTexPath && await FileSystemUtils.fileExists(mainTexPath)
-    ? await FileSystemUtils.readFile(mainTexPath)
-    : '';
-  const referencesBibContent = referencesBibPath && await FileSystemUtils.fileExists(referencesBibPath)
+  const mainTexContent = await FileSystemUtils.fileExists(mainTexPath) ? await FileSystemUtils.readFile(mainTexPath) : '';
+  const referencesBibContent = await FileSystemUtils.fileExists(referencesBibPath)
     ? await FileSystemUtils.readFile(referencesBibPath)
     : '';
   const finalArtifactAuditContent = finalArtifactAuditPath && await FileSystemUtils.fileExists(finalArtifactAuditPath)
     ? await FileSystemUtils.readFile(finalArtifactAuditPath)
     : '';
-  const visibleMainTexText = extractVisibleManuscriptText(mainTexContent);
 
-  const missingEvidenceAnchors = collectMissingEvidenceAnchors(concludeRun.resultsClaims);
-  const associativeToCausalOverclaims = collectAssociativeToCausalOverclaims(concludeRun.resultsClaims, concludeRun.claimSafetyAudit);
-  const visibleCausalOverclaims = collectVisibleCausalOverclaims(visibleMainTexText);
-  const rawTaskStudyLeakage = collectRawTaskStudyLeakage(visibleMainTexText);
-  const reportToneSignals = collectReportToneSignals(visibleMainTexText);
-  const suspiciousCitationSignals = collectSuspiciousCitationSignals(concludeRun, mainTexContent, referencesBibContent);
-
+  const quality = evaluateManuscriptQuality({
+    oracle,
+    mainTexContent,
+    referencesBibContent,
+    mainTexPath,
+    referencesBibPath,
+    resultsClaims: concludeRun.resultsClaims,
+    figureAssets: concludeRun.finalPaperArtifacts?.figureAssets ?? [],
+  });
   const dimensions: ConcludeEvalDimensionScore[] = [
-    scoreLogicalCoherence(mainTexContent, concludeRun.resultsClaims, visibleMainTexText),
+    scoreLogicalCoherence(mainTexContent, quality.hardFails),
     scoreNoveltySignificance(concludeRun),
-    scoreEvidenceTraceability(concludeRun, mainTexContent),
-    scoreClaimSafety(concludeRun),
-    scoreNegativeEvidenceUse(concludeRun, visibleMainTexText),
-    scoreManuscriptViability(concludeRun, mainTexContent, visibleMainTexText),
-    scoreCitationIntegrity(concludeRun, referencesBibContent),
+    scoreEvidenceTraceability(concludeRun, quality.hardFails),
+    scoreClaimSafety(concludeRun, quality.hardFails),
+    scoreNegativeEvidenceUse(concludeRun, quality.visibleText),
+    scoreManuscriptViability(concludeRun, quality.hardFails),
+    scoreCitationIntegrity(referencesBibContent, quality.hardFails),
   ];
-
-  const hardFails: ConcludeEvalHardFail[] = [
-    buildHardFail(
-      'missing_internal_evidence_anchor',
-      missingEvidenceAnchors.length > 0,
-      'Every major Results claim must retain at least one internal QDD evidence anchor.',
-      missingEvidenceAnchors
-    ),
-    buildHardFail(
-      'fabricated_citation_or_bibtex',
-      suspiciousCitationSignals.length > 0,
-      'The draft must not invent citations or report complete citation integrity without real BibTeX support.',
-      suspiciousCitationSignals
-    ),
-    buildHardFail(
-      'associative_to_causal_overclaim',
-      associativeToCausalOverclaims.length > 0 || visibleCausalOverclaims.length > 0,
-      'Associative evidence must not be written as a proven causal mechanism.',
-      [...associativeToCausalOverclaims, ...visibleCausalOverclaims]
-    ),
-    buildHardFail(
-      'raw_task_study_leakage',
-      rawTaskStudyLeakage.length > 0,
-      'Visible manuscript prose must not leak raw task/study execution markers or audit headings.',
-      rawTaskStudyLeakage
-    ),
-    buildHardFail(
-      'report_tone_dominates_manuscript',
-      reportToneSignals.length >= 2,
-      'Visible manuscript prose must read like a paper draft rather than instructions, audit scaffolding, or report-tone meta commentary.',
-      reportToneSignals
-    ),
-  ];
-
   const scoreTotal = dimensions.reduce((total, item) => total + item.score, 0);
   const scoreMaximum = dimensions.length * 5;
-  const triggeredHardFailCount = hardFails.filter((item) => item.triggered).length;
+  const triggeredHardFailCount = quality.hardFails.filter((item) => item.triggered).length;
   const summary = {
     scoreTotal,
     scoreMaximum,
@@ -512,35 +793,31 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
     .filter((line) => /^- /.test(line) && /(GAP|BLOCKED)/.test(line))
     .map((line) => line.replace(/^- /, ''))
     .map((line) => {
-      if (/references\.bib: GAP/i.test(line)) {
-        return '补齐 references.bib 的真实条目后再提升 citation_integrity 分数。';
-      }
-      if (/citation integrity: GAP/i.test(line)) {
-        return '对所有 external statement 建立可解析、可核验的 BibTeX 支撑。';
-      }
-      if (/Overall status: BLOCKED/i.test(line)) {
-        return '清理 final paper package 中的 blocked 项，避免结构上可读但交付上仍不可用。';
-      }
-      if (/PDF render: BLOCKED/i.test(line)) {
-        return '若目标包含可提交稿件，需补齐本地 TeX 依赖并重新验证 PDF 渲染。';
-      }
-      if (/Word render: BLOCKED/i.test(line)) {
-        return '若目标包含 Word 交付，需补齐 pandoc 并重新验证 docx 渲染。';
-      }
       if (/figures asset map: GAP/i.test(line)) {
         return '减少 figure placeholder，给关键 Results claim 配上可复用的内部图表资产。';
       }
-      return `处理审计缺口：${line}`;
+      if (/PDF render: BLOCKED/i.test(line)) {
+        return '若目标包含 PDF，需补齐本地 TeX 依赖并重新验证渲染。';
+      }
+      if (/Word render: BLOCKED/i.test(line)) {
+        return '若目标包含 Word，需补齐 pandoc 并重新验证 docx 渲染。';
+      }
+      return `处理 final paper 审计缺口：${line}`;
     })
-    .slice(0, 3);
+    .slice(0, 2);
 
   const concludeEvalJsonPath = path.join(outputDir, 'conclude_eval.json');
   const concludeEvalMarkdownPath = path.join(outputDir, 'conclude_eval.md');
-
   const report: ConcludeEvalReport = {
     casePath: options.casePath,
     evaluatedAt: now.toISOString(),
     runId,
+    oracle: {
+      schemaVersion: oracle.schemaVersion,
+      caseId: oracle.caseId,
+      oraclePath,
+    },
+    gate: quality.gate,
     outputs: {
       outputDir,
       concludeEvalJsonPath,
@@ -555,16 +832,16 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
       renderStatusPath: concludeRun.renderStatusPath,
       selectedStoryPath: concludeRun.selectedStoryPath,
       finalPaperDir: concludeRun.finalPaperArtifacts?.paths.finalPaperDir ?? null,
-      mainTexPath: mainTexPath ?? null,
-      referencesBibPath: referencesBibPath ?? null,
+      mainTexPath: concludeRun.finalPaperArtifacts?.paths.mainTexPath ?? null,
+      referencesBibPath: concludeRun.finalPaperArtifacts?.paths.referencesBibPath ?? null,
       finalArtifactAuditPath: finalArtifactAuditPath ?? null,
     },
     dimensions,
-    hardFails,
+    hardFails: quality.hardFails,
     summary,
     keyImprovements: buildKeyImprovements({
       dimensions,
-      hardFails,
+      hardFails: quality.hardFails,
       finalPaperAuditHints,
     }),
   };
@@ -573,12 +850,25 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
     FileSystemUtils.writeFile(concludeEvalJsonPath, `${JSON.stringify(report, null, 2)}\n`),
     FileSystemUtils.writeFile(concludeEvalMarkdownPath, renderConcludeEvalMarkdown(report)),
   ]);
-
   return report;
 }
 
+function collectRawTaskStudyLeakage(visibleText: string): string[] {
+  const matches = visibleText.match(/\b(?:ART|STUDY|TASK)-\d{3}\b/gi) ?? [];
+  return [...new Set(matches.map((match) => normalizeLine(match)))];
+}
+
+function collectReportToneSignals(visibleText: string): string[] {
+  const line: VisibleManuscriptLine = { filePath: 'main.tex', line: 1, raw: visibleText, text: visibleText };
+  return collectRegexFindings([line], META_WRITING_PATTERNS, 'meta-writing').map((finding) => finding.excerpt);
+}
+
 export const __testOnly = {
+  stripLatexComments,
   extractVisibleManuscriptText,
   collectRawTaskStudyLeakage,
   collectReportToneSignals,
+  evaluateManuscriptQuality,
+  scoreLogicalCoherence,
+  collectAssociativeToCausalOverclaims,
 };
