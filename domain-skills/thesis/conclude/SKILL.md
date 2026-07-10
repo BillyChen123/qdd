@@ -25,21 +25,21 @@ Typical moments:
 - the project has accumulated reusable figures, tables, reports, and study memories
 - the frontier is synthesis-ready or close to synthesis-ready
 - the user wants an auditable writing package built from existing QDD evidence rather than new analysis
-- the user wants to compare multiple story candidates before choosing one for drafting
+- the user wants to review how accumulated evidence and question evolution become one manuscript story before drafting
 
 Treat this skill as the durable taste and guardrail layer for the CLI workflow, not as a separate non-CLI product or as a manual-only scaffold.
 Do not write `thesis/conclude` into task `skills:` for ordinary task execution; conclude remains a project-level synthesis surface.
 
-## Current Scope
+## Current Contract
 
-Current conclude behavior in `main`:
+Target conclude behavior for the active story-planning rework:
 
 - `qdd conclude` runs QDD preflight and render-tool detection
 - builds a versioned source-aware evidence dossier from bounded reads of reports, tables, and figure metadata
 - harvests QDD evidence from studies, tasks, memories, artifacts, evolution, and resources
 - compresses raw records into manuscript-oriented evidence packets
-- targets 2-3 dossier-backed viable story candidates and stops at the human story-selection gate
-- emits one candidate with `insufficient-story-diversity`, or stops at `insufficient-evidence`, when the evidence cannot support genuine story diversity
+- builds one dossier-backed canonical story spine from scientific claims and selected QDD question-evolution transitions
+- stops at a human story-review gate, or at `insufficient-evidence` when no coherent spine can close the argument
 - restores a selected story from `--selected-story-id` or `--selected-story-path`
 - writes manuscript-planning artifacts and the current final paper package after selection
 - reports blocked PDF/Word rendering status when TeX or pandoc dependencies are missing
@@ -59,10 +59,12 @@ Implementation work must continue to follow [`docs/09-qdd-conclude-prd.md`](../.
 Especially preserve these guardrails:
 
 - write only from existing QDD evidence
-- target 2-3 viable story candidates before drafting, but never invent candidates to meet a quota
-- build each candidate from a dossier-only scientific claim graph with explicit claim IDs, Results ordering, figure/table sequence, limitations, and multidimensional viability diagnostics
+- build one canonical story spine before drafting; do not partition related evidence into unrelated candidate papers
+- project QDD question evolution selectively into question-answer Results beats with explicit claim IDs, transitions, figure/table sequence, limitations, evidence roles, and multidimensional viability diagnostics
+- keep an omission ledger for context-only, supplementary, redundant, failed, off-axis, and execution-only evidence
+- allow optional emphasis profiles only when they preserve the central contribution, core claims, and Results order
 - never introduce an audit-report, method paper, or QDD-workflow contribution unless the dossier itself scientifically studies and validates it
-- stop for user selection before final manuscript drafting
+- stop for human review and confirmation before final manuscript drafting
 - keep negative, dissolved, blocked, or downgraded studies as usable boundary evidence
 - downgrade weak associative claims instead of overstating mechanism
 - report missing TeX or pandoc tooling as blocked rendering status
@@ -77,8 +79,8 @@ The intended conclude boundary is:
 
 1. raw QDD records and artifacts
 2. evidence audit plus manuscript-oriented evidence packets
-3. story candidates with central claim, narrative arc, claim bundle, packet refs, reviewer objections, and claim safety limits
-4. selected story packet that is stable to restore
+3. one canonical story plan with central contribution, question-answer Results beats, evidence roles, omission ledger, figure/table sequence, reviewer objections, and claim safety limits
+4. confirmed story packet that is stable to restore
 5. planning artifacts and final paper package
 
 This workflow should stay manuscript-native even when internal provenance remains rich.
@@ -87,8 +89,9 @@ That means:
 
 - raw QDD records remain valuable as provenance
 - narrative outputs should be based on compressed evidence packets
-- story candidates should differ in real narrative arc, not just framing label
-- selected story should contain a versioned structured candidate snapshot and be recoverable without parsing prose
+- the story plan should compress the selected scientific path through QDD question evolution rather than replaying every study or task
+- negative evidence belongs in the main spine only when it narrows a claim, rules out an alternative, or motivates a necessary pivot
+- the confirmed story should contain a versioned structured spine snapshot and be recoverable without parsing prose
 - final drafting quality may improve through internal adapters or agent-backed drafting, but those remain implementation details of `qdd conclude`
 
 ## Boundary Rules
