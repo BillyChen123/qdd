@@ -85,7 +85,7 @@ program
   .command('conclude')
   .description('Build an auditable scientific evidence dossier and conclude package')
   .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
-  .option('--selected-story-id <id>', 'Selected story candidate id such as story-1')
+  .option('--selected-story-id <id>', 'Confirm the canonical story id (canonical-story; story-1 remains a compatibility alias)')
   .option('--selected-story-path <path>', 'Project-local selected story markdown; defaults to <output-dir>/selected_story.md when present')
   .option('--json', 'Output as JSON')
   .action(async (options?: { outputDir?: string; selectedStoryId?: string; selectedStoryPath?: string; json?: boolean }) => {

@@ -7,6 +7,8 @@ import type {
   ConcludeEvidenceDossier,
   ConcludeEvidenceDossierUnit,
   ConcludeEvidenceEligibility,
+  ConcludeSemanticStoryPlanner,
+  ConcludeSemanticStoryProposal,
 } from '../types.js';
 
 function makeUnit(options: {
@@ -117,7 +119,116 @@ function makeDossier(
   };
 }
 
-test('story planner stops at insufficient-evidence instead of creating a workflow fallback', () => {
+function makeSemanticFixture(): {
+  dossier: ConcludeEvidenceDossier;
+  proposal: ConcludeSemanticStoryProposal;
+} {
+  const units = [
+    makeUnit({
+      id: 'DOS-EV-0001',
+      statement: 'QKI was elevated in protective-like astrocytes with log2FC=1.24.',
+      sourcePath: 'results/astrocyte-state.csv',
+      assetId: 'DOS-ASSET-0001',
+    }),
+    makeUnit({
+      id: 'DOS-EV-0002',
+      statement: 'The initial assay cannot resolve complete transcripts and requires transcript-level resolution.',
+      sourcePath: 'reports/resolution-boundary.md',
+      eligibility: 'boundary',
+    }),
+    makeUnit({
+      id: 'DOS-EV-0003',
+      statement: 'Transcriptome-wide testing identified 674 significant transcripts beyond the candidate panel.',
+      sourcePath: 'results/global-dtu.csv',
+      assetId: 'DOS-ASSET-0002',
+    }),
+    makeUnit({
+      id: 'DOS-EV-0004',
+      statement: 'The association does not establish a single-factor causal mechanism.',
+      sourcePath: 'reports/claim-limit.md',
+      eligibility: 'boundary',
+    }),
+  ];
+  const assets = [
+    makeAsset('DOS-ASSET-0001', 'results/astrocyte-state.csv', ['DOS-EV-0001']),
+    makeAsset('DOS-ASSET-0002', 'results/global-dtu.csv', ['DOS-EV-0003']),
+  ];
+  const proposal: ConcludeSemanticStoryProposal = {
+    centralContribution: 'An astrocyte RNA-processing signal connects to widespread transcript-usage remodeling under a bounded non-causal model.',
+    scientificQuestion: 'Does the astrocyte signal extend to a broader transcript-usage program?',
+    beats: [
+      {
+        question: 'Does an astrocyte state nominate an RNA-processing question?',
+        answer: 'QKI was elevated in protective-like astrocytes with log2FC=1.24.',
+        answerClaimIds: ['DOS-EV-0001'],
+        evidence: { coreClaimIds: ['DOS-EV-0001'], bridgeClaimIds: [], validationClaimIds: [], boundaryClaimIds: [] },
+        assetIds: ['DOS-ASSET-0001'],
+        boundedInterpretation: 'The association nominates a transcript-level question without establishing causality.',
+        transition: 'motivates',
+        nextQuestion: 'Can the assay resolve complete transcripts?',
+        evolutionTransitionIds: [],
+      },
+      {
+        question: 'Can the assay resolve complete transcripts?',
+        answer: 'The initial assay cannot resolve complete transcripts and requires transcript-level resolution.',
+        answerClaimIds: ['DOS-EV-0002'],
+        evidence: { coreClaimIds: [], bridgeClaimIds: ['DOS-EV-0002'], validationClaimIds: [], boundaryClaimIds: [] },
+        assetIds: [],
+        boundedInterpretation: 'The modality boundary explains why a transcript-level test follows.',
+        transition: 'motivates',
+        nextQuestion: 'Does the signal extend transcriptome-wide?',
+        evolutionTransitionIds: [],
+      },
+      {
+        question: 'Does the signal extend transcriptome-wide?',
+        answer: 'Transcriptome-wide testing identified 674 significant transcripts beyond the candidate panel.',
+        answerClaimIds: ['DOS-EV-0003'],
+        evidence: { coreClaimIds: ['DOS-EV-0003'], bridgeClaimIds: [], validationClaimIds: [], boundaryClaimIds: [] },
+        assetIds: ['DOS-ASSET-0002'],
+        boundedInterpretation: 'The donor-level result supports broad transcript usage but not cell-intrinsic regulation.',
+        transition: 'narrows',
+        nextQuestion: 'What bounded model integrates these layers?',
+        evolutionTransitionIds: [],
+      },
+      {
+        question: 'What bounded model integrates these layers?',
+        answer: 'The evidence supports an associative model rather than a single-factor causal mechanism.',
+        answerClaimIds: ['DOS-EV-0004'],
+        evidence: { coreClaimIds: [], bridgeClaimIds: [], validationClaimIds: [], boundaryClaimIds: ['DOS-EV-0004'] },
+        assetIds: [],
+        boundedInterpretation: 'A causal interpretation requires independent perturbational validation.',
+        transition: 'closes',
+        nextQuestion: null,
+        evolutionTransitionIds: [],
+      },
+    ],
+    evidenceRoles: [
+      { claimId: 'DOS-EV-0001', role: 'core', beatSequences: [1], assetIds: ['DOS-ASSET-0001'], rationale: 'Defines the starting scientific signal.' },
+      { claimId: 'DOS-EV-0002', role: 'bridge', beatSequences: [2], assetIds: [], rationale: 'Explains the data-modality transition.' },
+      { claimId: 'DOS-EV-0003', role: 'core', beatSequences: [3], assetIds: ['DOS-ASSET-0002'], rationale: 'Supports the broader transcript-usage contribution.' },
+      { claimId: 'DOS-EV-0004', role: 'boundary', beatSequences: [4], assetIds: [], rationale: 'Caps the strongest interpretation.' },
+    ],
+    omissions: [],
+    emphasisProfiles: [{
+      id: 'balanced',
+      label: 'Balanced',
+      supportingClaimIds: ['DOS-EV-0002'],
+      figurePriority: ['DOS-ASSET-0001', 'DOS-ASSET-0002'],
+      sectionWeights: { 'beat-1': 1, 'beat-2': 1, 'beat-3': 1, 'beat-4': 1 },
+      discussionEmphasis: ['Retain the same contribution, core claims, and Results order while foregrounding validation limits.'],
+    }],
+    claimLimits: ['The evidence does not establish a single-factor causal mechanism.'],
+    missingValidation: ['Independent perturbational validation is missing.'],
+    reviewerRisks: ['Cell composition may confound donor-level effects.'],
+  };
+  return { dossier: makeDossier(units, assets), proposal };
+}
+
+function fakePlanner(proposal: unknown): ConcludeSemanticStoryPlanner {
+  return { plan: () => proposal };
+}
+
+test('story planner stops at insufficient-evidence instead of creating a workflow fallback', async () => {
   const dossier = makeDossier([
     makeUnit({
       id: 'DOS-EV-0001',
@@ -126,134 +237,92 @@ test('story planner stops at insufficient-evidence instead of creating a workflo
     }),
   ], []);
 
-  const plan = buildConcludeStoryPlan(dossier);
+  const plan = await buildConcludeStoryPlan(dossier);
 
   assert.equal(plan.status, 'insufficient-evidence');
-  assert.equal(plan.candidates.length, 0);
+  assert.equal(plan.story, null);
   assert.equal(plan.audit.status, 'pass');
-  assert.match(plan.diagnostics[0], /No dossier-only claim route/);
+  assert.match(plan.diagnostics[0], /do not support/);
 });
 
-test('story planner emits one candidate and insufficient-story-diversity for one claim bundle', () => {
-  const units = [
-    makeUnit({
-      id: 'DOS-EV-0001',
-      statement: 'QKI was elevated in protective-like astrocytes relative to the reference state with strong statistical support.',
-      sourcePath: 'results/astrocyte-state.csv',
-      assetId: 'DOS-ASSET-0001',
-    }),
-    makeUnit({
-      id: 'DOS-EV-0002',
-      statement: 'CELF2 was elevated in the same protective-like astrocyte comparison and supported the shared RNA-processing state.',
-      sourcePath: 'results/astrocyte-state.csv',
-      assetId: 'DOS-ASSET-0001',
-    }),
-  ];
-  const dossier = makeDossier(units, [makeAsset('DOS-ASSET-0001', 'results/astrocyte-state.csv', units.map((unit) => unit.id))]);
+test('fake semantic planner produces one grounded canonical spine with narrative closure', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
 
-  const plan = buildConcludeStoryPlan(dossier);
-
-  assert.equal(plan.status, 'insufficient-story-diversity');
-  assert.equal(plan.candidates.length, 1);
+  assert.equal(plan.status, 'ready-for-review');
   assert.equal(plan.audit.status, 'pass');
-  assert.deepEqual(plan.candidates[0].claimGraph.resultOrdering, ['DOS-EV-0001', 'DOS-EV-0002']);
-  assert.equal(plan.candidates[0].viabilityBlockers.length, 0);
-  assert.equal(plan.candidates[0].viability.noveltyRisk.level, 'unassessed');
-});
-
-test('story planner excludes an unsupported causal boundary from the claim graph', () => {
-  const resultUnits = [
-    makeUnit({
-      id: 'DOS-EV-0001',
-      statement: 'QKI was elevated in protective-like astrocytes relative to the reference state with strong statistical support.',
-      sourcePath: 'results/astrocyte-state.csv',
-      assetId: 'DOS-ASSET-0001',
-    }),
-    makeUnit({
-      id: 'DOS-EV-0002',
-      statement: 'CELF2 was elevated in the same astrocyte comparison and supported a coordinated RNA-processing state.',
-      sourcePath: 'results/astrocyte-state.csv',
-      assetId: 'DOS-ASSET-0001',
-    }),
-  ];
-  const unsupportedBoundary = makeUnit({
-    id: 'DOS-EV-0003',
-    statement: 'QKI directly drives Parkinson disease through an established molecular mechanism.',
-    sourcePath: 'reports/unsupported-mechanism.md',
-    eligibility: 'boundary',
-    claimStrength: 'causal',
-  });
-  const dossier = makeDossier(
-    [...resultUnits, unsupportedBoundary],
-    [makeAsset('DOS-ASSET-0001', 'results/astrocyte-state.csv', resultUnits.map((unit) => unit.id))]
+  assert.ok(plan.story);
+  assert.equal(plan.story.id, 'canonical-story');
+  assert.equal(plan.story.resultsBeats.length, 4);
+  assert.equal(plan.story.resultsBeats.at(-1)?.transition, 'closes');
+  assert.equal(plan.story.resultsBeats.at(-1)?.nextQuestion, null);
+  assert.equal(plan.story.viability.narrativeClosure.status, 'closed');
+  assert.deepEqual(
+    plan.story.evidenceRoleAssignments.filter((entry) => entry.role === 'core').map((entry) => entry.claimId),
+    ['DOS-EV-0001', 'DOS-EV-0003']
   );
-
-  const plan = buildConcludeStoryPlan(dossier);
-
-  assert.equal(plan.status, 'insufficient-story-diversity');
-  assert.equal(plan.audit.status, 'pass');
-  assert.equal(plan.candidates.length, 1);
-  assert.ok(!plan.candidates[0].includedClaimIds.includes(unsupportedBoundary.id));
-  assert.ok(!plan.candidates[0].claimGraph.nodes.some((node) => node.claimId === unsupportedBoundary.id));
+  assert.equal(plan.story.omissionLedger.length, 0);
+  assert.equal(plan.story.emphasisProfiles.length, 1);
+  assert.deepEqual(plan.story.claimGraph.resultOrdering, ['DOS-EV-0001', 'DOS-EV-0002', 'DOS-EV-0003', 'DOS-EV-0004']);
 });
 
-test('story planner creates machine-verifiably distinct scientific claim routes', () => {
-  const groups = [
-    {
-      sourcePath: 'results/astrocyte-state.csv',
-      assetId: 'DOS-ASSET-0001',
-      statements: [
-        'QKI and CELF2 were elevated in protective-like astrocytes relative to the reference state.',
-        'The astrocyte comparison identified a coordinated RNA-processing factor state with quantitative support.',
-      ],
-    },
-    {
-      sourcePath: 'results/mitochondrial-pathways.csv',
-      assetId: 'DOS-ASSET-0002',
-      statements: [
-        'Differential transcript usage was enriched in mitochondrial quality-control and autophagy programs.',
-        'Proteostasis and vesicle-trafficking pathways accompanied the mitochondrial transcript-usage foreground.',
-      ],
-    },
-    {
-      sourcePath: 'results/spatial-modules.csv',
-      assetId: 'DOS-ASSET-0003',
-      statements: [
-        'Expression-based clustering identified cross-section spatial modules shared across substantia nigra tissue sections.',
-        'Coordinate-only clustering fragmented tissue into section-specific patches despite higher spatial coherence.',
-      ],
-    },
-  ];
-  const units = groups.flatMap((group, groupIndex) => group.statements.map((statement, statementIndex) =>
-    makeUnit({
-      id: `DOS-EV-${String(groupIndex * 2 + statementIndex + 1).padStart(4, '0')}`,
-      statement,
-      sourcePath: group.sourcePath,
-      assetId: group.assetId,
-    })
-  ));
-  const assets = groups.map((group) => makeAsset(
-    group.assetId,
-    group.sourcePath,
-    units.filter((unit) => unit.provenance.sources[0]?.locator.path === group.sourcePath).map((unit) => unit.id)
-  ));
+test('semantic planner output is rejected when it invents an ungrounded numeric value', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  proposal.beats[2].answer = 'Transcriptome-wide testing identified 999 significant transcripts beyond the candidate panel.';
 
-  const plan = buildConcludeStoryPlan(makeDossier(units, assets));
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
 
-  assert.equal(plan.status, 'ready-for-selection');
-  assert.ok(plan.candidates.length >= 2 && plan.candidates.length <= 3);
-  assert.equal(plan.audit.status, 'pass');
-  assert.equal(new Set(plan.candidates.map((candidate) => candidate.centralContribution)).size, plan.candidates.length);
-  assert.equal(new Set(plan.candidates.map((candidate) => candidate.includedClaimIds.join('|'))).size, plan.candidates.length);
-  assert.equal(new Set(plan.candidates.map((candidate) => candidate.claimGraph.resultOrdering.join('|'))).size, plan.candidates.length);
-  assert.equal(new Set(plan.candidates.map((candidate) => candidate.figureTableSequence.map((entry) => entry.assetId).join('|'))).size, plan.candidates.length);
-  assert.ok(plan.candidates.every((candidate) => !['method', 'audit-report'].includes(candidate.framing)));
-  const narrativeFields = plan.candidates.flatMap((candidate) => [
-    candidate.scientificQuestion,
-    candidate.centralContribution,
-    candidate.story,
-    ...candidate.resultsArc.map((entry) => entry.statement),
-    ...candidate.claimGraph.nodes.map((node) => node.statement),
-  ]);
-  assert.ok(narrativeFields.every((value) => !/STUDY-|TASK-|ART-|status|checklist|execution|QDD workflow/i.test(value)));
+  assert.equal(plan.status, 'insufficient-evidence');
+  assert.equal(plan.story, null);
+  assert.equal(plan.audit.status, 'fail');
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'numeric-fidelity'));
+});
+
+test('semantic planner output rejects ungrounded claim and asset references without throwing', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  proposal.beats[0].answerClaimIds = ['DOS-EV-9999'];
+  proposal.beats[0].evidence.coreClaimIds = ['DOS-EV-9999'];
+  proposal.beats[2].assetIds = ['DOS-ASSET-0001'];
+
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
+
+  assert.equal(plan.status, 'insufficient-evidence');
+  assert.equal(plan.audit.status, 'fail');
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'missing-claim-reference'));
+});
+
+test('semantic planner output is rejected when it violates dossier claim-safety verbs', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  proposal.beats[0].answer = 'QKI drives the protective-like astrocyte state.';
+
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
+
+  assert.equal(plan.status, 'insufficient-evidence');
+  assert.equal(plan.audit.status, 'fail');
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'claim-safety'));
+});
+
+test('semantic planner output is rejected for incomplete transitions and missing evidence roles', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  proposal.beats[1].nextQuestion = null;
+  proposal.evidenceRoles = proposal.evidenceRoles.filter((entry) => entry.claimId !== 'DOS-EV-0003');
+
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
+
+  assert.equal(plan.status, 'insufficient-evidence');
+  assert.equal(plan.audit.status, 'fail');
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'invalid-transition'));
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'invalid-evidence-role'));
+});
+
+test('semantic planner output is rejected when reader-visible text contains workflow language', async () => {
+  const { dossier, proposal } = makeSemanticFixture();
+  proposal.centralContribution = 'The QDD workflow generated a transcript-usage story.';
+
+  const plan = await buildConcludeStoryPlan(dossier, { semanticPlanner: fakePlanner(proposal) });
+
+  assert.equal(plan.status, 'insufficient-evidence');
+  assert.equal(plan.audit.status, 'fail');
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'execution-language'));
+  assert.ok(plan.audit.violations.some((violation) => violation.code === 'unsupported-workflow-story'));
 });

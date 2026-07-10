@@ -19,13 +19,13 @@ export async function concludeCommand(options: {
     return;
   }
 
-  console.log(`Story candidates: ${result.storyCandidatesPath}`);
+  console.log(`Canonical story plan: ${result.storyPlanMarkdownPath}`);
   console.log(`Evidence dossier: ${result.evidenceDossierMarkdownPath}`);
   console.log(`Evidence audit: ${result.evidenceAuditPath}`);
   console.log(`Render status: ${result.renderStatusPath}`);
   console.log(`Next step: ${result.nextStep}`);
   if (result.selectionRequired) {
-    console.log('Selection gate: STOP until a human selects one story candidate.');
+    console.log('Story-review gate: STOP until a human confirms or revises the canonical story.');
     return;
   }
 

@@ -7,7 +7,7 @@ import { loadConcludeEvalOracle } from '../services/conclude-eval-oracle.js';
 import { generateConcludeStoryCandidates } from '../services/conclude.js';
 const PARKINSON_CASE_ENV = 'QDD_CONCLUDE_EVAL_CASE';
 const ORACLE_FIXTURE_DIR = path.resolve('src/test/fixtures/conclude/parkinson-oracle');
-test('Parkinson story-plan gate accepts distinct dossier-backed candidates when case path is configured', async (t) => {
+test('Parkinson story-plan gate accepts one canonical dossier-backed spine when case path is configured', async (t) => {
     const casePath = process.env[PARKINSON_CASE_ENV]?.trim();
     if (!casePath) {
         await t.skip(`Set ${PARKINSON_CASE_ENV} to run the Parkinson story-plan gate.`);
@@ -18,19 +18,42 @@ test('Parkinson story-plan gate accepts distinct dossier-backed candidates when 
         runId: 'symphony-bil-23-story-plan-gate-20260710T183000Z',
         now: new Date('2026-07-10T10:30:00.000Z'),
     });
-    const candidates = result.storyPlan.candidates;
-    assert.equal(result.storyPlan.status, 'ready-for-selection');
+    const story = result.storyPlan.story;
+    assert.equal(result.storyPlan.status, 'ready-for-review');
     assert.equal(result.storyPlan.audit.status, 'pass');
     assert.equal(result.storyPlan.audit.violations.length, 0);
-    assert.equal(result.nextStep, 'select-story');
-    assert.ok(candidates.length >= 2 && candidates.length <= 3);
-    assert.ok(candidates.every((candidate) => !['method', 'audit-report'].includes(candidate.framing)));
-    assert.ok(candidates.every((candidate) => candidate.viabilityBlockers.length === 0));
-    assert.ok(candidates.every((candidate) => !/data[- ]readiness|analysis matrix|QC packet|task status/i.test(candidate.resultsArc[0]?.statement ?? '')));
-    assert.equal(new Set(candidates.map((candidate) => candidate.centralContribution)).size, candidates.length);
-    assert.equal(new Set(candidates.map((candidate) => candidate.includedClaimIds.join('|'))).size, candidates.length);
-    assert.equal(new Set(candidates.map((candidate) => candidate.claimGraph.resultOrdering.join('|'))).size, candidates.length);
-    assert.equal(new Set(candidates.map((candidate) => candidate.figureTableSequence.map((entry) => entry.assetId).join('|'))).size, candidates.length);
+    assert.equal(result.nextStep, 'review-story');
+    assert.ok(story);
+    assert.equal(result.candidates.length, 1);
+    assert.equal(story.id, 'canonical-story');
+    assert.equal(story.viability.narrativeClosure.status, 'closed');
+    assert.equal(story.resultsBeats.at(-1)?.transition, 'closes');
+    assert.equal(story.resultsBeats.at(-1)?.nextQuestion, null);
+    assert.match(story.centralContribution, /astrocyte.*QKI\/CELF2.*transcriptome-wide.*autophagy.*transcript-architecture/i);
+    const beatText = story.resultsBeats.map((beat) => `${beat.question} ${beat.answer}`).join('\n');
+    const expectedRelationshipCoverage = [
+        /astrocyte.*RNA-processing/i,
+        /assay.*transcript-level|isoforms.*transcript-level/i,
+        /candidate.*transcript-usage/i,
+        /transcriptome-wide/i,
+        /autophagy|mitochondrial-quality-control/i,
+        /transcript architecture|transcript-boundary/i,
+    ].map((pattern) => pattern.test(beatText));
+    assert.ok(expectedRelationshipCoverage.every(Boolean));
+    const roleSet = new Set(story.evidenceRoleAssignments.map((assignment) => assignment.role));
+    assert.ok(['core', 'bridge', 'validation', 'boundary', 'supplementary', 'excluded'].every((role) => roleSet.has(role)));
+    const excludedSpatial = story.omissionLedger.some((entry) => {
+        if (entry.role !== 'excluded') {
+            return false;
+        }
+        const unit = result.evidenceDossier.evidenceUnits.find((candidate) => candidate.id === entry.claimId);
+        return /spatial|KNN|clustering/i.test(unit?.narrative.scientificStatement ?? '');
+    });
+    assert.equal(excludedSpatial, true);
+    const visibleFields = story.resultsBeats.flatMap((beat) => [beat.question, beat.answer, beat.boundedInterpretation, beat.nextQuestion ?? '']);
+    assert.ok([story.centralContribution, story.scientificQuestion, ...visibleFields].every((value) => !/STUDY-|TASK-|ART-|QDD|workflow|task status/i.test(value)));
+    assert.equal(await FileSystemUtils.fileExists(result.storyPlanPath), true);
+    assert.equal(await FileSystemUtils.fileExists(result.storyPlanMarkdownPath), true);
     assert.equal(await FileSystemUtils.fileExists(result.storyCandidatesJsonPath), true);
 });
 test('Parkinson conclude golden-case eval writes JSON and Markdown reports when case path is configured', async (t) => {
@@ -44,7 +67,7 @@ test('Parkinson conclude golden-case eval writes JSON and Markdown reports when 
         casePath,
         runId,
         now: new Date('2026-07-07T06:00:00.000Z'),
-        selectedStoryId: 'story-1',
+        selectedStoryId: 'canonical-story',
     });
     assert.equal(report.runId, runId);
     assert.equal(report.oracle.schemaVersion, 1);

@@ -685,6 +685,7 @@ function parseSelectedStoryFrontmatter(content: string): {
   kind?: string;
   version?: number;
   story_id?: string;
+  story?: unknown;
   candidate?: unknown;
 } | null {
   const match = content.match(MARKDOWN_FRONTMATTER_PATTERN);
@@ -697,6 +698,7 @@ function parseSelectedStoryFrontmatter(content: string): {
       kind?: string;
       version?: number;
       story_id?: string;
+      story?: unknown;
       candidate?: unknown;
     };
   } catch {
@@ -715,6 +717,13 @@ function isStructuredStoryCandidate(value: unknown): value is ConcludeStoryCandi
   const candidate = value as Partial<ConcludeStoryCandidate>;
   return candidate.schemaVersion === 1
     && typeof candidate.id === 'string'
+    && Array.isArray(candidate.resultsBeats)
+    && Array.isArray(candidate.evidenceRoleAssignments)
+    && Array.isArray(candidate.omissionLedger)
+    && Array.isArray(candidate.emphasisProfiles)
+    && isStringArray(candidate.claimLimits)
+    && isStringArray(candidate.missingValidation)
+    && isStringArray(candidate.reviewerRisks)
     && typeof candidate.scientificQuestion === 'string'
     && isStringArray(candidate.scientificQuestionClaimIds)
     && typeof candidate.centralContribution === 'string'
@@ -749,17 +758,18 @@ function parseSelectedStoryCandidate(content: string): ConcludeStoryCandidate | 
   if (frontmatter.kind !== CONCLUDE_SELECTED_STORY_KIND || frontmatter.version !== CONCLUDE_SELECTED_STORY_VERSION) {
     throw new Error(`Selected story must use ${CONCLUDE_SELECTED_STORY_KIND} version ${CONCLUDE_SELECTED_STORY_VERSION} structured frontmatter.`);
   }
-  if (!isStructuredStoryCandidate(frontmatter.candidate)) {
-    throw new Error('Selected story structured frontmatter is missing a complete candidate snapshot.');
+  const structuredStory = frontmatter.story ?? frontmatter.candidate;
+  if (!isStructuredStoryCandidate(structuredStory)) {
+    throw new Error('Selected story structured frontmatter is missing a complete canonical story snapshot.');
   }
-  if (typeof frontmatter.story_id !== 'string' || normalizeStoryId(frontmatter.story_id) !== normalizeStoryId(frontmatter.candidate.id)) {
-    throw new Error('Selected story id does not match its structured candidate snapshot.');
+  if (typeof frontmatter.story_id !== 'string' || normalizeStoryId(frontmatter.story_id) !== normalizeStoryId(structuredStory.id)) {
+    throw new Error('Selected story id does not match its structured canonical story snapshot.');
   }
-  const audit = auditConcludeStoryPlan([frontmatter.candidate]);
+  const audit = auditConcludeStoryPlan(structuredStory);
   if (audit.status === 'fail') {
-    throw new Error(`Selected story candidate failed the story-plan audit: ${audit.violations.map((violation) => violation.code).join(', ')}.`);
+    throw new Error(`Selected canonical story failed the story-plan audit: ${audit.violations.map((violation) => violation.code).join(', ')}.`);
   }
-  return frontmatter.candidate;
+  return structuredStory;
 }
 
 function readStudyStatus(study: StudyRecord): string {
@@ -927,11 +937,15 @@ function buildResultsClaims(
   dossier: ConcludeEvidenceDossier
 ): ConcludeResultsClaim[] {
   const unitById = new Map(dossier.evidenceUnits.map((unit) => [unit.id, unit] as const));
-  return candidate.resultsArc.slice(0, 3).map((entry, index) => {
+  return candidate.resultsArc.map((entry, index) => {
     const unit = unitById.get(entry.claimId);
-    const boundaryClaimIds = candidate.claimGraph.edges
+    const beat = candidate.resultsBeats[index];
+    const boundaryClaimIds = [...new Set([
+      ...(beat?.evidence.boundaryClaimIds ?? []),
+      ...candidate.claimGraph.edges
       .filter((edge) => edge.toClaimId === entry.claimId && (edge.relation === 'bounds' || edge.relation === 'contradicts'))
-      .map((edge) => edge.fromClaimId);
+      .map((edge) => edge.fromClaimId),
+    ])];
     const supportingEvidence = dossierClaimToEvidence(dossier, entry.claimId, 'supporting').slice(0, 4);
     const boundaryEvidence = boundaryClaimIds.flatMap((claimId) => dossierClaimToEvidence(dossier, claimId, 'boundary')).slice(0, 3);
     return {
@@ -1831,7 +1845,7 @@ function renderSelectedStoryMarkdown(
     version: CONCLUDE_SELECTED_STORY_VERSION,
     story_id: candidate.id,
     input_source: options.inputSource,
-    candidate,
+    story: candidate,
   }, [
     '# Selected Story',
     '',
@@ -1852,9 +1866,21 @@ function renderSelectedStoryMarkdown(
     '',
     candidate.story,
     '',
-    '## Results Arc',
+    '## Results Beats',
     '',
-    ...candidate.resultsArc.map((entry) => `- ${entry.sequence}. [${entry.claimId}] ${entry.statement}`),
+    ...candidate.resultsBeats.flatMap((beat) => [
+      `### ${beat.sequence}. ${beat.question}`,
+      '',
+      beat.answer,
+      '',
+      `- Answer claims: ${beat.answerClaimIds.join(', ')}`,
+      `- Evidence: core=${beat.evidence.coreClaimIds.join(', ') || 'none'}; bridge=${beat.evidence.bridgeClaimIds.join(', ') || 'none'}; validation=${beat.evidence.validationClaimIds.join(', ') || 'none'}; boundary=${beat.evidence.boundaryClaimIds.join(', ') || 'none'}`,
+      `- Figure/table anchors: ${beat.assetIds.join(', ') || 'none'}`,
+      `- Bounded interpretation: ${beat.boundedInterpretation}`,
+      `- Transition: ${beat.transition}`,
+      `- Next question: ${beat.nextQuestion ?? 'none'}`,
+      '',
+    ]),
     '',
     '## Claim Bundle',
     '',
@@ -1863,6 +1889,14 @@ function renderSelectedStoryMarkdown(
     '## Included Claim IDs',
     '',
     ...candidate.includedClaimIds.map((value) => `- ${value}`),
+    '',
+    '## Evidence Roles',
+    '',
+    ...candidate.evidenceRoleAssignments.map((entry) => `- ${entry.claimId}: ${entry.role} - ${entry.rationale}`),
+    '',
+    '## Omission Ledger',
+    '',
+    ...candidate.omissionLedger.map((entry) => `- ${entry.claimId}: ${entry.role}/${entry.category} - ${entry.rationale}`),
     '',
     '## Figure And Table Sequence',
     '',
@@ -1884,6 +1918,14 @@ function renderSelectedStoryMarkdown(
     '',
     ...candidate.claimSafetyLimits.map((value) => `- ${value}`),
     '',
+    '## Missing Validation',
+    '',
+    ...candidate.missingValidation.map((value) => `- ${value}`),
+    '',
+    '## Emphasis Profiles',
+    '',
+    ...candidate.emphasisProfiles.map((profile) => `- ${profile.id}: ${profile.label}`),
+    '',
   ].join('\n'));
 }
 
@@ -1901,6 +1943,9 @@ async function resolveSelectedStory(
   selectedStoryMarkdown: string | null;
 }> {
   const candidateById = new Map(candidates.map((candidate) => [normalizeStoryId(candidate.id), candidate] as const));
+  if (candidates.length === 1) {
+    candidateById.set('story-1', candidates[0]);
+  }
   const directSelectedStoryId = options.selectedStoryId ? normalizeStoryId(options.selectedStoryId) : null;
   const selectedStoryPathInput = options.selectedStoryPath?.trim();
   const auditSelectedStoryPath = path.join(outputDir, 'selected_story.md');
@@ -1924,10 +1969,10 @@ async function resolveSelectedStory(
   if (directSelectedStoryId && structuredCandidate && directSelectedStoryId !== normalizeStoryId(structuredCandidate.id)) {
     throw new Error(`Selected story id '${directSelectedStoryId}' does not match structured candidate '${structuredCandidate.id}'.`);
   }
-  const selectedStoryId = directSelectedStoryId ?? (structuredCandidate ? normalizeStoryId(structuredCandidate.id) : null);
-  if (!selectedStoryId) {
+  const requestedStoryId = directSelectedStoryId ?? (structuredCandidate ? normalizeStoryId(structuredCandidate.id) : null);
+  if (!requestedStoryId) {
     if (options.selectedStoryId || options.selectedStoryPath) {
-      throw new Error('Selected story input is present but no valid story id such as story-1 could be resolved.');
+      throw new Error('Selected story input is present but no valid story id such as canonical-story could be resolved.');
     }
     return {
       selectedStoryId: null,
@@ -1938,14 +1983,27 @@ async function resolveSelectedStory(
     };
   }
 
-  const selectedCandidate = structuredCandidate ?? candidateById.get(selectedStoryId);
+  const selectedCandidate = structuredCandidate ?? candidateById.get(requestedStoryId);
   if (!selectedCandidate) {
-    throw new Error(`Selected story '${selectedStoryId}' does not match any generated candidate.`);
+    throw new Error(`Selected story '${requestedStoryId}' does not match the generated canonical story.`);
   }
+  const selectedStoryId = normalizeStoryId(selectedCandidate.id);
   const dossierClaimIds = new Set(dossier.evidenceUnits.map((unit) => unit.id));
-  const missingClaimIds = selectedCandidate.includedClaimIds.filter((claimId) => !dossierClaimIds.has(claimId));
+  const missingClaimIds = selectedCandidate.evidenceRoleAssignments
+    .map((assignment) => assignment.claimId)
+    .filter((claimId) => !dossierClaimIds.has(claimId));
   if (missingClaimIds.length > 0) {
     throw new Error(`Selected story references dossier claims that are no longer available: ${missingClaimIds.join(', ')}.`);
+  }
+  const dossierAssetIds = new Set(dossier.assetCandidates.map((asset) => asset.id));
+  const selectedAssetIds = new Set([
+    ...selectedCandidate.resultsBeats.flatMap((beat) => beat.assetIds),
+    ...selectedCandidate.evidenceRoleAssignments.flatMap((assignment) => assignment.assetIds),
+    ...selectedCandidate.emphasisProfiles.flatMap((profile) => profile.figurePriority),
+  ]);
+  const missingAssetIds = [...selectedAssetIds].filter((assetId) => !dossierAssetIds.has(assetId));
+  if (missingAssetIds.length > 0) {
+    throw new Error(`Selected story references dossier assets that are no longer available: ${missingAssetIds.join(', ')}.`);
   }
 
   const selectionInputSource =
@@ -1974,12 +2032,12 @@ function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): s
     `- Planning status: ${result.storyPlan.status}`,
     `- Story-plan audit: ${result.storyPlan.audit.status.toUpperCase()}`,
     result.selectionRequired
-      ? '- Selection gate: STOP here until a human selects one story candidate.'
+      ? '- Story-review gate: STOP here until a human confirms or revises the canonical story.'
       : result.storyPlan.status === 'insufficient-evidence'
         ? '- Viability gate: STOP because the dossier does not support a manuscript story.'
         : `- Selected story: ${result.selectedStoryId ?? 'unknown'}`,
     result.selectionRequired
-      ? '- Do not auto-select from viability diagnostics; human scientific judgment remains required.'
+      ? '- Human review may remove or reweight evidence, change emphasis, or request revision without choosing another paper.'
       : result.storyPlan.status === 'insufficient-evidence'
         ? '- No filler candidate or fallback workflow paper was generated.'
         : '- Manuscript planning artifacts have been generated from the selected structured story.',
@@ -2065,6 +2123,67 @@ function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): s
   return `${lines.join('\n').trim()}\n`;
 }
 
+function renderStoryPlanMarkdown(result: ConcludeStoryGenerationResult): string {
+  const lines: string[] = [
+    '# Canonical Story Plan',
+    '',
+    `- Run ID: ${result.runId}`,
+    `- Planning status: ${result.storyPlan.status}`,
+    `- Story-plan audit: ${result.storyPlan.audit.status.toUpperCase()}`,
+    ...result.storyPlan.diagnostics.map((value) => `- ${value}`),
+    '',
+  ];
+  const story = result.storyPlan.story;
+  if (!story) {
+    lines.push('No canonical story with narrative closure passed validation.');
+    lines.push('');
+    return `${lines.join('\n').trim()}\n`;
+  }
+
+  lines.push('## Central Contribution', '', story.centralContribution, '');
+  lines.push('## Scientific Question', '', story.scientificQuestion, '');
+  lines.push('## Results Beats', '');
+  for (const beat of story.resultsBeats) {
+    lines.push(`### ${beat.sequence}. ${beat.question}`, '');
+    lines.push(beat.answer, '');
+    lines.push(`- Grounded answer claims: ${beat.answerClaimIds.join(', ')}`);
+    lines.push(`- Core: ${beat.evidence.coreClaimIds.join(', ') || 'none'}`);
+    lines.push(`- Bridge: ${beat.evidence.bridgeClaimIds.join(', ') || 'none'}`);
+    lines.push(`- Validation: ${beat.evidence.validationClaimIds.join(', ') || 'none'}`);
+    lines.push(`- Boundary: ${beat.evidence.boundaryClaimIds.join(', ') || 'none'}`);
+    lines.push(`- Figure/table anchors: ${beat.assetIds.join(', ') || 'none'}`);
+    lines.push(`- Bounded interpretation: ${beat.boundedInterpretation}`);
+    lines.push(`- Transition: ${beat.transition}`);
+    lines.push(`- Next question: ${beat.nextQuestion ?? 'none'}`, '');
+  }
+  lines.push('## Figure And Table Sequence', '');
+  lines.push(...story.figureTableSequence.map((entry) => `- ${entry.sequence}. ${entry.kind} ${entry.assetId}: ${entry.claimIds.join(', ')}`), '');
+  lines.push('## Claim Limits', '', ...story.claimLimits.map((value) => `- ${value}`), '');
+  lines.push('## Missing Validation', '', ...story.missingValidation.map((value) => `- ${value}`), '');
+  lines.push('## Reviewer Risk', '', ...story.reviewerRisks.map((value) => `- ${value}`), '');
+  lines.push('## Evidence Roles', '');
+  lines.push(...story.evidenceRoleAssignments.map((entry) => `- ${entry.claimId}: ${entry.role} - ${entry.rationale}`), '');
+  lines.push('## Omission Ledger', '');
+  lines.push(...story.omissionLedger.map((entry) => `- ${entry.claimId}: ${entry.role}/${entry.category} - ${entry.rationale}`), '');
+  lines.push('## Emphasis Profiles', '');
+  for (const profile of story.emphasisProfiles) {
+    lines.push(`### ${profile.label}`, '');
+    lines.push(`- ID: ${profile.id}`);
+    lines.push(`- Supporting claims: ${profile.supportingClaimIds.join(', ') || 'none'}`);
+    lines.push(`- Figure priority: ${profile.figurePriority.join(', ') || 'none'}`);
+    lines.push(`- Section weights: ${Object.entries(profile.sectionWeights).map(([key, value]) => `${key}=${value}`).join(', ') || 'none'}`);
+    lines.push(...profile.discussionEmphasis.map((value) => `- Discussion: ${value}`), '');
+  }
+  lines.push('## QDD Evolution Provenance', '');
+  for (const beat of story.resultsBeats) {
+    lines.push(`- ${beat.id}: ${beat.qddEvolutionRefs.map((ref) => `${ref.transitionId} [${ref.studyIds.join(', ')}]`).join('; ') || 'none'}`);
+  }
+  lines.push('');
+  lines.push('## Narrative Closure', '');
+  lines.push(`- ${story.viability.narrativeClosure.status}: ${story.viability.narrativeClosure.rationale}`, '');
+  return `${lines.join('\n').trim()}\n`;
+}
+
 function renderEvidencePacketsMarkdown(packets: ConcludeEvidencePacket[]): string {
   const lines: string[] = ['# Evidence Packets', ''];
 
@@ -2118,9 +2237,19 @@ function renderReviewerRiskAuditMarkdown(candidates: ConcludeStoryCandidate[]): 
 
 async function writeConcludeStoryOutputs(result: ConcludeStoryGenerationResult): Promise<void> {
   await FileSystemUtils.createDirectory(result.outputDir);
+  const legacyStoryCandidates = {
+    schemaVersion: 1,
+    kind: 'qdd-manuscript-story-candidates-legacy',
+    status: result.storyPlan.status,
+    diagnostics: result.storyPlan.diagnostics,
+    candidates: result.candidates,
+    audit: result.storyPlan.audit,
+  };
   await Promise.all([
     FileSystemUtils.writeFile(path.join(result.outputDir, 'story_candidates.md'), renderStoryCandidatesMarkdown(result)),
-    FileSystemUtils.writeFile(result.storyCandidatesJsonPath, `${JSON.stringify(result.storyPlan, null, 2)}\n`),
+    FileSystemUtils.writeFile(result.storyCandidatesJsonPath, `${JSON.stringify(legacyStoryCandidates, null, 2)}\n`),
+    FileSystemUtils.writeFile(result.storyPlanPath, `${JSON.stringify(result.storyPlan, null, 2)}\n`),
+    FileSystemUtils.writeFile(result.storyPlanMarkdownPath, renderStoryPlanMarkdown(result)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_packets.md'), renderEvidencePacketsMarkdown(result.evidencePackets)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_audit.md'), renderEvidenceAuditMarkdown(result.evidence)),
     FileSystemUtils.writeFile(result.evidenceDossierJsonPath, `${JSON.stringify(result.evidenceDossier, null, 2)}\n`),
@@ -2154,8 +2283,12 @@ export async function generateConcludeStoryCandidates(
   const evidenceDossier = await buildConcludeEvidenceDossier(preflight, now);
   const evidence = await harvestConcludeEvidence(preflight);
   const evidencePackets = buildEvidencePackets(evidence);
-  const storyPlan = buildConcludeStoryPlan(evidenceDossier);
-  const candidates = storyPlan.candidates;
+  const storyPlan = await buildConcludeStoryPlan(evidenceDossier, {
+    evolution: preflight.snapshot.evolution,
+    semanticPlanner: options.semanticPlanner,
+    oracleConstraints: options.oracleConstraints,
+  });
+  const candidates = storyPlan.story ? [storyPlan.story] : [];
   const claimSafetyAudit = collectClaimSafetyAudit(evidence);
   const selectedStory = await resolveSelectedStory(preflight.projectRoot, outputDir, options, candidates, evidenceDossier);
   const resultsClaims = selectedStory.selectedCandidate
@@ -2170,13 +2303,15 @@ export async function generateConcludeStoryCandidates(
     outputDir,
     storyCandidatesPath: path.join(outputDir, 'story_candidates.md'),
     storyCandidatesJsonPath: path.join(outputDir, 'story_candidates.json'),
+    storyPlanPath: path.join(outputDir, 'story_plan.json'),
+    storyPlanMarkdownPath: path.join(outputDir, 'story_plan.md'),
     evidencePacketsPath: path.join(outputDir, 'evidence_packets.md'),
     evidenceAuditPath: path.join(outputDir, 'evidence_audit.md'),
     evidenceDossierJsonPath: path.join(outputDir, 'evidence_dossier.json'),
     evidenceDossierMarkdownPath: path.join(outputDir, 'evidence_dossier.md'),
     claimSafetyAuditPath: path.join(outputDir, 'claim_safety_audit.md'),
     reviewerRiskAuditPath: path.join(outputDir, 'reviewer_risk_audit.md'),
-    selectionRequired: candidates.length > 0 && selectedStory.selectedCandidate === null,
+    selectionRequired: storyPlan.status === 'ready-for-review' && selectedStory.selectedCandidate === null,
     selectedStoryId: selectedStory.selectedStoryId,
     selectedStoryPath: selectedStory.selectedStoryPath,
     selectedCandidate: selectedStory.selectedCandidate,
@@ -2192,7 +2327,7 @@ export async function generateConcludeStoryCandidates(
       ? 'draft-manuscript'
       : storyPlan.status === 'insufficient-evidence'
         ? 'insufficient-evidence'
-        : 'select-story',
+        : 'review-story',
   };
 
   await writeConcludeStoryOutputs(result);

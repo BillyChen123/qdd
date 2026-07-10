@@ -14,7 +14,16 @@ export type ConcludeEvidenceEligibility = 'results' | 'methods-context' | 'bound
 export type ConcludeEvidenceSourceRole = 'supporting' | 'boundary' | 'contradicting';
 export type ConcludeEvidenceRegistration = 'artifact-index' | 'artifact-candidate';
 export type ConcludeStoryFraming = 'discovery' | 'method' | 'case-study' | 'benchmark' | 'audit-report' | 'bounded-hypothesis';
-export type ConcludeStoryPlanningStatus = 'ready-for-selection' | 'insufficient-story-diversity' | 'insufficient-evidence';
+export type ConcludeStoryPlanningStatus = 'ready-for-review' | 'insufficient-evidence';
+export type ConcludeStoryTransitionType = 'motivates' | 'narrows' | 'rules-out' | 'validates' | 'closes';
+export type ConcludeStoryEvidenceRole =
+  | 'core'
+  | 'bridge'
+  | 'validation'
+  | 'boundary'
+  | 'context'
+  | 'supplementary'
+  | 'excluded';
 export type ConcludeEvidenceFocus =
   | 'data-readiness'
   | 'biological-signal'
@@ -238,10 +247,135 @@ export interface ConcludePreflightSnapshot {
   studies: ConcludeStudySnapshot[];
 }
 
-export interface ConcludeStoryCandidate {
+export interface ConcludeStoryBeatEvidence {
+  coreClaimIds: string[];
+  bridgeClaimIds: string[];
+  validationClaimIds: string[];
+  boundaryClaimIds: string[];
+}
+
+export interface ConcludeStoryEvolutionRef {
+  transitionId: string;
+  studyIds: string[];
+  boundaryIds: string[];
+}
+
+export interface ConcludeStoryResultsBeat {
+  id: string;
+  sequence: number;
+  question: string;
+  answer: string;
+  answerClaimIds: string[];
+  evidence: ConcludeStoryBeatEvidence;
+  assetIds: string[];
+  boundedInterpretation: string;
+  transition: ConcludeStoryTransitionType;
+  nextQuestion: string | null;
+  qddEvolutionRefs: ConcludeStoryEvolutionRef[];
+}
+
+export interface ConcludeStoryEvidenceRoleAssignment {
+  claimId: string;
+  role: ConcludeStoryEvidenceRole;
+  beatIds: string[];
+  assetIds: string[];
+  rationale: string;
+}
+
+export interface ConcludeStoryOmissionEntry {
+  claimId: string;
+  role: Extract<ConcludeStoryEvidenceRole, 'context' | 'supplementary' | 'excluded'>;
+  category: 'context-only' | 'supplementary' | 'redundant' | 'failed' | 'off-axis' | 'execution-only' | 'unsafe';
+  rationale: string;
+}
+
+export interface ConcludeStoryEmphasisProfile {
+  id: string;
+  label: string;
+  supportingClaimIds: string[];
+  figurePriority: string[];
+  sectionWeights: Record<string, number>;
+  discussionEmphasis: string[];
+}
+
+export interface ConcludeQuestionEvolutionTransition {
+  id: string;
+  studyId: string;
+  question: string;
+  changeType: 'refinement' | 'confirmation' | 'pivot' | 'dissolution';
+  resolvedBoundaryIds: string[];
+  openedBoundaryIds: string[];
+  candidateNextQuestions: string[];
+  nextStudyId: string | null;
+}
+
+export interface ConcludeStoryPlannerClaimSafety {
+  claimId: string;
+  claimStrength: ConcludeClaimStrength;
+  allowedVerbs: string[];
+  forbiddenVerbs: string[];
+  uncertainty: string[];
+}
+
+export interface ConcludeStoryOracleConstraints {
+  expectedStoryRelationships: string[];
+  claimLimits: string[];
+  forbiddenVisiblePatterns: string[];
+}
+
+export interface ConcludeSemanticStoryPlannerInput {
+  schemaVersion: 1;
+  dossier: ConcludeEvidenceDossier;
+  questionEvolutionTransitions: ConcludeQuestionEvolutionTransition[];
+  claimSafety: ConcludeStoryPlannerClaimSafety[];
+  oracleConstraints: ConcludeStoryOracleConstraints | null;
+}
+
+export interface ConcludeSemanticStoryBeatProposal {
+  question: string;
+  answer: string;
+  answerClaimIds: string[];
+  evidence: ConcludeStoryBeatEvidence;
+  assetIds: string[];
+  boundedInterpretation: string;
+  transition: ConcludeStoryTransitionType;
+  nextQuestion: string | null;
+  evolutionTransitionIds: string[];
+}
+
+export interface ConcludeSemanticStoryProposal {
+  centralContribution: string;
+  scientificQuestion: string;
+  beats: ConcludeSemanticStoryBeatProposal[];
+  evidenceRoles: Array<{
+    claimId: string;
+    role: ConcludeStoryEvidenceRole;
+    beatSequences: number[];
+    assetIds: string[];
+    rationale: string;
+  }>;
+  omissions: ConcludeStoryOmissionEntry[];
+  emphasisProfiles: ConcludeStoryEmphasisProfile[];
+  claimLimits: string[];
+  missingValidation: string[];
+  reviewerRisks: string[];
+}
+
+export interface ConcludeSemanticStoryPlanner {
+  plan(input: ConcludeSemanticStoryPlannerInput): Promise<unknown> | unknown;
+}
+
+export interface ConcludeCanonicalStory {
   schemaVersion: 1;
   id: string;
   framing: ConcludeStoryFraming;
+  resultsBeats: ConcludeStoryResultsBeat[];
+  evidenceRoleAssignments: ConcludeStoryEvidenceRoleAssignment[];
+  omissionLedger: ConcludeStoryOmissionEntry[];
+  emphasisProfiles: ConcludeStoryEmphasisProfile[];
+  claimLimits: string[];
+  missingValidation: string[];
+  reviewerRisks: string[];
   scientificQuestion: string;
   scientificQuestionClaimIds: string[];
   centralContribution: string;
@@ -268,6 +402,8 @@ export interface ConcludeStoryCandidate {
   recommendedTitleStyle: string;
 }
 
+export type ConcludeStoryCandidate = ConcludeCanonicalStory;
+
 export interface ConcludeStoryResultsArcEntry {
   sequence: number;
   claimId: string;
@@ -292,7 +428,7 @@ export interface ConcludeStoryLimitationPlacement {
 
 export interface ConcludeStoryClaimGraphNode {
   claimId: string;
-  role: 'lead' | 'supporting' | 'boundary' | 'contradiction';
+  role: 'core' | 'bridge' | 'validation' | 'boundary' | 'contradiction';
   statement: string;
   claimStrength: ConcludeClaimStrength;
   assetCandidateIds: string[];
@@ -303,7 +439,7 @@ export interface ConcludeStoryClaimGraphNode {
 export interface ConcludeStoryClaimGraphEdge {
   fromClaimId: string;
   toClaimId: string;
-  relation: 'supports' | 'bounds' | 'contradicts' | 'motivates';
+  relation: 'supports' | 'bounds' | 'contradicts' | ConcludeStoryTransitionType;
   rationale: string;
 }
 
@@ -320,6 +456,10 @@ export interface ConcludeManuscriptClaimGraph {
 }
 
 export interface ConcludeStoryViabilityDiagnostics {
+  narrativeClosure: {
+    status: 'closed' | 'open';
+    rationale: string;
+  };
   coherence: {
     level: 'strong' | 'moderate' | 'weak';
     rationale: string;
@@ -349,11 +489,16 @@ export interface ConcludeStoryViabilityDiagnostics {
 
 export interface ConcludeStoryPlanAuditViolation {
   code:
+    | 'invalid-schema'
     | 'provenance-leak'
     | 'execution-language'
     | 'missing-claim-reference'
+    | 'numeric-fidelity'
+    | 'claim-safety'
     | 'invalid-leading-claim'
-    | 'candidate-not-distinct'
+    | 'invalid-transition'
+    | 'invalid-evidence-role'
+    | 'invalid-emphasis-profile'
     | 'unsupported-workflow-story';
   candidateId: string | null;
   field: string;
@@ -361,11 +506,11 @@ export interface ConcludeStoryPlanAuditViolation {
 }
 
 export interface ConcludeStoryPlan {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: 'qdd-manuscript-story-plan';
   status: ConcludeStoryPlanningStatus;
   diagnostics: string[];
-  candidates: ConcludeStoryCandidate[];
+  story: ConcludeCanonicalStory | null;
   audit: {
     status: 'pass' | 'fail';
     violations: ConcludeStoryPlanAuditViolation[];
@@ -469,6 +614,8 @@ export interface ConcludeStoryGenerationResult {
   outputDir: string;
   storyCandidatesPath: string;
   storyCandidatesJsonPath: string;
+  storyPlanPath: string;
+  storyPlanMarkdownPath: string;
   evidencePacketsPath: string;
   evidenceAuditPath: string;
   evidenceDossierJsonPath: string;
@@ -487,7 +634,7 @@ export interface ConcludeStoryGenerationResult {
   evidenceDossier: ConcludeEvidenceDossier;
   evidencePackets: ConcludeEvidencePacket[];
   claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
-  nextStep: 'insufficient-evidence' | 'select-story' | 'draft-manuscript' | 'review-final-draft';
+  nextStep: 'insufficient-evidence' | 'review-story' | 'draft-manuscript' | 'review-final-draft';
 }
 
 export interface RunConcludeOptions extends GenerateConcludeStoryCandidatesOptions {
@@ -662,4 +809,6 @@ export interface GenerateConcludeStoryCandidatesOptions extends ConcludePrefligh
   runId?: string;
   now?: Date;
   outputDir?: string;
+  semanticPlanner?: ConcludeSemanticStoryPlanner;
+  oracleConstraints?: ConcludeStoryOracleConstraints | null;
 }

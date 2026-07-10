@@ -740,7 +740,12 @@ export async function runConcludeEval(options: RunConcludeEvalOptions): Promise<
     environment: options.environment,
     shellPath: options.shellPath,
     outputDir,
-    selectedStoryId: options.selectedStoryId ?? 'story-1',
+    selectedStoryId: options.selectedStoryId ?? 'canonical-story',
+    oracleConstraints: {
+      expectedStoryRelationships: oracle.expectedStoryRelationships,
+      claimLimits: oracle.claimLimits,
+      forbiddenVisiblePatterns: oracle.forbiddenVisiblePatterns,
+    },
     now,
     runId,
   });
