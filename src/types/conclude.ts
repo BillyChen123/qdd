@@ -258,17 +258,63 @@ export interface ConcludeEvalDimensionScore {
 }
 
 export type ConcludeEvalHardFailId =
-  | 'missing_internal_evidence_anchor'
-  | 'fabricated_citation_or_bibtex'
-  | 'associative_to_causal_overclaim'
-  | 'raw_task_study_leakage'
-  | 'report_tone_dominates_manuscript';
+  | 'evidence-inventory-prose'
+  | 'fragmented-or-metadata-prose'
+  | 'unsupported-central-claim'
+  | 'missing-result-anchor'
+  | 'invalid-citation'
+  | 'meta-writing'
+  | 'false-positive-evaluation';
+
+export interface ConcludeEvalFinding {
+  filePath: string;
+  line: number;
+  column: number;
+  excerpt: string;
+  reason: string;
+}
 
 export interface ConcludeEvalHardFail {
   id: ConcludeEvalHardFailId;
   triggered: boolean;
   rationale: string;
-  evidence: string[];
+  findings: ConcludeEvalFinding[];
+}
+
+export interface ConcludeEvalOracleFact {
+  id: string;
+  fact: string;
+  sourceRefs: string[];
+  support: string[];
+}
+
+export interface ConcludeEvalOracleHardFailure {
+  id: ConcludeEvalHardFailId;
+  description: string;
+}
+
+export interface ConcludeEvalOracle {
+  schemaVersion: 1;
+  caseId: string;
+  purpose: string;
+  expectedFacts: ConcludeEvalOracleFact[];
+  expectedStoryRelationships: string[];
+  claimLimits: string[];
+  requiredManuscriptSignals: string[];
+  forbiddenVisiblePatterns: string[];
+  hardFailures: ConcludeEvalOracleHardFailure[];
+}
+
+export interface ConcludeEvalOracleReference {
+  schemaVersion: number;
+  caseId: string;
+  oraclePath: string;
+}
+
+export interface ConcludeEvalGate {
+  status: 'pass' | 'fail';
+  passing: boolean;
+  reason: string;
 }
 
 export interface ConcludeEvalOutputs {
@@ -289,6 +335,8 @@ export interface ConcludeEvalReport {
   casePath: string;
   evaluatedAt: string;
   runId: string;
+  oracle: ConcludeEvalOracleReference;
+  gate: ConcludeEvalGate;
   outputs: ConcludeEvalOutputs;
   concludeRun: {
     outputDir: string;
@@ -313,6 +361,7 @@ export interface RunConcludeEvalOptions extends ConcludePreflightOptions {
   casePath: string;
   outputDir?: string;
   selectedStoryId?: string;
+  oraclePath?: string;
   now?: Date;
   runId?: string;
 }

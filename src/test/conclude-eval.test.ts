@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { __testOnly, runConcludeEval } from '../services/conclude-eval.js';
+import { loadConcludeEvalOracle } from '../services/conclude-eval-oracle.js';
 
 const PARKINSON_CASE_ENV = 'QDD_CONCLUDE_EVAL_CASE';
+const ORACLE_FIXTURE_DIR = path.resolve('src/test/fixtures/conclude/parkinson-oracle');
 
 test('Parkinson conclude golden-case eval writes JSON and Markdown reports when case path is configured', async (t) => {
   const casePath = process.env[PARKINSON_CASE_ENV]?.trim();
@@ -22,6 +24,8 @@ test('Parkinson conclude golden-case eval writes JSON and Markdown reports when 
   });
 
   assert.equal(report.runId, runId);
+  assert.equal(report.oracle.schemaVersion, 1);
+  assert.equal(report.oracle.caseId, 'parkinson-rna-processing');
   assert.equal(report.dimensions.length, 7);
   assert.equal(report.summary.scoreMaximum, 35);
   assert.ok(report.summary.scoreTotal >= 7);
@@ -31,20 +35,35 @@ test('Parkinson conclude golden-case eval writes JSON and Markdown reports when 
   assert.equal(await FileSystemUtils.fileExists(report.outputs.concludeEvalMarkdownPath), true);
 
   const concludeEvalJson = JSON.parse(await FileSystemUtils.readFile(report.outputs.concludeEvalJsonPath)) as {
+    oracle: { schemaVersion: number; caseId: string };
+    gate: { status: 'pass' | 'fail'; passing: boolean };
     summary: { scoreTotal: number; hardFailTriggered: boolean };
     dimensions: Array<{ id: string; score: number; rationale: string }>;
-    hardFails: Array<{ id: string; triggered: boolean; rationale: string }>;
+    hardFails: Array<{
+      id: string;
+      triggered: boolean;
+      rationale: string;
+      findings: Array<{ filePath: string; line: number; column: number; excerpt: string; reason: string }>;
+    }>;
     keyImprovements: string[];
   };
   const concludeEvalMarkdown = await FileSystemUtils.readFile(report.outputs.concludeEvalMarkdownPath);
 
   assert.equal(concludeEvalJson.summary.scoreTotal, report.summary.scoreTotal);
+  assert.equal(concludeEvalJson.oracle.schemaVersion, 1);
+  assert.equal(concludeEvalJson.oracle.caseId, 'parkinson-rna-processing');
+  assert.equal(concludeEvalJson.gate.status, report.gate.status);
+  assert.equal(concludeEvalJson.gate.passing, report.gate.passing);
   assert.equal(concludeEvalJson.dimensions.length, 7);
   assert.ok(concludeEvalJson.dimensions.every((dimension) => dimension.score >= 1 && dimension.score <= 5));
-  assert.ok(concludeEvalJson.hardFails.some((hardFail) => hardFail.id === 'missing_internal_evidence_anchor'));
+  assert.ok(concludeEvalJson.hardFails.some((hardFail) => hardFail.id === 'missing-result-anchor'));
   assert.ok(concludeEvalJson.keyImprovements.length >= 3);
   assert.match(concludeEvalMarkdown, /# Conclude Eval/);
-  assert.match(concludeEvalMarkdown, /## Summary/);
+  assert.match(concludeEvalMarkdown, /## Oracle/);
+  assert.match(concludeEvalMarkdown, /parkinson-rna-processing/);
+  assert.match(concludeEvalMarkdown, /## Quality Gate/);
+  assert.match(concludeEvalMarkdown, /Gate status:/);
+  assert.match(concludeEvalMarkdown, /## Diagnostic Summary/);
   assert.match(concludeEvalMarkdown, /## Dimension Scores/);
   assert.match(concludeEvalMarkdown, /logical_coherence/);
   assert.match(concludeEvalMarkdown, /## Hard Fails/);
@@ -69,6 +88,53 @@ test('Parkinson conclude golden-case eval writes JSON and Markdown reports when 
   assert.equal(path.dirname(report.outputs.concludeEvalMarkdownPath), report.outputs.outputDir);
 });
 
+test('versioned Parkinson Oracle hard-fails the repository known bad-case fixture', async () => {
+  const badDraftPath = path.join(ORACLE_FIXTURE_DIR, 'bad-draft-excerpts.md');
+  const badDraftFixture = await FileSystemUtils.readFile(badDraftPath);
+  const badDraftVisibleText = badDraftFixture
+    .split('\n')
+    .map((line) => line.startsWith('> ') ? line.slice(2) : '')
+    .join('\n');
+  const { oracle, oraclePath } = await loadConcludeEvalOracle();
+
+  const quality = __testOnly.evaluateManuscriptQuality({
+    oracle,
+    mainTexContent: badDraftVisibleText,
+    referencesBibContent: '',
+    mainTexPath: badDraftPath,
+    referencesBibPath: path.join(ORACLE_FIXTURE_DIR, 'references.bib'),
+    resultsClaims: [],
+    figureAssets: [],
+  });
+  const triggeredIds = new Set(
+    quality.hardFails.filter((hardFail) => hardFail.triggered).map((hardFail) => hardFail.id)
+  );
+  const logicalCoherence = __testOnly.scoreLogicalCoherence(badDraftVisibleText, quality.hardFails);
+
+  assert.equal(oracle.schemaVersion, 1);
+  assert.equal(oracle.caseId, 'parkinson-rna-processing');
+  assert.equal(oraclePath, path.join(ORACLE_FIXTURE_DIR, 'oracle.json'));
+  assert.equal(quality.gate.status, 'fail');
+  assert.equal(quality.gate.passing, false);
+  assert.ok(triggeredIds.has('evidence-inventory-prose'));
+  assert.ok(triggeredIds.has('fragmented-or-metadata-prose'));
+  assert.ok(triggeredIds.has('meta-writing'));
+  assert.ok(triggeredIds.has('missing-result-anchor'));
+  assert.ok(triggeredIds.has('invalid-citation'));
+  assert.ok(logicalCoherence.score < 5);
+  assert.ok(
+    quality.hardFails
+      .filter((hardFail) => hardFail.triggered)
+      .every((hardFail) => hardFail.findings.every((finding) =>
+        finding.filePath.length > 0
+        && finding.line > 0
+        && finding.column > 0
+        && finding.excerpt.length > 0
+        && finding.reason.length > 0
+      ))
+  );
+});
+
 test('conclude eval visible-text detectors catch raw leakage and report-tone scaffolding', () => {
   const visibleText = __testOnly.extractVisibleManuscriptText(`
     \\section{Results}
@@ -83,4 +149,27 @@ test('conclude eval visible-text detectors catch raw leakage and report-tone sca
   assert.ok(rawLeakageSignals.some((signal) => /TASK-999/.test(signal)));
   assert.ok(reportToneSignals.some((signal) => /the discussion should/i.test(signal)));
   assert.ok(rawLeakageSignals.every((signal) => !/TASK-001/.test(signal)));
+});
+
+test('QDD provenance identifiers are ignored in comments and rejected in visible prose', async () => {
+  const { oracle } = await loadConcludeEvalOracle();
+  const mainTexPath = path.join(ORACLE_FIXTURE_DIR, 'visible-leakage.tex');
+  const quality = __testOnly.evaluateManuscriptQuality({
+    oracle,
+    mainTexContent: `
+      \\section{Results}
+      The visible result cites STUDY-999 as its source.
+      % Provenance only: STUDY-001 TASK-002 ART-003
+    `,
+    referencesBibContent: '@article{verified,\n  title={Verified source}\n}\n',
+    mainTexPath,
+    referencesBibPath: path.join(ORACLE_FIXTURE_DIR, 'references.bib'),
+    resultsClaims: [],
+    figureAssets: [],
+  });
+  const metadataFailure = quality.hardFails.find((hardFail) => hardFail.id === 'fragmented-or-metadata-prose');
+
+  assert.equal(metadataFailure?.triggered, true);
+  assert.ok(metadataFailure?.findings.some((finding) => /STUDY-999/.test(finding.excerpt)));
+  assert.ok(metadataFailure?.findings.every((finding) => !/STUDY-001|TASK-002|ART-003/.test(finding.excerpt)));
 });

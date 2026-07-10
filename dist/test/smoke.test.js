@@ -762,6 +762,7 @@ test('active public sources do not expose local developer paths or private proje
         '/dist/',
         '/node_modules/',
         '/openspec/changes/archive/',
+        '/src/test/fixtures/',
     ])))).flat();
     const forbiddenPatterns = [
         ['/data', '/chenyz'].join(''),
