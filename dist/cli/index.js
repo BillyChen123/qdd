@@ -79,7 +79,7 @@ program
 });
 program
     .command('conclude')
-    .description('Harvest auditable QDD evidence into conclusions/<run-id>/evidence_audit.md')
+    .description('Build an auditable scientific evidence dossier and conclude package')
     .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
     .option('--selected-story-id <id>', 'Selected story candidate id such as story-1')
     .option('--selected-story-path <path>', 'Project-local selected story markdown; defaults to <output-dir>/selected_story.md when present')

@@ -12,6 +12,7 @@ export async function concludeCommand(options = {}) {
         return;
     }
     console.log(`Story candidates: ${result.storyCandidatesPath}`);
+    console.log(`Evidence dossier: ${result.evidenceDossierMarkdownPath}`);
     console.log(`Evidence audit: ${result.evidenceAuditPath}`);
     console.log(`Render status: ${result.renderStatusPath}`);
     console.log(`Next step: ${result.nextStep}`);

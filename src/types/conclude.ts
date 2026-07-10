@@ -1,4 +1,5 @@
 import type { ArtifactIndex } from './artifacts.js';
+import type { ArtifactType } from './core.js';
 import type { ResearchContract } from './core.js';
 import type { EvolutionState } from './evolution.js';
 import type { StudyRecord, TaskRecord } from './studies.js';
@@ -9,6 +10,9 @@ export type ConcludeDraftArtifactStatus = 'complete' | 'blocked' | 'gap';
 export type ConcludeRenderToolName = 'latexmk' | 'xelatex' | 'pdflatex' | 'pandoc';
 export type ConcludeEvidenceKind = 'supporting' | 'negative' | 'boundary';
 export type ConcludeClaimStrength = 'associative' | 'bounded' | 'causal';
+export type ConcludeEvidenceEligibility = 'results' | 'methods-context' | 'boundary' | 'excluded';
+export type ConcludeEvidenceSourceRole = 'supporting' | 'boundary' | 'contradicting';
+export type ConcludeEvidenceRegistration = 'artifact-index' | 'artifact-candidate';
 export type ConcludeStoryFraming = 'discovery' | 'method' | 'case-study' | 'benchmark' | 'audit-report' | 'bounded-hypothesis';
 export type ConcludeEvidenceFocus =
   | 'data-readiness'
@@ -63,6 +67,139 @@ export interface ConcludeStudyMemorySnapshot {
   studyId: string | null;
   relativePath: string;
   content: string;
+}
+
+export interface ConcludeEvidenceTableLocator {
+  kind: 'table-row';
+  path: string;
+  row: number;
+  selector: Record<string, string>;
+  columns: string[];
+}
+
+export interface ConcludeEvidenceMarkdownLocator {
+  kind: 'markdown-lines';
+  path: string;
+  startLine: number;
+  endLine: number;
+  heading: string | null;
+}
+
+export interface ConcludeEvidenceFileLocator {
+  kind: 'file';
+  path: string;
+  byteStart: number;
+  byteEnd: number;
+}
+
+export type ConcludeEvidenceLocator =
+  | ConcludeEvidenceTableLocator
+  | ConcludeEvidenceMarkdownLocator
+  | ConcludeEvidenceFileLocator;
+
+export interface ConcludeEvidenceProvenanceRef {
+  role: ConcludeEvidenceSourceRole;
+  sourceType: 'artifact-content' | 'artifact-metadata' | 'boundary-decision';
+  locator: ConcludeEvidenceLocator;
+  artifactIds: string[];
+  studyIds: string[];
+  taskIds: string[];
+  registrations: ConcludeEvidenceRegistration[];
+}
+
+export interface ConcludeEvidenceStatistic {
+  name: string;
+  value: string;
+}
+
+export interface ConcludeEvidenceNarrative {
+  scientificStatement: string | null;
+  population: string | null;
+  comparison: string | null;
+  effect: ConcludeEvidenceStatistic | null;
+  statistics: ConcludeEvidenceStatistic[];
+  uncertainty: string[];
+  claimStrength: ConcludeClaimStrength;
+  allowedVerbs: string[];
+  forbiddenVerbs: string[];
+}
+
+export interface ConcludeEvidenceUnitProvenance {
+  sources: ConcludeEvidenceProvenanceRef[];
+  extraction: {
+    format: 'csv' | 'tsv' | 'markdown' | 'artifact-metadata' | 'unsupported';
+    bounded: true;
+    bytesRead: number;
+    truncated: boolean;
+  };
+}
+
+export interface ConcludeEvidenceDossierUnit {
+  id: string;
+  eligibility: ConcludeEvidenceEligibility;
+  narrative: ConcludeEvidenceNarrative;
+  provenance: ConcludeEvidenceUnitProvenance;
+  assetCandidateIds: string[];
+  exclusionReason: string | null;
+}
+
+export interface ConcludeEvidenceAssetCandidate {
+  id: string;
+  kind: 'figure' | 'table';
+  format: string;
+  caption: string | null;
+  recommendedUse: string;
+  width: number | null;
+  height: number | null;
+  linkedEvidenceUnitIds: string[];
+  provenance: {
+    source: ConcludeEvidenceProvenanceRef;
+    catalogDescriptions: string[];
+  };
+}
+
+export interface ConcludeEvidenceDossierGap {
+  sourcePath: string;
+  artifactType: ArtifactType;
+  reason: string;
+  artifactIds: string[];
+  studyIds: string[];
+  taskIds: string[];
+}
+
+export interface ConcludeEvidenceDossierAuditViolation {
+  code: 'execution-language' | 'provenance-leak' | 'invalid-result-source' | 'missing-quantitative-locator';
+  evidenceUnitId: string | null;
+  field: string;
+  details: string;
+}
+
+export interface ConcludeEvidenceDossierAudit {
+  status: 'pass' | 'fail';
+  violations: ConcludeEvidenceDossierAuditViolation[];
+}
+
+export interface ConcludeEvidenceDossier {
+  schemaVersion: 1;
+  kind: 'qdd-manuscript-evidence-dossier';
+  generatedAt: string;
+  readLimits: {
+    maxBytesPerTextSource: number;
+    maxRowsPerTable: number;
+    maxEvidenceUnitsPerSource: number;
+  };
+  summary: {
+    uniqueSources: number;
+    resultUnits: number;
+    boundaryUnits: number;
+    excludedUnits: number;
+    figureCandidates: number;
+    tableCandidates: number;
+  };
+  evidenceUnits: ConcludeEvidenceDossierUnit[];
+  assetCandidates: ConcludeEvidenceAssetCandidate[];
+  gaps: ConcludeEvidenceDossierGap[];
+  audit: ConcludeEvidenceDossierAudit;
 }
 
 export interface ConcludeEvidenceItem {
@@ -217,6 +354,8 @@ export interface ConcludeStoryGenerationResult {
   storyCandidatesPath: string;
   evidencePacketsPath: string;
   evidenceAuditPath: string;
+  evidenceDossierJsonPath: string;
+  evidenceDossierMarkdownPath: string;
   claimSafetyAuditPath: string;
   reviewerRiskAuditPath: string;
   selectionRequired: boolean;
@@ -227,6 +366,7 @@ export interface ConcludeStoryGenerationResult {
   resultsClaims: ConcludeResultsClaim[];
   candidates: ConcludeStoryCandidate[];
   evidence: ConcludeEvidenceItem[];
+  evidenceDossier: ConcludeEvidenceDossier;
   evidencePackets: ConcludeEvidencePacket[];
   claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
   nextStep: 'select-story' | 'draft-manuscript' | 'review-final-draft';
