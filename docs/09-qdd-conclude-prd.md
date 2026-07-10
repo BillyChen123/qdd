@@ -1,216 +1,124 @@
-# PRD: QDD Conclude Skill
+# PRD: QDD Conclude
 
-## Summary
+## Product Definition
 
-`conclude` is a QDD-native writing skill for turning accumulated QDD research evidence into an auditable, submission-oriented manuscript draft. It can be invoked mid-project for audit or at the end of a project for final synthesis.
+`qdd conclude` turns accumulated QDD evidence into an auditable manuscript draft. Its job is not to summarize every study. Its job is to identify the strongest defensible contribution, organize supporting and limiting evidence into a scientific story, and write that story as a TeX manuscript.
 
-The skill vendors and modifies PaperSpine, keeping its contribution-first, results-validation, reviewer-audit, citation, and LaTeX/PDF discipline, but replacing generic material intake with QDD-aware evidence reading and biological story selection.
+The canonical executable surface is the CLI command `qdd conclude`. `domain-skills/thesis/conclude/` supplies durable guidance and provenance; it is not a second product.
 
-The core product idea is not to force every result into a rigid evidence schema. QDD already keeps a strong research trace through studies, memories, artifacts, and evolution. `conclude` should use that trace with scientific taste: gather related evidence, compare possible stories, downgrade weak claims, surface negative evidence, and only then write.
+Conclude may be used mid-project to audit evidence and compare stories, or near project completion to produce a draft package. It does not run new biological analyses.
 
-## Goals
+## Source Boundaries
 
-- Generate 2-3 candidate biological or research storylines from existing QDD evidence.
-- Score storylines by biological coherence, evidence strength, novelty, reviewer risk, claim safety, and usefulness of negative evidence.
-- Stop for user story selection before drafting.
-- Convert raw QDD project records into manuscript-oriented evidence packets rather than directly pasting task or study text into the paper.
-- Produce manuscript-planning artifacts after story selection.
-- Produce a submission-style TeX manuscript package centered on `main.tex`.
-- Produce a submission-style TeX manuscript after selection.
-- Use both internal QDD evidence and external literature citations.
-- Preserve an audit trail explaining what evidence was used, downgraded, ignored, or treated as negative.
-- Produce PDF and Word outputs when the local environment supports them.
-- Support reproducible golden-case evaluation for manuscript-quality regression checks.
+Conclude reads the QDD project state, including contracts, evolution, memories, studies, tasks, artifact indexes, reports, figures, tables, and code provenance.
 
-## Non-Goals
+For scientific writing, source priority is:
 
-- Do not introduce a heavy new QDD evidence schema in v1.
-- Do not require every study to pre-label evidence as positive, negative, or neutral.
-- Do not automatically run from `qdd-close` or auto mode in v1.
-- Do not claim PDF or Word completion when local TeX or pandoc dependencies are missing.
-- Do not silently convert weak biological signals into strong mechanism claims.
-- Do not make `conclude` responsible for generating new biological analyses; it writes from existing evidence.
-- Do not expose an internal drafting adapter or agent engine as a second user-facing product.
+1. promoted figure, table, dataset summary, and report content
+2. reproducible analysis outputs and their provenance
+3. study-level interpretation and stable project memory
+4. task records and workflow status, used only to locate or audit evidence
 
-## Entry Point
+Artifact descriptions, study summaries, and task text are not manuscript prose. They may guide retrieval, but scientific claims must be reconstructed from the underlying result content.
 
-The canonical product entry point is the CLI command `qdd conclude`.
+External literature supports background, related work, methods, and discussion. It must never supply results that the QDD project did not produce.
 
-The durable skill assets under `domain-skills/thesis/conclude/` remain important, but they are guidance and provenance for the CLI surface rather than a second standalone product entry.
+## Workflow Contract
 
-It supports both use cases through the same workflow:
+### 1. Preflight
 
-- Mid-project: produce story candidates, evidence packets, audits, and stop at the selection gate.
-- Final project: produce story candidates, a selected manuscript story packet, manuscript-planning artifacts, and a submission-oriented manuscript package.
+Validate that the project has readable QDD state and report available TeX and Word rendering tools. Missing render dependencies produce `BLOCKED`, not success.
 
-Current CLI shape:
+### 2. Evidence Dossier
 
-```bash
-qdd conclude --json
-qdd conclude --output-dir conclusions/<run-id> --json
-qdd conclude --output-dir conclusions/<run-id> --selected-story-id story-1 --json
-qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions/<run-id>/selected_story.md --json
-```
+Build manuscript-oriented evidence packets from source artifacts. Each packet should capture:
 
-## Core Workflow
+- the scientific observation or comparison
+- quantitative support and uncertainty when available
+- reusable figure or table anchors
+- scope and claim limits
+- provenance back to QDD sources
+- its role as supporting, boundary, negative-validation, or context evidence
 
-### 1. QDD Preflight
+The dossier is an internal reasoning boundary. Raw task, study, status, and artifact-description language must not flow directly into the story or manuscript.
 
-Read the project state before writing:
+### 3. Story Design
 
-- `contract.yaml`
-- `evolution.yaml`
-- `context/resources.md`
-- recent `context/memory/*`
-- `artifacts/index.yaml`
-- study files under `studies/*`
-- promoted figures, tables, reports, data summaries, and code provenance
+Produce two or three genuinely different story candidates. Each candidate contains:
 
-Also detect local rendering tools:
+- central contribution and claim bundle
+- narrative arc and Results sequence
+- supporting and boundary packet references
+- figure and table plan
+- reviewer objections and claim limits
+- manuscript viability assessment
 
-- `latexmk`
-- `xelatex`
-- `pdflatex`
-- `pandoc`
+Candidates must differ in contribution or scientific arc, not only in title or framing label.
 
-The skill must report whether final PDF and Word rendering can be completed in the current environment.
+### 4. Human Selection
 
-### 2. Evidence Harvest And Compression
+Stop before drafting. The user selects a story or requests revision. V1 does not auto-select a manuscript story.
 
-Gather QDD artifacts, study memories, figures, tables, reports, code provenance, and reusable context.
+The selected story must be stable and machine-readable so drafting can resume without reparsing raw task and study text.
 
-Study outputs and artifacts are authoritative for project claims. External literature can support background, field context, related work, and discussion, but it must not invent results that QDD did not produce.
+### 5. Manuscript Drafting
 
-Negative, dissolved, blocked, or downgraded studies should be treated as useful boundary evidence. A good final paper may be a story about hypothesis refinement, candidate downgrade, failed mechanism search, or evidence-bounded frontier convergence, not only a strong discovery story.
+After selection, produce planning artifacts and a TeX manuscript package. Results are organized around scientific claims and figures, not around the order of QDD studies, tasks, or artifacts.
 
-The raw QDD records are not themselves the manuscript narrative boundary. `conclude` should compress them into manuscript-oriented evidence packets that preserve provenance while removing raw execution leakage from central claims and story prose.
+### 6. Audit And Rendering
 
-Evidence packets should distinguish at least:
+Audit claim safety, evidence traceability, citation integrity, figure coverage, and manuscript viability. Always write `main.tex`; render PDF or Word only when dependencies are available.
 
-- supporting evidence
-- boundary evidence
-- negative validation evidence
-- project or resource context that should stay outside central Results claims
+## Manuscript Quality Contract
 
-### 3. Story Candidate Generation
+A passing draft must satisfy all of the following:
 
-Produce 2-3 candidate storylines before drafting.
+- The title, abstract, Results, and Discussion express one coherent, evidence-bounded contribution.
+- Each major Results claim is synthesized from artifact content and includes the relevant comparison, effect, statistic, or uncertainty when available.
+- Each major Results claim maps to at least one usable figure, table, or verifiable value.
+- Results paragraphs advance a question-to-answer chain; they do not enumerate evidence records.
+- Internal provenance remains auditable outside visible prose. Manuscript text cites internal results through scientific descriptions and figure/table references, not labels such as `ART-166`, `STUDY-016`, or `TASK-043`.
+- Visible prose contains no QDD execution language, status fields, audit instructions, evidence IDs, artifact descriptions, or writing placeholders.
+- Negative evidence narrows claims or motivates the next question; it is not dumped as a checklist.
+- External claims use verified BibTeX entries and matching TeX citations.
+- Associative, proxy, or underpowered evidence is not promoted to causal or mechanistic proof.
+- If the evidence cannot support a viable manuscript story, conclude stops with a diagnostic instead of generating filler.
 
-Each candidate should include:
+A useful Results paragraph usually contains a claim, the decisive observation or comparison, quantitative support, a figure/table anchor, and a bounded interpretation. This is a semantic requirement, not a fixed sentence template.
 
-- central claim
-- biological or methodological story
-- narrative arc
-- claim bundle
-- supporting evidence packet references
-- boundary evidence packet references
-- likely reviewer objections
-- claims allowed
-- claim safety limits
-- claims to soften or avoid
-- suitability score
-- recommended title style
-- whether the story is best framed as discovery, method/protocol, case study, benchmark, audit report, or bounded biological hypothesis
+## Failure Modes
 
-The candidates must be substantively different in central claim and narrative arc, not merely the same evidence relabeled with different framing names.
+The following are hard failures even when a draft has all expected sections:
 
-### 4. User Selection Gate
+- concatenated artifact or study descriptions
+- sentence fragments, duplicated punctuation, or metadata-shaped prose
+- a paper organized as an inventory of studies, tasks, or artifacts
+- Results claims with no actual value, comparison, or figure/table support when those sources exist
+- internal evidence IDs exposed as manuscript citations
+- unverified or fabricated external citations
+- meta-writing such as “this section frames,” “must be added later,” or “current wording is bounded”
+- a generic Introduction/Discussion that does not follow from the selected evidence chain
+- a positive score produced only from section counts, file existence, or provenance comments
 
-Stop after story candidates.
+The versioned examples and quality oracle live under `src/test/fixtures/conclude/parkinson-oracle/`.
 
-The user chooses one storyline or asks for revision. V1 must not auto-select the top-scoring story, because biological taste and claim strength require human confirmation before a submission-style draft.
+## Example Policy
 
-### 5. Drafting
+No single paper is the expected output.
 
-After user selection, generate manuscript-planning artifacts before writing the final TeX:
+- Nature-family analysis papers may calibrate contribution-first structure, paragraph flow, and figure-led Results, but they are not copied or used as literal golden text.
+- Parkinson `ART-166` is a useful reference for turning evidence into a sequential biological argument, quantitative Results paragraphs, and a figure plan. It remains a project report and may contain product-facing language that should not appear in a normal scientific manuscript.
+- Acceptance is defined by scientific facts, relationships, claim limits, and failure constraints rather than exact wording.
 
-- `confirmed_contribution.md`
-- `results_validation.md`
-- `reviewer_audit.md`
-- `citation_support_bank.md`
-- `section_blueprints.md`
-- `writing_rationale_matrix.md`
+## Claim And Citation Rules
 
-Then generate the TeX manuscript, BibTeX file, figure/table asset map, and audit reports.
+- Use “associated with,” “consistent with,” or “supports a bounded hypothesis” when evidence is associative or proxy-based.
+- Use causal or mechanistic language only when the project contains corresponding perturbational or functional evidence.
+- Keep source-to-claim provenance in evidence packets, audits, comments, or companion maps; do not expose workflow identifiers as readable manuscript prose.
+- Use verified BibTeX-backed citations for external knowledge. An empty bibliography with “citations to be added later” is an incomplete draft, not citation success.
+- Explicitly record downgraded and prohibited claims in `claim_safety_audit.md`.
 
-The selected story should be a stable, machine-readable manuscript story packet with at least:
-
-- selected story id
-- central claim
-- narrative arc
-- claim bundle
-- supporting packet refs
-- boundary packet refs
-- reviewer objections
-- claim safety limits
-
-Backward-compatible parsing of older selected-story markdown is acceptable, but the canonical restored object should be the manuscript-native story packet.
-
-### 6. Rendering And Audit
-
-Always generate `main.tex`.
-
-If TeX is available, compile PDF and check it. If pandoc is available, generate Word when requested. If rendering dependencies are missing, the manuscript package should be marked `BLOCKED` for rendering, not complete.
-
-### 7. Regression Evaluation
-
-Conclude should support golden-case regression evaluation so manuscript-quality improvements and regressions can be measured over time.
-
-The canonical evaluation target today is the Parkinson golden case used by the repository conclude eval harness.
-Configure its project path through `QDD_CONCLUDE_EVAL_CASE` or the current workflow instructions in `WORKFLOW.md`.
-
-The evaluation harness should generate machine-readable and human-readable reports and should specifically track claim safety, evidence traceability, manuscript viability, and regression signals such as raw task-study leakage or report-tone drift.
-
-## Taste Rubric
-
-The skill should reason with a qualitative multi-dimensional rubric rather than requiring new structured evidence fields.
-
-Recommended dimensions:
-
-- **Biological coherence:** Does the story form a plausible biological arc?
-- **Evidence strength:** Are central claims supported by reproducible, non-circular evidence?
-- **Negative evidence use:** Are failed hypotheses used to bound the story rather than hidden?
-- **Claim safety:** Are causal or mechanistic verbs downgraded when evidence is associative?
-- **Novelty and significance:** Is the story worth reading beyond a workflow demo?
-- **Reviewer risk:** What would a skeptical reviewer attack first?
-- **QDD contribution:** Does the story demonstrate question evolution, artifact reuse, boundary narrowing, or evidence-grounded pivoting?
-- **Manuscript viability:** Can the evidence support a complete Results/Discussion arc without padding?
-
-## Claim Safety Rules
-
-`conclude` should be conservative with biological verbs.
-
-Examples:
-
-- Use "is associated with" instead of "drives" when evidence is expression correlation.
-- Use "marks a candidate state" instead of "defines a mechanism" when no causal or functional evidence exists.
-- Use "supports a bounded hypothesis" instead of "proves" when validation is proxy-based.
-- Use negative studies to explain why stronger claims were not made.
-
-The skill should explicitly name downgraded claims in `claim_safety_audit.md`.
-
-## PaperSpine Vendor Strategy
-
-Vendor PaperSpine v4.0.0 into the `conclude` skill resources and modify it for QDD.
-
-Requirements:
-
-- Preserve upstream MIT license.
-- Record upstream repository, version, and commit hash.
-- Keep a short local modification note.
-- Reuse PaperSpine checks where useful:
-  - contribution-first gate
-  - results-as-validation gate
-  - reviewer-aware audit
-  - citation support bank
-  - LaTeX guard
-  - final artifact audit
-- Replace PaperSpine generic intake/material scan with QDD evidence harvesting and compression.
-- Add QDD-specific story candidate scoring and user selection gate before manuscript drafting.
-
-The intended direction is a practical fork/vendor, not a thin wrapper around an external installation. QDD should be able to modify the writing workflow around its own research state and taste requirements.
-
-## Output Layout
+## Output Contract
 
 Default output directory:
 
@@ -218,7 +126,7 @@ Default output directory:
 conclusions/<run-id>/
 ```
 
-Expected outputs:
+Core outputs:
 
 ```text
 story_candidates.md
@@ -243,45 +151,37 @@ paper_rewriting_output/
     paper.docx
 ```
 
-`paper.pdf` and `paper.docx` are present only when rendering succeeds.
+`selected_story.md` and the planning artifacts are intermediate contracts. `main.tex`, `references.bib`, reusable assets, and audits are the manuscript deliverable. PDF and Word files are present only after successful rendering.
 
-Golden-case evaluation runs may additionally emit:
+## Golden Oracle
 
-```text
-conclude_eval.json
-conclude_eval.md
-```
+The repository oracle is a small, versioned quality standard independent of the full local Parkinson project. It contains:
 
-## Internal And External Citations
+- curated expected scientific facts and relationships
+- explicit claim limits
+- required manuscript signals
+- forbidden visible patterns and hard failures
+- excerpts from a known failed draft with failure explanations
+- a reference story shape derived from `ART-166`, without prescribing exact prose
 
-The manuscript should use two evidence channels:
+The full Parkinson project remains an optional end-to-end input selected through `QDD_CONCLUDE_EVAL_CASE`. It is not itself the oracle.
 
-- Internal QDD evidence: figures, tables, reports, study memories, and artifact provenance.
-- External literature: BibTeX-backed citations for background, prior work, related methods, discussion, and field context.
-
-Every major Results claim should point to internal QDD evidence. Every literature statement that needs external support should use a real citation entry, not a fake bracket number.
+Evaluation must combine deterministic checks with semantic review of the generated manuscript. Section presence, TeX validity, evidence comments, and output-file existence are necessary but insufficient. Any hard failure makes the run non-passing regardless of its aggregate score.
 
 ## Acceptance Criteria
 
-- Given a QDD project with mixed positive and negative evidence, `conclude` produces multiple distinct story candidates.
-- Story candidates and selected story outputs do not leak raw execution-language fragments such as `TASK-xxx`, `status closed`, `None.`, or `expected_artifacts` in their narrative body.
-- It does not force a strong mechanism story when evidence only supports association or candidate status.
-- It explicitly reports downgraded claims and unused or negative evidence.
-- It stops for user story selection before drafting.
-- The selected story is stable enough to restore and continue drafting through packet refs rather than raw task/study text reuse.
-- After selection, it produces manuscript-planning artifacts and a coherent TeX manuscript package.
-- Every major Results claim points to QDD evidence.
-- External literature citations have real BibTeX entries.
-- Missing TeX or pandoc dependencies produce a clear `BLOCKED` rendering status.
-- Vendored PaperSpine license and upstream provenance are preserved.
-- Golden-case evaluation can report current conclude manuscript quality and regression signals.
+- Two or three story candidates differ in real contribution and narrative arc.
+- The selection gate occurs before final drafting.
+- The selected story can be restored without copying raw task or study prose.
+- The final Results sequence follows scientific claims and figures rather than QDD object order.
+- Every major Results claim is supported by artifact content and auditable provenance.
+- Visible manuscript prose contains no QDD execution identifiers or meta-writing.
+- Claim strength stays within the evidence and external citations are verifiable.
+- Missing evidence or dependencies are reported honestly as gaps or blockers.
+- The versioned oracle rejects the known Parkinson bad case and prevents false-positive quality scores.
 
-## Future Integration
+## PaperSpine Provenance
 
-Possible v2 additions:
+PaperSpine patterns may be reused for contribution confirmation, results validation, reviewer audit, citation support, LaTeX checks, and final artifact audit. Any vendored source must preserve its license, upstream version, commit, and local modification notes.
 
-- `qdd-close` suggests running `conclude` when the project is synthesis-ready.
-- `qdd auto` can stop at synthesis-ready and prompt the user to run `conclude`.
-- A future CLI command may wrap the skill.
-- Selected final `conclude` outputs may be registerable as QDD report artifacts.
-- Story candidate scores may later inform thesis-manager stop/continue decisions, but should not become a required schema in v1.
+PaperSpine is an implementation resource, not the product identity or quality oracle for QDD conclude.
