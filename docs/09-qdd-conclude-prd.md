@@ -129,6 +129,8 @@ conclusions/<run-id>/
 Core outputs:
 
 ```text
+evidence_dossier.json
+evidence_dossier.md
 story_candidates.md
 evidence_packets.md
 selected_story.md
@@ -150,6 +152,8 @@ paper_rewriting_output/
     paper.pdf
     paper.docx
 ```
+
+`evidence_dossier.json` is the versioned machine-readable boundary between source artifacts and later story planning. Its scientific narrative fields come from bounded reads of artifact content, while QDD study, task, artifact, path, row, and line identifiers remain in dedicated provenance fields. `evidence_dossier.md` renders the same contract for human review.
 
 `selected_story.md` and the planning artifacts are intermediate contracts. `main.tex`, `references.bib`, reusable assets, and audits are the manuscript deliverable. PDF and Word files are present only after successful rendering.
 

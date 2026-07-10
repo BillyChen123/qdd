@@ -46,6 +46,7 @@ import { getStudyArtifactCandidatesPath, getStudyOutputDir, getStudyPublicDataRe
 import { listStudyMemoryPaths, readEvolutionState } from '../runtime/evolution.js';
 import { isQddProjectRoot } from '../runtime/paths.js';
 import { readMarkdownDocument, readYamlFile, serializeMarkdownDocument } from '../runtime/store.js';
+import { buildConcludeEvidenceDossier, renderConcludeEvidenceDossierMarkdown } from './conclude-evidence.js';
 
 const FRONTMATTER_STUDY_ID_PATTERN = /^#\s*(STUDY-\d{3})\s+Memory\b/m;
 const RENDER_TOOL_ORDER: ConcludeRenderToolName[] = ['latexmk', 'xelatex', 'pdflatex', 'pandoc'];
@@ -2420,6 +2421,8 @@ async function writeConcludeStoryOutputs(result: ConcludeStoryGenerationResult):
     FileSystemUtils.writeFile(path.join(result.outputDir, 'story_candidates.md'), renderStoryCandidatesMarkdown(result)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_packets.md'), renderEvidencePacketsMarkdown(result.evidencePackets)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_audit.md'), renderEvidenceAuditMarkdown(result.evidence)),
+    FileSystemUtils.writeFile(result.evidenceDossierJsonPath, `${JSON.stringify(result.evidenceDossier, null, 2)}\n`),
+    FileSystemUtils.writeFile(result.evidenceDossierMarkdownPath, renderConcludeEvidenceDossierMarkdown(result.evidenceDossier)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'claim_safety_audit.md'), renderClaimSafetyAuditMarkdown(result.claimSafetyAudit)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'reviewer_risk_audit.md'), renderReviewerRiskAuditMarkdown(result.candidates)),
   ]);
@@ -2443,12 +2446,14 @@ export async function generateConcludeStoryCandidates(
     throw new Error(`Conclude preflight is blocked: ${preflight.projectBlockers.join(' ')}`);
   }
 
+  const now = options.now ?? new Date();
+  const runId = options.runId ?? slugifyConcludeTimestamp(now);
+  const outputDir = resolveConcludeOutputDir(preflight.projectRoot, options.outputDir, runId);
+  const evidenceDossier = await buildConcludeEvidenceDossier(preflight, now);
   const evidence = await harvestConcludeEvidence(preflight);
   const evidencePackets = buildEvidencePackets(evidence);
   const candidates = buildStoryCandidates(evidence, evidencePackets, preflight.snapshot.contract).slice(0, 3);
   const claimSafetyAudit = collectClaimSafetyAudit(evidence);
-  const runId = options.runId ?? slugifyConcludeTimestamp(options.now ?? new Date());
-  const outputDir = resolveConcludeOutputDir(preflight.projectRoot, options.outputDir, runId);
   const selectedStory = await resolveSelectedStory(preflight.projectRoot, outputDir, options, candidates);
   const resultsClaims = selectedStory.selectedCandidate
     ? buildResultsClaims(selectedStory.selectedCandidate, evidence, evidencePackets, claimSafetyAudit)
@@ -2463,6 +2468,8 @@ export async function generateConcludeStoryCandidates(
     storyCandidatesPath: path.join(outputDir, 'story_candidates.md'),
     evidencePacketsPath: path.join(outputDir, 'evidence_packets.md'),
     evidenceAuditPath: path.join(outputDir, 'evidence_audit.md'),
+    evidenceDossierJsonPath: path.join(outputDir, 'evidence_dossier.json'),
+    evidenceDossierMarkdownPath: path.join(outputDir, 'evidence_dossier.md'),
     claimSafetyAuditPath: path.join(outputDir, 'claim_safety_audit.md'),
     reviewerRiskAuditPath: path.join(outputDir, 'reviewer_risk_audit.md'),
     selectionRequired: selectedStory.selectedCandidate === null,
@@ -2473,6 +2480,7 @@ export async function generateConcludeStoryCandidates(
     resultsClaims,
     candidates,
     evidence,
+    evidenceDossier,
     evidencePackets,
     claimSafetyAudit,
     nextStep: selectedStory.selectedCandidate ? 'draft-manuscript' : 'select-story',

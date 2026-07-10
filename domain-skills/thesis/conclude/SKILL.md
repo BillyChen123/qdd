@@ -35,6 +35,7 @@ Do not write `thesis/conclude` into task `skills:` for ordinary task execution; 
 Current conclude behavior in `main`:
 
 - `qdd conclude` runs QDD preflight and render-tool detection
+- builds a versioned source-aware evidence dossier from bounded reads of reports, tables, and figure metadata
 - harvests QDD evidence from studies, tasks, memories, artifacts, evolution, and resources
 - compresses raw records into manuscript-oriented evidence packets
 - generates 2-3 story candidates and stops at the human story-selection gate
@@ -65,6 +66,7 @@ Especially preserve these guardrails:
 - keep internal evidence anchors traceable back to QDD artifacts
 - keep raw study/task execution language out of central claim, story, and selected-story narrative bodies
 - prefer manuscript-native evidence packets and story packets over direct reuse of raw `StudyRecord` / `TaskRecord` text
+- keep scientific statements and QDD provenance in separate dossier fields; task/study completion is not supporting evidence
 
 ## Workflow Intent
 

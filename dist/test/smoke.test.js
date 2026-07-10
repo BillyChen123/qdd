@@ -546,6 +546,8 @@ test('qdd conclude CLI emits json, writes evidence audit, and reports selection 
     assert.equal(parsed.outputDir, path.join(projectRoot, outputDir));
     assert.equal(parsed.evidencePacketsPath, path.join(projectRoot, outputDir, 'evidence_packets.md'));
     assert.equal(parsed.evidenceAuditPath, path.join(projectRoot, outputDir, 'evidence_audit.md'));
+    assert.equal(parsed.evidenceDossierJsonPath, path.join(projectRoot, outputDir, 'evidence_dossier.json'));
+    assert.equal(parsed.evidenceDossierMarkdownPath, path.join(projectRoot, outputDir, 'evidence_dossier.md'));
     assert.equal(parsed.renderStatusPath, path.join(projectRoot, outputDir, 'render_status.md'));
     assert.equal(parsed.selectionRequired, true);
     assert.equal(parsed.nextStep, 'select-story');
