@@ -87,6 +87,52 @@ async function setTaskState(projectRoot, studyId, taskId, status, resultSummary,
         updated_at: new Date().toISOString(),
     }, nextBody);
 }
+async function recordDossierBackedClaimFixture(projectRoot, studyId, taskId, stem) {
+    const tablePath = path.join(projectRoot, 'studies', studyId, 'output', 'tables', `${stem}.csv`);
+    await fs.writeFile(tablePath, [
+        'gene_symbol,comparison,log2fc,fdr_qvalue,direction',
+        'QKI,protective-like vs reference astrocytes,1.24,1.04e-119,up',
+        'CELF2,protective-like vs reference astrocytes,1.40,7.08e-100,up',
+        '',
+    ].join('\n'), 'utf-8');
+    await recordArtifactCandidate(projectRoot, tablePath, {
+        studyId,
+        taskId,
+        artifactType: 'table',
+        description: 'Source table for the QKI and CELF2 astrocyte-state comparison.',
+        schema: 'csv-table',
+        promotionStatus: 'candidate-recorded',
+    });
+    const figurePath = path.join(projectRoot, 'studies', studyId, 'output', 'figures', `${stem}.png`);
+    await fs.writeFile(figurePath, 'fixture-figure', 'utf-8');
+    await recordArtifactCandidate(projectRoot, figurePath, {
+        studyId,
+        taskId,
+        artifactType: 'figure',
+        description: 'QKI and CELF2 expression across protective-like and reference astrocyte states.',
+        schema: 'png-figure',
+        promotionStatus: 'candidate-recorded',
+    });
+}
+async function recordDossierBackedBoundaryFixture(projectRoot, studyId, taskId, stem) {
+    const reportPath = path.join(projectRoot, 'studies', studyId, 'output', 'reports', `${stem}.md`);
+    await fs.writeFile(reportPath, [
+        '# Astrocyte-state boundary',
+        '',
+        '## Limitations',
+        '',
+        'The QKI and CELF2 astrocyte-state association does not establish a mechanistic transition without independent perturbation evidence.',
+        '',
+    ].join('\n'), 'utf-8');
+    await recordArtifactCandidate(projectRoot, reportPath, {
+        studyId,
+        taskId,
+        artifactType: 'report',
+        description: 'Scientific boundary for the QKI and CELF2 astrocyte-state association.',
+        schema: 'markdown-report',
+        promotionStatus: 'candidate-recorded',
+    });
+}
 async function prependStubCommands(binDir, commands) {
     await fs.mkdir(binDir, { recursive: true });
     for (const command of commands) {
@@ -368,6 +414,7 @@ test('conclude generates distinct story candidates and enforces selection gate b
         schema: 'image',
         promotionStatus: 'candidate-recorded',
     });
+    await recordDossierBackedClaimFixture(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'story-candidate-claims');
     const boundaryStudy = await createStudy(projectRoot, {
         question: 'Do the failed validation passes meaningfully bound the final claim?',
         hypothesis: 'Negative validation evidence should narrow, not disappear from, the final story.',
@@ -378,6 +425,7 @@ test('conclude generates distinct story candidates and enforces selection gate b
         expectedOutputs: ['One blocker summary'],
     });
     await setTaskState(projectRoot, boundaryStudy.studyId, boundaryTask.taskId, 'blocked', 'Validation failed to reproduce a mechanistic effect in the follow-up cohort.', 'Follow-up validation failed and leaves only associative evidence.');
+    await recordDossierBackedBoundaryFixture(projectRoot, boundaryStudy.studyId, boundaryTask.taskId, 'story-boundary');
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${boundaryStudy.studyId}.md`), `# ${boundaryStudy.studyId} Memory\n\n## Notes\n\nBlocked follow-up and failed validation are useful boundary evidence for conclude.\n`, 'utf-8');
     const result = await generateConcludeStoryCandidates(projectRoot, {
         runId: 'test-story-selection',
@@ -390,19 +438,22 @@ test('conclude generates distinct story candidates and enforces selection gate b
     assert.equal(result.selectionRequired, true);
     assert.equal(result.selectedStoryId, null);
     assert.equal(result.nextStep, 'select-story');
-    assert.equal(result.candidates.length, 3);
-    assert.equal(new Set(result.candidates.map((candidate) => candidate.framing)).size, 3);
+    assert.equal(result.storyPlan.status, 'insufficient-story-diversity');
+    assert.equal(result.storyPlan.audit.status, 'pass');
+    assert.equal(result.candidates.length, 1);
     assert.ok(result.evidencePackets.length >= 2);
     assert.ok(result.candidates.every((candidate) => candidate.supportingEvidence.length > 0));
     assert.ok(result.candidates.some((candidate) => candidate.negativeOrBoundaryEvidence.length > 0));
-    assert.ok(result.candidates.every((candidate) => candidate.narrativeArc.length >= 3));
+    assert.ok(result.candidates.every((candidate) => candidate.resultsArc.length >= 2));
     assert.ok(result.candidates.every((candidate) => candidate.claimBundle.length >= 2));
-    assert.notEqual(result.candidates[0]?.centralClaim, result.candidates[1]?.centralClaim);
-    assert.notEqual(result.candidates[0]?.story, result.candidates[1]?.story);
+    assert.ok(result.candidates.every((candidate) => candidate.figureTableSequence.length > 0));
+    assert.ok(result.candidates.every((candidate) => candidate.viabilityBlockers.length === 0));
+    assert.ok(result.candidates.every((candidate) => !['method', 'audit-report'].includes(candidate.framing)));
     assert.ok(result.claimSafetyAudit.some((entry) => entry.action === 'soften' && /mechanism|driver|effect/i.test(entry.rationale + entry.claim)));
     assert.match(storyCandidatesMarkdown, /Selection gate: STOP here until a human selects one story candidate\./);
-    assert.match(storyCandidatesMarkdown, /do not auto-select the highest score/);
-    assert.match(storyCandidatesMarkdown, /Narrative Arc/);
+    assert.match(storyCandidatesMarkdown, /insufficient-story-diversity/);
+    assert.doesNotMatch(storyCandidatesMarkdown, /100\/100|Suitability score/);
+    assert.match(storyCandidatesMarkdown, /Results Arc/);
     assert.match(storyCandidatesMarkdown, /Claim Bundle/);
     assert.match(evidencePacketsMarkdown, /# Evidence Packets/);
     assert.doesNotMatch(storyCandidatesMarkdown, /\bTASK-\d+\b/);
@@ -435,6 +486,7 @@ test('conclude generates manuscript planning artifacts after selected story is c
         schema: 'image',
         promotionStatus: 'candidate-recorded',
     });
+    await recordDossierBackedClaimFixture(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'selected-story-claims');
     const boundaryStudy = await createStudy(projectRoot, {
         question: 'What boundary evidence must remain visible in manuscript planning?',
         hypothesis: 'Blocked validation attempts should survive into reviewer-facing planning outputs.',
@@ -445,14 +497,12 @@ test('conclude generates manuscript planning artifacts after selected story is c
         expectedOutputs: ['One blocker summary'],
     });
     await setTaskState(projectRoot, boundaryStudy.studyId, boundaryTask.taskId, 'blocked', 'Follow-up validation failed to support a mechanistic effect, leaving only association-level evidence.', 'Mechanistic validation failed and should remain reviewer-visible boundary evidence.');
+    await recordDossierBackedBoundaryFixture(projectRoot, boundaryStudy.studyId, boundaryTask.taskId, 'selected-story-boundary');
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${boundaryStudy.studyId}.md`), `# ${boundaryStudy.studyId} Memory\n\n## Notes\n\nBlocked follow-up remains useful reviewer risk and claim safety evidence.\n`, 'utf-8');
     const outputDir = 'conclusions/selected-story-fixture';
-    const selectedStoryPath = path.join(projectRoot, outputDir, 'selected_story.md');
-    await fs.mkdir(path.dirname(selectedStoryPath), { recursive: true });
-    await fs.writeFile(selectedStoryPath, '# Selected Story\n\nSelected Story ID: story-1\n\nUse the bounded story for manuscript planning.\n', 'utf-8');
     const result = await generateConcludeStoryCandidates(projectRoot, {
         outputDir,
-        selectedStoryPath,
+        selectedStoryId: 'story-1',
         now: new Date('2026-07-06T13:00:00.000Z'),
     });
     assert.equal(result.selectionRequired, false);
@@ -490,7 +540,9 @@ test('conclude generates manuscript planning artifacts after selected story is c
     assert.match(storyCandidatesMarkdown, /Manuscript planning artifacts have been generated/);
     assert.match(selectedStoryMarkdown, /kind: qdd-conclude-selected-story/);
     assert.match(selectedStoryMarkdown, /story_id: story-1/);
-    assert.match(selectedStoryMarkdown, /## Supporting Packet Refs/);
+    assert.match(selectedStoryMarkdown, /version: 2/);
+    assert.match(selectedStoryMarkdown, /candidate:/);
+    assert.match(selectedStoryMarkdown, /## Included Claim IDs/);
     assert.doesNotMatch(selectedStoryMarkdown, /\bTASK-\d+\b/);
     assert.doesNotMatch(selectedStoryMarkdown, /\bstatus closed\b/i);
     assert.doesNotMatch(selectedStoryMarkdown, /\bNone\./);
@@ -514,6 +566,7 @@ test('conclude tolerates non-string study summary fields during evidence harvest
         ...document.frontmatter,
         expected_artifacts: ['One markdown summary', 42, { kind: 'table', status: 'draft' }],
     }, document.body);
+    await recordDossierBackedClaimFixture(projectRoot, study.studyId, task.taskId, 'mixed-metadata-claims');
     const result = await generateConcludeStoryCandidates(projectRoot, {
         outputDir: 'conclusions/non-string-summary',
         now: new Date('2026-07-07T03:00:00.000Z'),
@@ -536,6 +589,7 @@ test('qdd conclude CLI emits json, writes evidence audit, and reports selection 
     });
     await setTaskState(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'completed', 'The cohort signal is associated with the candidate state, but mechanism remains untested.');
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${discoveryStudy.studyId}.md`), `# ${discoveryStudy.studyId} Memory\n\n## Notes\n\nThe evidence package supports a bounded conclusion and should stay association-only.\n`, 'utf-8');
+    await recordDossierBackedClaimFixture(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'cli-claims');
     const outputDir = 'conclusions/cli-smoke';
     const { stdout } = await execFileAsync('node', [path.join(process.cwd(), 'bin', 'qdd.js'), 'conclude', '--json', '--output-dir', outputDir], {
         cwd: projectRoot,
@@ -544,6 +598,7 @@ test('qdd conclude CLI emits json, writes evidence audit, and reports selection 
     const evidenceAuditMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'evidence_audit.md'), 'utf-8');
     const renderStatusMarkdown = await fs.readFile(path.join(projectRoot, outputDir, 'render_status.md'), 'utf-8');
     assert.equal(parsed.outputDir, path.join(projectRoot, outputDir));
+    assert.equal(parsed.storyCandidatesJsonPath, path.join(projectRoot, outputDir, 'story_candidates.json'));
     assert.equal(parsed.evidencePacketsPath, path.join(projectRoot, outputDir, 'evidence_packets.md'));
     assert.equal(parsed.evidenceAuditPath, path.join(projectRoot, outputDir, 'evidence_audit.md'));
     assert.equal(parsed.evidenceDossierJsonPath, path.join(projectRoot, outputDir, 'evidence_dossier.json'));
@@ -579,10 +634,17 @@ test('qdd conclude CLI accepts selected story input and returns planning artifac
         schema: 'image',
         promotionStatus: 'candidate-recorded',
     });
+    await recordDossierBackedClaimFixture(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'cli-selected-claims');
     const outputDir = 'conclusions/cli-selected-story';
     const selectedStoryPath = path.join(projectRoot, outputDir, 'selected_story.md');
-    await fs.mkdir(path.dirname(selectedStoryPath), { recursive: true });
-    await fs.writeFile(selectedStoryPath, '# Selected Story\n\nSelected Story ID: story-1\n', 'utf-8');
+    await generateConcludeStoryCandidates(projectRoot, {
+        outputDir,
+        selectedStoryId: 'story-1',
+        now: new Date('2026-07-07T04:00:00.000Z'),
+    });
+    const structuredSelection = await fs.readFile(selectedStoryPath, 'utf-8');
+    const frontmatterEnd = structuredSelection.indexOf('\n---', 4) + '\n---'.length;
+    await fs.writeFile(selectedStoryPath, `${structuredSelection.slice(0, frontmatterEnd)}\n\n# Misleading Prose\n\nSelected Story ID: story-999\n`, 'utf-8');
     const { stdout } = await execFileAsync('node', [
         path.join(process.cwd(), 'bin', 'qdd.js'),
         'conclude',
@@ -649,6 +711,7 @@ test('runConclude keeps selection gate without final paper and writes final pack
         schema: 'image',
         promotionStatus: 'candidate-recorded',
     });
+    await recordDossierBackedClaimFixture(projectRoot, discoveryStudy.studyId, discoveryTask.taskId, 'run-conclude-claims');
     const outputDirWithoutSelection = 'conclusions/run-conclude-no-selection';
     const noSelection = await runConclude(projectRoot, {
         outputDir: outputDirWithoutSelection,
@@ -680,7 +743,7 @@ test('runConclude keeps selection gate without final paper and writes final pack
     assert.doesNotMatch(mainTex, /\\paragraph\{Claim Safety\.\}/);
     assert.doesNotMatch(mainTex, /The discussion should explain how the selected story remains bounded/i);
     assert.match(mainTex, /% Evidence trace for claim-1:/);
-    assert.match(mainTex, /% Supporting anchor \[EV-/);
+    assert.match(mainTex, /% Supporting anchor \[DOS-EV-/);
     assert.match(mainTex, /\\bibliography\{references\}/);
     assert.match(figureAssetMap, /# Figure Asset Map/);
     assert.match(figureAssetMap, /Figure 1/);
@@ -699,6 +762,7 @@ test('conclude normalizes inline selected story input into selected_story.md out
     });
     await setTaskState(projectRoot, study.studyId, task.taskId, 'completed', 'The bounded cohort signal is associated with the candidate state and remains non-mechanistic.');
     await fs.writeFile(path.join(projectRoot, 'context', 'memory', `${study.studyId}.md`), `# ${study.studyId} Memory\n\n## Notes\n\nEquivalent selection input should still leave a durable selected story artifact.\n`, 'utf-8');
+    await recordDossierBackedClaimFixture(projectRoot, study.studyId, task.taskId, 'inline-selected-claims');
     const outputDir = 'conclusions/inline-selected-story';
     const result = await generateConcludeStoryCandidates(projectRoot, {
         outputDir,
@@ -710,7 +774,8 @@ test('conclude normalizes inline selected story input into selected_story.md out
     assert.equal(result.selectedStoryId, 'story-1');
     assert.equal(result.selectedStoryPath, 'conclusions/inline-selected-story/selected_story.md');
     assert.match(selectedStoryMarkdown, /kind: qdd-conclude-selected-story/);
-    assert.match(selectedStoryMarkdown, /version: 1/);
+    assert.match(selectedStoryMarkdown, /version: 2/);
+    assert.match(selectedStoryMarkdown, /candidate:/);
     assert.match(selectedStoryMarkdown, /# Selected Story/);
     assert.match(selectedStoryMarkdown, /Selected Story ID: story-1/);
     assert.match(selectedStoryMarkdown, /Input Source: inline-selected-story-id/);

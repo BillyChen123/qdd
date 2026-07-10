@@ -14,6 +14,7 @@ export type ConcludeEvidenceEligibility = 'results' | 'methods-context' | 'bound
 export type ConcludeEvidenceSourceRole = 'supporting' | 'boundary' | 'contradicting';
 export type ConcludeEvidenceRegistration = 'artifact-index' | 'artifact-candidate';
 export type ConcludeStoryFraming = 'discovery' | 'method' | 'case-study' | 'benchmark' | 'audit-report' | 'bounded-hypothesis';
+export type ConcludeStoryPlanningStatus = 'ready-for-selection' | 'insufficient-story-diversity' | 'insufficient-evidence';
 export type ConcludeEvidenceFocus =
   | 'data-readiness'
   | 'biological-signal'
@@ -238,12 +239,24 @@ export interface ConcludePreflightSnapshot {
 }
 
 export interface ConcludeStoryCandidate {
+  schemaVersion: 1;
   id: string;
   framing: ConcludeStoryFraming;
+  scientificQuestion: string;
+  scientificQuestionClaimIds: string[];
+  centralContribution: string;
   centralClaim: string;
   story: string;
+  resultsArc: ConcludeStoryResultsArcEntry[];
   narrativeArc: string[];
+  claimGraph: ConcludeManuscriptClaimGraph;
   claimBundle: ConcludeStoryClaimBundleEntry[];
+  includedClaimIds: string[];
+  excludedClaimIds: string[];
+  figureTableSequence: ConcludeStoryFigureTablePlanEntry[];
+  limitationPlacement: ConcludeStoryLimitationPlacement[];
+  viabilityBlockers: string[];
+  viability: ConcludeStoryViabilityDiagnostics;
   supportingPacketRefs: string[];
   boundaryPacketRefs: string[];
   supportingEvidence: ConcludeEvidenceItem[];
@@ -252,8 +265,111 @@ export interface ConcludeStoryCandidate {
   claimsAllowed: string[];
   claimSafetyLimits: string[];
   claimsToSoftenOrAvoid: string[];
-  suitabilityScore: number;
   recommendedTitleStyle: string;
+}
+
+export interface ConcludeStoryResultsArcEntry {
+  sequence: number;
+  claimId: string;
+  statement: string;
+  role: 'lead' | 'supporting';
+}
+
+export interface ConcludeStoryFigureTablePlanEntry {
+  sequence: number;
+  assetId: string;
+  kind: 'figure' | 'table';
+  claimIds: string[];
+  role: string;
+}
+
+export interface ConcludeStoryLimitationPlacement {
+  claimIds: string[];
+  boundaryClaimIds: string[];
+  placement: 'results' | 'discussion';
+  rationale: string;
+}
+
+export interface ConcludeStoryClaimGraphNode {
+  claimId: string;
+  role: 'lead' | 'supporting' | 'boundary' | 'contradiction';
+  statement: string;
+  claimStrength: ConcludeClaimStrength;
+  assetCandidateIds: string[];
+  allowedVerbs: string[];
+  forbiddenVerbs: string[];
+}
+
+export interface ConcludeStoryClaimGraphEdge {
+  fromClaimId: string;
+  toClaimId: string;
+  relation: 'supports' | 'bounds' | 'contradicts' | 'motivates';
+  rationale: string;
+}
+
+export interface ConcludeManuscriptClaimGraph {
+  schemaVersion: 1;
+  leadClaimId: string;
+  nodes: ConcludeStoryClaimGraphNode[];
+  edges: ConcludeStoryClaimGraphEdge[];
+  resultOrdering: string[];
+  figureTablePlan: ConcludeStoryFigureTablePlanEntry[];
+  claimSafety: string[];
+  missingValidation: string[];
+  reviewerRisk: string[];
+}
+
+export interface ConcludeStoryViabilityDiagnostics {
+  coherence: {
+    level: 'strong' | 'moderate' | 'weak';
+    rationale: string;
+  };
+  evidenceCoverage: {
+    includedResultClaims: number;
+    availableResultClaims: number;
+    sourceGroups: number;
+    rationale: string;
+  };
+  figureReadiness: {
+    status: 'ready' | 'partial' | 'missing';
+    plannedAssets: number;
+    rationale: string;
+  };
+  claimSafety: {
+    status: 'bounded' | 'review-required';
+    boundaryClaims: number;
+    rationale: string;
+  };
+  noveltyRisk: {
+    level: 'low' | 'moderate' | 'high' | 'unassessed';
+    rationale: string;
+  };
+  missingValidation: string[];
+}
+
+export interface ConcludeStoryPlanAuditViolation {
+  code:
+    | 'provenance-leak'
+    | 'execution-language'
+    | 'missing-claim-reference'
+    | 'invalid-leading-claim'
+    | 'candidate-not-distinct'
+    | 'unsupported-workflow-story';
+  candidateId: string | null;
+  field: string;
+  details: string;
+}
+
+export interface ConcludeStoryPlan {
+  schemaVersion: 1;
+  kind: 'qdd-manuscript-story-plan';
+  status: ConcludeStoryPlanningStatus;
+  diagnostics: string[];
+  candidates: ConcludeStoryCandidate[];
+  audit: {
+    status: 'pass' | 'fail';
+    violations: ConcludeStoryPlanAuditViolation[];
+  };
 }
 
 export interface ConcludeStoryClaimBundleEntry {
@@ -352,6 +468,7 @@ export interface ConcludeStoryGenerationResult {
   runId: string;
   outputDir: string;
   storyCandidatesPath: string;
+  storyCandidatesJsonPath: string;
   evidencePacketsPath: string;
   evidenceAuditPath: string;
   evidenceDossierJsonPath: string;
@@ -365,11 +482,12 @@ export interface ConcludeStoryGenerationResult {
   planningArtifacts: ConcludePlanningArtifactPaths | null;
   resultsClaims: ConcludeResultsClaim[];
   candidates: ConcludeStoryCandidate[];
+  storyPlan: ConcludeStoryPlan;
   evidence: ConcludeEvidenceItem[];
   evidenceDossier: ConcludeEvidenceDossier;
   evidencePackets: ConcludeEvidencePacket[];
   claimSafetyAudit: ConcludeClaimSafetyAuditEntry[];
-  nextStep: 'select-story' | 'draft-manuscript' | 'review-final-draft';
+  nextStep: 'insufficient-evidence' | 'select-story' | 'draft-manuscript' | 'review-final-draft';
 }
 
 export interface RunConcludeOptions extends GenerateConcludeStoryCandidatesOptions {

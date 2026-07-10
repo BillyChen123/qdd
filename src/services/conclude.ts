@@ -5,6 +5,7 @@ import type {
   ArtifactIndex,
   ConcludeClaimSafetyAuditEntry,
   ConcludeDraftArtifactStatus,
+  ConcludeEvidenceDossier,
   ConcludeEvidenceFocus,
   ConcludeClaimStrength,
   ConcludeEvidenceItem,
@@ -24,8 +25,6 @@ import type {
   ConcludeRenderToolStatus,
   ConcludeResultsClaim,
   ConcludeStoryCandidate,
-  ConcludeStoryClaimBundleEntry,
-  ConcludeStoryFraming,
   ConcludeStoryGenerationResult,
   ConcludeStudyMemorySnapshot,
   ConcludeStudySnapshot,
@@ -47,26 +46,17 @@ import { listStudyMemoryPaths, readEvolutionState } from '../runtime/evolution.j
 import { isQddProjectRoot } from '../runtime/paths.js';
 import { readMarkdownDocument, readYamlFile, serializeMarkdownDocument } from '../runtime/store.js';
 import { buildConcludeEvidenceDossier, renderConcludeEvidenceDossierMarkdown } from './conclude-evidence.js';
+import { auditConcludeStoryPlan, buildConcludeStoryPlan, dossierClaimToEvidence, strongestClaimStrength } from './conclude-story.js';
 
 const FRONTMATTER_STUDY_ID_PATTERN = /^#\s*(STUDY-\d{3})\s+Memory\b/m;
 const RENDER_TOOL_ORDER: ConcludeRenderToolName[] = ['latexmk', 'xelatex', 'pdflatex', 'pandoc'];
 const ASSOCIATIVE_SIGNAL_PATTERN = /\b(associate|associated|association|correlate|correlated|correlation|candidate state|candidate marker|proxy|trend)\b/i;
 const CAUSAL_SIGNAL_PATTERN = /\b(driver|drives|cause|causal|mechanism|mechanistic|proof|prove|proves|define|defines|defined|effect)\b/i;
 const NEGATIVE_SIGNAL_PATTERN = /\b(block|blocked|negative|failed|failure|dissolv|downgrad|avoid|limit|boundary)\b/i;
-const SELECTED_STORY_FIELD_PATTERN = /\bselected(?:[_ -]?story)?[_ -]?id\b\s*[:=]\s*(story-\d+)\b/i;
-const STORY_ID_PATTERN = /\b(story-\d+)\b/i;
 const MARKDOWN_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const BIBTEX_ENTRY_PATTERN = /@\s*([a-zA-Z]+)\s*\{\s*([^,\s]+)\s*,[\s\S]*?\n\}/g;
-const TITLE_STYLE_BY_FRAMING: Record<ConcludeStoryFraming, string> = {
-  discovery: 'Discovery-first with bounded biological scope',
-  method: 'Method-forward with validation framing',
-  'case-study': 'Case-study framing with project-grounded lessons',
-  benchmark: 'Benchmark framing with explicit comparison criteria',
-  'audit-report': 'Audit-report framing centered on evidence quality and limits',
-  'bounded-hypothesis': 'Hypothesis-bounded framing with conservative verbs',
-};
 const CONCLUDE_SELECTED_STORY_KIND = 'qdd-conclude-selected-story';
-const CONCLUDE_SELECTED_STORY_VERSION = 1;
+const CONCLUDE_SELECTED_STORY_VERSION = 2;
 
 function buildPathStatus(options: {
   path: string;
@@ -93,10 +83,6 @@ function extractStudyIdFromMemory(content: string): string | null {
 
 function slugifyConcludeTimestamp(date: Date): string {
   return date.toISOString().replace(/[:.]/g, '-');
-}
-
-function clampScore(value: number): number {
-  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function sentenceCaseTrim(value: string): string {
@@ -699,6 +685,7 @@ function parseSelectedStoryFrontmatter(content: string): {
   kind?: string;
   version?: number;
   story_id?: string;
+  candidate?: unknown;
 } | null {
   const match = content.match(MARKDOWN_FRONTMATTER_PATTERN);
   if (!match) {
@@ -710,63 +697,69 @@ function parseSelectedStoryFrontmatter(content: string): {
       kind?: string;
       version?: number;
       story_id?: string;
+      candidate?: unknown;
     };
   } catch {
     return null;
   }
 }
 
-function parseSelectedStoryId(content: string): string | null {
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function isStructuredStoryCandidate(value: unknown): value is ConcludeStoryCandidate {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<ConcludeStoryCandidate>;
+  return candidate.schemaVersion === 1
+    && typeof candidate.id === 'string'
+    && typeof candidate.scientificQuestion === 'string'
+    && isStringArray(candidate.scientificQuestionClaimIds)
+    && typeof candidate.centralContribution === 'string'
+    && typeof candidate.centralClaim === 'string'
+    && typeof candidate.story === 'string'
+    && Array.isArray(candidate.resultsArc)
+    && Array.isArray(candidate.narrativeArc)
+    && Boolean(candidate.claimGraph && typeof candidate.claimGraph === 'object')
+    && Array.isArray(candidate.claimBundle)
+    && isStringArray(candidate.includedClaimIds)
+    && isStringArray(candidate.excludedClaimIds)
+    && Array.isArray(candidate.figureTableSequence)
+    && Array.isArray(candidate.limitationPlacement)
+    && isStringArray(candidate.viabilityBlockers)
+    && Boolean(candidate.viability && typeof candidate.viability === 'object')
+    && isStringArray(candidate.supportingPacketRefs)
+    && isStringArray(candidate.boundaryPacketRefs)
+    && Array.isArray(candidate.supportingEvidence)
+    && Array.isArray(candidate.negativeOrBoundaryEvidence)
+    && isStringArray(candidate.reviewerObjections)
+    && isStringArray(candidate.claimsAllowed)
+    && isStringArray(candidate.claimSafetyLimits)
+    && isStringArray(candidate.claimsToSoftenOrAvoid)
+    && typeof candidate.recommendedTitleStyle === 'string';
+}
+
+function parseSelectedStoryCandidate(content: string): ConcludeStoryCandidate | null {
   const frontmatter = parseSelectedStoryFrontmatter(content);
-  if (frontmatter?.kind === CONCLUDE_SELECTED_STORY_KIND && typeof frontmatter.story_id === 'string') {
-    return normalizeStoryId(frontmatter.story_id);
+  if (!frontmatter) {
+    return null;
   }
-
-  const labeledMatch = content.match(SELECTED_STORY_FIELD_PATTERN);
-  if (labeledMatch) {
-    return normalizeStoryId(labeledMatch[1]);
+  if (frontmatter.kind !== CONCLUDE_SELECTED_STORY_KIND || frontmatter.version !== CONCLUDE_SELECTED_STORY_VERSION) {
+    throw new Error(`Selected story must use ${CONCLUDE_SELECTED_STORY_KIND} version ${CONCLUDE_SELECTED_STORY_VERSION} structured frontmatter.`);
   }
-
-  const storyIdMatch = content.match(STORY_ID_PATTERN);
-  return storyIdMatch ? normalizeStoryId(storyIdMatch[1]) : null;
-}
-
-function buildReviewerObjections(framing: ConcludeStoryFraming, supporting: ConcludeEvidenceItem[], negatives: ConcludeEvidenceItem[]): string[] {
-  const objections = [
-    supporting.some((item) => item.claimStrength === 'associative')
-      ? 'The central biological signal may be associative rather than mechanistic.'
-      : 'The evidentiary chain may still be narrower than the title implies.',
-    negatives.length > 0
-      ? 'Negative and blocked results should be shown explicitly so the story reads as bounded rather than selective.'
-      : 'Reviewers may ask why contradictory or boundary evidence is limited.',
-  ];
-
-  if (framing === 'method' || framing === 'benchmark') {
-    objections.push('Method-oriented framing will need clearer evidence that the workflow generalizes beyond this project slice.');
+  if (!isStructuredStoryCandidate(frontmatter.candidate)) {
+    throw new Error('Selected story structured frontmatter is missing a complete candidate snapshot.');
   }
-  if (framing === 'audit-report') {
-    objections.push('Audit framing can look low-novelty unless the evidence-bounding lesson is made explicit.');
+  if (typeof frontmatter.story_id !== 'string' || normalizeStoryId(frontmatter.story_id) !== normalizeStoryId(frontmatter.candidate.id)) {
+    throw new Error('Selected story id does not match its structured candidate snapshot.');
   }
-  return uniqueStrings(objections);
-}
-
-function scoreStoryCandidate(
-  framing: ConcludeStoryFraming,
-  supporting: ConcludeEvidenceItem[],
-  negatives: ConcludeEvidenceItem[],
-  claimSafetyAudit: ConcludeClaimSafetyAuditEntry[]
-): number {
-  const supportiveBase = supporting.length * 18;
-  const negativeBonus = Math.min(18, negatives.length * 6);
-  const causalPenalty = claimSafetyAudit.filter((entry) => entry.action !== 'allow').length * 9;
-  const framingBonus =
-    framing === 'bounded-hypothesis' ? 12 :
-    framing === 'audit-report' ? 10 :
-    framing === 'method' ? 8 :
-    framing === 'benchmark' ? 7 :
-    framing === 'case-study' ? 6 :
-    5;
-  return clampScore(30 + supportiveBase + negativeBonus + framingBonus - causalPenalty);
+  const audit = auditConcludeStoryPlan([frontmatter.candidate]);
+  if (audit.status === 'fail') {
+    throw new Error(`Selected story candidate failed the story-plan audit: ${audit.violations.map((violation) => violation.code).join(', ')}.`);
+  }
+  return frontmatter.candidate;
 }
 
 function readStudyStatus(study: StudyRecord): string {
@@ -782,24 +775,6 @@ function inferEvidenceKindFromStudy(study: ConcludeStudySnapshot, content: strin
     return 'boundary';
   }
   return status === 'completed' || status === 'closed' ? 'supporting' : 'boundary';
-}
-
-function inferFramingFromEvidence(supporting: ConcludeEvidenceItem[], negatives: ConcludeEvidenceItem[]): ConcludeStoryFraming {
-  const combined = [...supporting, ...negatives];
-  const hasMethodSignal = combined.some((item) => item.tags.includes('method'));
-  const hasAuditSignal = negatives.length >= supporting.length || combined.some((item) => item.tags.includes('audit'));
-  const hasAssociativeSignal = supporting.some((item) => item.claimStrength === 'associative');
-
-  if (hasAuditSignal) {
-    return 'audit-report';
-  }
-  if (hasMethodSignal && supporting.length > 0) {
-    return 'method';
-  }
-  if (hasAssociativeSignal) {
-    return 'bounded-hypothesis';
-  }
-  return supporting.length >= 3 ? 'discovery' : 'case-study';
 }
 
 async function readArtifactEvidence(
@@ -947,354 +922,30 @@ function collectClaimSafetyAudit(evidence: ConcludeEvidenceItem[]): ConcludeClai
   return evidence.map((item) => buildClaimSafetyAuditEntry(item.summary, item.claimStrength));
 }
 
-function getPacketsByFocus(
-  packets: ConcludeEvidencePacket[],
-  focus: ConcludeEvidenceFocus
-): ConcludeEvidencePacket[] {
-  return packets.filter((packet) => packet.focus === focus);
-}
-
-function packetRefs(packets: ConcludeEvidencePacket[]): string[] {
-  return packets.map((packet) => packet.id);
-}
-
-function summarizePacketForNarrative(packet: ConcludeEvidencePacket | undefined, fallback: string): string {
-  if (!packet) {
-    return fallback;
-  }
-
-  return sentenceCaseTrim(packet.manuscriptSummary.replace(/^[^:]+:\s*/, ''));
-}
-
-function selectEvidenceFromPackets(packets: ConcludeEvidencePacket[], evidence: ConcludeEvidenceItem[]): ConcludeEvidenceItem[] {
-  const ids = packets.flatMap((packet) => packet.evidenceIds);
-  return uniqueEvidenceItems(selectEvidenceByIds(evidence, ids));
-}
-
-function buildStoryClaimBundle(
-  supportingPackets: ConcludeEvidencePacket[],
-  boundaryPackets: ConcludeEvidencePacket[],
-  narrativeFocus: 'biological' | 'audit' | 'method'
-): ConcludeStoryClaimBundleEntry[] {
-  const primary = supportingPackets[0];
-  const secondary = supportingPackets[1];
-  const boundary = boundaryPackets[0];
-
-  const claims: ConcludeStoryClaimBundleEntry[] = [];
-
-  if (primary) {
-    claims.push({
-      id: 'bundle-1',
-      statement:
-        narrativeFocus === 'method'
-          ? 'The manuscript can open from a reproducible workflow output that already carries reusable evidence.'
-          : narrativeFocus === 'audit'
-            ? 'The opening claim should show what the project can responsibly say, not just what it hoped to prove.'
-            : 'The opening Results claim should stay bounded to the strongest internal biological signal.',
-      evidencePacketRefs: [primary.id],
-      boundaryPacketRefs: boundary ? [boundary.id] : [],
-      validationFocus:
-        narrativeFocus === 'method'
-          ? 'Show why the workflow output is reusable and where its biological scope stops.'
-          : narrativeFocus === 'audit'
-            ? 'Keep the first claim modest and immediately pair it with reviewer-visible limits.'
-            : 'Use association-level wording unless stronger intervention evidence exists.',
-    });
-  }
-
-  if (secondary) {
-    claims.push({
-      id: 'bundle-2',
-      statement:
-        narrativeFocus === 'method'
-          ? 'A second claim should validate how the workflow packages evidence into manuscript-ready assets.'
-          : narrativeFocus === 'audit'
-            ? 'A second claim should explain how evidence convergence happened despite unresolved boundaries.'
-            : 'A second claim should explain how data readiness and reproducibility support the biological interpretation.',
-      evidencePacketRefs: [secondary.id],
-      boundaryPacketRefs: boundary ? [boundary.id] : [],
-      validationFocus:
-        narrativeFocus === 'method'
-          ? 'Tie the pipeline output to concrete reusable reports, figures, or processed matrices.'
-          : narrativeFocus === 'audit'
-            ? 'Show that the negative evidence narrows scope rather than invalidating the whole story.'
-            : 'Keep the manuscript arc anchored in internal evidence rather than aspiration or external context.',
-    });
-  }
-
-  if (boundary) {
-    claims.push({
-      id: 'bundle-3',
-      statement:
-        narrativeFocus === 'method'
-          ? 'The discussion must explicitly state which missing validations prevent a stronger biological conclusion.'
-          : narrativeFocus === 'audit'
-            ? 'Boundary and failed validation evidence should be treated as part of the contribution, not hidden cleanup.'
-            : 'Boundary evidence should explain why the story remains a bounded hypothesis instead of a mechanistic claim.',
-      evidencePacketRefs: [],
-      boundaryPacketRefs: [boundary.id],
-      validationFocus: 'Preserve reviewer-facing limits and keep stronger causal verbs out of the final prose.',
-    });
-  }
-
-  return claims;
-}
-
-function buildCandidateNarrative(
-  framing: ConcludeStoryFraming,
-  supportingPackets: ConcludeEvidencePacket[],
-  boundaryPackets: ConcludeEvidencePacket[],
-  contract: ResearchContract | null
-): {
-  centralClaim: string;
-  story: string;
-  narrativeArc: string[];
-  claimsAllowed: string[];
-  claimSafetyLimits: string[];
-  claimsToSoftenOrAvoid: string[];
-} {
-  const thematicScope = contract?.theme ? `within the project theme "${contract.theme}"` : 'within the current QDD project scope';
-  const leadPacket = supportingPackets[0];
-  const secondPacket = supportingPackets[1];
-  const boundaryPacket = boundaryPackets[0];
-  const leadSummary = summarizePacketForNarrative(leadPacket, 'the available QDD evidence supports a bounded synthesis-ready story');
-  const secondSummary = summarizePacketForNarrative(secondPacket, 'reusable internal evidence supports a coherent second Results step');
-  const boundarySummary = summarizePacketForNarrative(boundaryPacket, 'current boundary evidence should remain visible throughout drafting');
-
-  if (framing === 'audit-report') {
-    return {
-      centralClaim: `The current evidence package ${thematicScope} supports an auditable, bounded conclusion rather than a broad mechanistic claim.`,
-      story: sentenceCaseTrim(`This story is organized as a reviewer-facing evidence audit: start from ${lowerCaseLead(leadSummary)}, then show how ${lowerCaseLead(secondSummary)} supports a cautious manuscript backbone. The final arc must keep ${lowerCaseLead(boundarySummary)} visible so the contribution reads as honest evidence-bounding rather than overreach.`),
-      narrativeArc: [
-        'Open by stating what the project can already support with reusable internal evidence.',
-        'Translate the main evidence packets into a compact Results chain without replaying raw execution logs.',
-        'Use boundary and failed validation packets to explain why the claim remains deliberately bounded.',
-      ],
-      claimsAllowed: [
-        'The project converged on a bounded interpretation supported by reusable internal evidence.',
-        'Negative and blocked studies narrowed the final claim and improved reviewer-facing honesty.',
-      ],
-      claimSafetyLimits: [
-        'Keep the central claim at the level of bounded conclusion rather than broad biological mechanism.',
-        'Do not let unresolved validations disappear into future-work language if they still define the current boundary.',
-      ],
-      claimsToSoftenOrAvoid: [
-        'Avoid discovery-first or mechanism-first verbs unless an intervention or functional validation is present.',
-        'Avoid implying that missing evidence is merely future work if it is currently central to the claim.',
-      ],
-    };
-  }
-
-  if (framing === 'method') {
-    return {
-      centralClaim: `The strongest manuscript story ${thematicScope} is methodological: the QDD workflow and evidence packaging produce a reproducible, bounded result package.`,
-      story: sentenceCaseTrim(`Lead with ${lowerCaseLead(leadSummary)} as the validation backbone, then use ${lowerCaseLead(secondSummary)} to show why the workflow outputs are manuscript-ready. Keep ${lowerCaseLead(boundarySummary)} explicit so the paper reads as reproducible and conservative rather than workflow triumphalism.`),
-      narrativeArc: [
-        'Introduce the workflow contribution as a reproducible path that yielded reusable outputs.',
-        'Show one or two manuscript-ready evidence packets that validate the workflow without claiming mechanism.',
-        'Close the Results arc by naming the biological scope limits and the validation still missing.',
-      ],
-      claimsAllowed: [
-        'The workflow produced reusable scripts, reports, or figures that support project-level synthesis.',
-        'The biological interpretation should remain bounded to the observed evidence package.',
-      ],
-      claimSafetyLimits: [
-        'Method reliability does not by itself prove a biological mechanism.',
-        'Generalization claims should stay narrower than one-project-slice hype.',
-      ],
-      claimsToSoftenOrAvoid: [
-        'Avoid claiming that the workflow proves biological mechanism.',
-        'Avoid overgeneralizing from one project slice to all future datasets.',
-      ],
-    };
-  }
-
-  if (framing === 'bounded-hypothesis') {
-    return {
-      centralClaim: `The available evidence ${thematicScope} supports a bounded biological hypothesis with associative, not mechanistic, wording.`,
-      story: sentenceCaseTrim(`Present a conservative biological arc anchored by ${lowerCaseLead(leadSummary)} and reinforced by ${lowerCaseLead(secondSummary)}. Then make the limiting evidence explicit: ${lowerCaseLead(boundarySummary)}. This keeps the story manuscript-native while remaining claim-safe.`),
-      narrativeArc: [
-        'Open from the strongest internal biological signal using association-level wording.',
-        'Use data-readiness and reproducibility packets to show the signal is not an isolated anecdote.',
-        'End by making the limiting evidence explicit so the hypothesis stays bounded.',
-      ],
-      claimsAllowed: [
-        'Use association or candidate-state language for the central biological signal.',
-        'State that the evidence narrows the hypothesis frontier instead of proving mechanism.',
-      ],
-      claimSafetyLimits: [
-        'Mechanistic language is not allowed unless intervention or functional validation exists.',
-        'Proxy or correlation evidence should be framed as candidate support, not proof.',
-      ],
-      claimsToSoftenOrAvoid: [
-        'Avoid verbs such as drives, defines, proves, or establishes mechanism.',
-        'Avoid presenting proxy or correlation evidence as causal validation.',
-      ],
-    };
-  }
-
-  return {
-    centralClaim: `The evidence package ${thematicScope} supports a coherent project story grounded in reusable internal results and explicit boundaries.`,
-    story: sentenceCaseTrim(`Build the story around ${lowerCaseLead(leadSummary)} and ${lowerCaseLead(secondSummary)}. Keep the Results arc focused on evidence QDD actually produced, then use ${lowerCaseLead(boundarySummary)} to define the limits of interpretation.`),
-    narrativeArc: [
-      'Lead with the strongest reusable internal result.',
-      'Sequence supporting packets into a compact Results chain.',
-      'Use reviewer-facing limits to keep the contribution bounded and credible.',
-    ],
-    claimsAllowed: [
-      'The evidence package supports a coherent and bounded manuscript story.',
-      'Project evolution and reusable artifacts reinforce the final narrative arc.',
-    ],
-    claimSafetyLimits: [
-      'Novelty language must remain tied to internal evidence rather than aspiration.',
-      'Failed or blocked studies should remain visible when they define claim boundaries.',
-    ],
-    claimsToSoftenOrAvoid: [
-      'Avoid broad novelty claims that are not grounded in internal evidence.',
-      'Avoid hiding failed or blocked studies when they explain claim boundaries.',
-    ],
-  };
-}
-
-function selectCandidatePackets(
-  packets: ConcludeEvidencePacket[],
-  mode: 'balanced' | 'audit-heavy' | 'method-heavy'
-): { supportingPackets: ConcludeEvidencePacket[]; boundaryPackets: ConcludeEvidencePacket[] } {
-  const supportingPackets = packets.filter((packet) => packet.kind === 'supporting');
-  const boundaryPackets = packets.filter((packet) => packet.kind !== 'supporting');
-
-  if (mode === 'audit-heavy') {
-    return {
-      supportingPackets: [
-        ...getPacketsByFocus(supportingPackets, 'biological-signal'),
-        ...getPacketsByFocus(supportingPackets, 'data-readiness'),
-      ].slice(0, 2),
-      boundaryPackets: [
-        ...getPacketsByFocus(boundaryPackets, 'negative-validation'),
-        ...getPacketsByFocus(boundaryPackets, 'claim-boundary'),
-        ...boundaryPackets,
-      ].slice(0, 3),
-    };
-  }
-
-  if (mode === 'method-heavy') {
-    return {
-      supportingPackets: [
-        ...getPacketsByFocus(supportingPackets, 'workflow-validation'),
-        ...getPacketsByFocus(supportingPackets, 'data-readiness'),
-        ...getPacketsByFocus(supportingPackets, 'biological-signal'),
-      ].slice(0, 3),
-      boundaryPackets: [
-        ...getPacketsByFocus(boundaryPackets, 'claim-boundary'),
-        ...getPacketsByFocus(boundaryPackets, 'negative-validation'),
-      ].slice(0, 2),
-    };
-  }
-
-  return {
-    supportingPackets: [
-      ...getPacketsByFocus(supportingPackets, 'biological-signal'),
-      ...getPacketsByFocus(supportingPackets, 'data-readiness'),
-      ...getPacketsByFocus(supportingPackets, 'workflow-validation'),
-      ...supportingPackets,
-    ].slice(0, 3),
-    boundaryPackets: [
-      ...getPacketsByFocus(boundaryPackets, 'negative-validation'),
-      ...getPacketsByFocus(boundaryPackets, 'claim-boundary'),
-      ...boundaryPackets,
-    ].slice(0, 2),
-  };
-}
-
-function buildStoryCandidates(
-  evidence: ConcludeEvidenceItem[],
-  packets: ConcludeEvidencePacket[],
-  contract: ResearchContract | null
-): ConcludeStoryCandidate[] {
-  const modes: Array<{ id: string; mode: 'balanced' | 'audit-heavy' | 'method-heavy'; framing: ConcludeStoryFraming; narrativeFocus: 'biological' | 'audit' | 'method' }> = [
-    { id: 'story-1', mode: 'balanced', framing: packets.some((packet) => packet.claimStrength === 'associative') ? 'bounded-hypothesis' : 'discovery', narrativeFocus: 'biological' },
-    { id: 'story-2', mode: 'audit-heavy', framing: 'audit-report', narrativeFocus: 'audit' },
-    { id: 'story-3', mode: 'method-heavy', framing: 'method', narrativeFocus: 'method' },
-  ];
-
-  return modes.map(({ id, mode, framing, narrativeFocus }) => {
-    const { supportingPackets, boundaryPackets } = selectCandidatePackets(packets, mode);
-    const supportingEvidence = selectEvidenceFromPackets(supportingPackets, evidence);
-    const negatives = selectEvidenceFromPackets(boundaryPackets, evidence);
-    const narrative = buildCandidateNarrative(framing, supportingPackets, boundaryPackets, contract);
-    const claimBundle = buildStoryClaimBundle(supportingPackets, boundaryPackets, narrativeFocus);
-    const relevantClaims = [...supportingPackets, ...boundaryPackets].map((packet) => buildClaimSafetyAuditEntry(packet.manuscriptSummary, packet.claimStrength));
-
-    return {
-      id,
-      framing,
-      centralClaim: narrative.centralClaim,
-      story: narrative.story,
-      narrativeArc: narrative.narrativeArc,
-      claimBundle,
-      supportingPacketRefs: packetRefs(supportingPackets),
-      boundaryPacketRefs: packetRefs(boundaryPackets),
-      supportingEvidence,
-      negativeOrBoundaryEvidence: negatives,
-      reviewerObjections: buildReviewerObjections(framing, supportingEvidence, negatives),
-      claimsAllowed: uniqueStrings(narrative.claimsAllowed),
-      claimSafetyLimits: uniqueStrings(narrative.claimSafetyLimits),
-      claimsToSoftenOrAvoid: uniqueStrings([
-        ...narrative.claimsToSoftenOrAvoid,
-        ...relevantClaims.filter((entry) => entry.action !== 'allow').map((entry) => `${entry.claim} (${entry.action})`),
-      ]),
-      suitabilityScore: scoreStoryCandidate(framing, supportingEvidence, negatives, relevantClaims),
-      recommendedTitleStyle: TITLE_STYLE_BY_FRAMING[framing],
-    };
-  });
-}
-
-function selectEvidenceByIds(evidence: ConcludeEvidenceItem[], ids: string[]): ConcludeEvidenceItem[] {
-  const idSet = new Set(ids);
-  return evidence.filter((item) => idSet.has(item.id));
-}
-
 function buildResultsClaims(
   candidate: ConcludeStoryCandidate,
-  evidence: ConcludeEvidenceItem[],
-  packets: ConcludeEvidencePacket[],
-  claimSafetyAudit: ConcludeClaimSafetyAuditEntry[]
+  dossier: ConcludeEvidenceDossier
 ): ConcludeResultsClaim[] {
-  const packetById = new Map(packets.map((packet) => [packet.id, packet] as const));
-
-  return candidate.claimBundle.filter((bundle) => bundle.evidencePacketRefs.length > 0).slice(0, 3).map((bundle, index) => {
-    const supportingPackets = bundle.evidencePacketRefs.map((id) => packetById.get(id)).filter((value): value is ConcludeEvidencePacket => Boolean(value));
-    const boundaryPackets = bundle.boundaryPacketRefs.map((id) => packetById.get(id)).filter((value): value is ConcludeEvidencePacket => Boolean(value));
-    const supportingEvidence = uniqueEvidenceItems(selectEvidenceFromPackets(supportingPackets, evidence)).slice(0, 4);
-    const boundaryEvidence = uniqueEvidenceItems(selectEvidenceFromPackets(boundaryPackets, evidence)).slice(0, 3);
-    const safetyEntries = claimSafetyAudit.filter((entry) => normalizeLine(entry.claim).toLowerCase() === normalizeLine(candidate.centralClaim).toLowerCase())
-      .concat(
-        supportingPackets.flatMap((packet) =>
-          claimSafetyAudit.filter((entry) => normalizeLine(entry.claim).toLowerCase() === normalizeLine(packet.manuscriptSummary).toLowerCase())
-        )
-      );
-    const claimStrength =
-      supportingPackets.some((packet) => packet.claimStrength === 'causal')
-        ? 'causal'
-        : supportingPackets.some((packet) => packet.claimStrength === 'associative')
-          ? 'associative'
-          : 'bounded';
-    const leadPacket = supportingPackets[0] ?? boundaryPackets[0];
+  const unitById = new Map(dossier.evidenceUnits.map((unit) => [unit.id, unit] as const));
+  return candidate.resultsArc.slice(0, 3).map((entry, index) => {
+    const unit = unitById.get(entry.claimId);
+    const boundaryClaimIds = candidate.claimGraph.edges
+      .filter((edge) => edge.toClaimId === entry.claimId && (edge.relation === 'bounds' || edge.relation === 'contradicts'))
+      .map((edge) => edge.fromClaimId);
+    const supportingEvidence = dossierClaimToEvidence(dossier, entry.claimId, 'supporting').slice(0, 4);
+    const boundaryEvidence = boundaryClaimIds.flatMap((claimId) => dossierClaimToEvidence(dossier, claimId, 'boundary')).slice(0, 3);
     return {
       id: `claim-${index + 1}`,
       heading: `Result ${index + 1}`,
-      claim: leadPacket?.manuscriptSummary ?? bundle.statement,
-      claimStrength,
-      supportingPacketRefs: bundle.evidencePacketRefs,
-      boundaryPacketRefs: bundle.boundaryPacketRefs,
+      claim: entry.statement,
+      claimStrength: unit ? strongestClaimStrength([unit]) : 'bounded',
+      supportingPacketRefs: [entry.claimId],
+      boundaryPacketRefs: boundaryClaimIds,
       supportingEvidence,
       boundaryEvidence,
-      validationFocus: bundle.validationFocus,
-      claimSafetyNotes: uniqueStrings(
-        safetyEntries.length > 0
-          ? safetyEntries.map((entry) => `${entry.action.toUpperCase()}: ${entry.rationale}`)
-          : ['ALLOW: Current wording is already bounded to the available evidence.']
-      ),
+      validationFocus: candidate.viability.missingValidation[index]
+        ?? `[${entry.claimId}] Preserve the dossier claim strength and figure/table mapping.`,
+      claimSafetyNotes: candidate.claimGraph.claimSafety.filter((value) => value.includes(`[${entry.claimId}]`)),
       reviewerRisk:
         candidate.reviewerObjections[index]
         ?? candidate.reviewerObjections[0]
@@ -2179,10 +1830,8 @@ function renderSelectedStoryMarkdown(
     kind: CONCLUDE_SELECTED_STORY_KIND,
     version: CONCLUDE_SELECTED_STORY_VERSION,
     story_id: candidate.id,
-    framing: candidate.framing,
     input_source: options.inputSource,
-    supporting_packet_refs: candidate.supportingPacketRefs,
-    boundary_packet_refs: candidate.boundaryPacketRefs,
+    candidate,
   }, [
     '# Selected Story',
     '',
@@ -2191,29 +1840,41 @@ function renderSelectedStoryMarkdown(
     `Framing: ${candidate.framing}`,
     `Recommended Title Style: ${candidate.recommendedTitleStyle}`,
     '',
-    '## Central Claim',
+    '## Scientific Question',
     '',
-    candidate.centralClaim,
+    `[${candidate.scientificQuestionClaimIds.join(', ')}] ${candidate.scientificQuestion}`,
+    '',
+    '## Central Contribution',
+    '',
+    `[${candidate.claimGraph.leadClaimId}] ${candidate.centralContribution}`,
     '',
     '## Story',
     '',
     candidate.story,
     '',
-    '## Narrative Arc',
+    '## Results Arc',
     '',
-    ...candidate.narrativeArc.map((value) => `- ${value}`),
+    ...candidate.resultsArc.map((entry) => `- ${entry.sequence}. [${entry.claimId}] ${entry.statement}`),
     '',
     '## Claim Bundle',
     '',
     ...candidate.claimBundle.map((bundle) => `- ${bundle.id}: ${bundle.statement}`),
     '',
-    '## Supporting Packet Refs',
+    '## Included Claim IDs',
     '',
-    ...candidate.supportingPacketRefs.map((value) => `- ${value}`),
+    ...candidate.includedClaimIds.map((value) => `- ${value}`),
     '',
-    '## Boundary Packet Refs',
+    '## Figure And Table Sequence',
     '',
-    ...candidate.boundaryPacketRefs.map((value) => `- ${value}`),
+    ...candidate.figureTableSequence.map((entry) => `- ${entry.sequence}. ${entry.kind} ${entry.assetId}: ${entry.claimIds.join(', ')}`),
+    '',
+    '## Limitation Placement',
+    '',
+    ...candidate.limitationPlacement.map((entry) => `- ${entry.placement}: ${entry.rationale}`),
+    '',
+    '## Viability Blockers',
+    '',
+    ...(candidate.viabilityBlockers.length > 0 ? candidate.viabilityBlockers.map((value) => `- ${value}`) : ['- none']),
     '',
     '## Reviewer Objections',
     '',
@@ -2230,7 +1891,8 @@ async function resolveSelectedStory(
   projectRoot: string,
   outputDir: string,
   options: GenerateConcludeStoryCandidatesOptions,
-  candidates: ConcludeStoryCandidate[]
+  candidates: ConcludeStoryCandidate[],
+  dossier: ConcludeEvidenceDossier
 ): Promise<{
   selectedStoryId: string | null;
   selectedStoryPath: string | null;
@@ -2248,15 +1910,21 @@ async function resolveSelectedStory(
     : defaultSelectedStoryPath;
   const selectedStoryPathExists = await FileSystemUtils.fileExists(absoluteSelectedStoryPath);
 
-  let parsedSelectedStoryId: string | null = null;
+  let structuredCandidate: ConcludeStoryCandidate | null = null;
   if (selectedStoryPathExists) {
     const content = await FileSystemUtils.readFile(absoluteSelectedStoryPath);
-    parsedSelectedStoryId = parseSelectedStoryId(content);
+    structuredCandidate = parseSelectedStoryCandidate(content);
+    if (!structuredCandidate) {
+      throw new Error('Selected story file has no valid versioned structured frontmatter. Prose-only selection files are not supported.');
+    }
   } else if (selectedStoryPathInput) {
     throw new Error(`Selected story file was not found at '${toProjectRelativePath(projectRoot, absoluteSelectedStoryPath)}'.`);
   }
 
-  const selectedStoryId = directSelectedStoryId ?? parsedSelectedStoryId;
+  if (directSelectedStoryId && structuredCandidate && directSelectedStoryId !== normalizeStoryId(structuredCandidate.id)) {
+    throw new Error(`Selected story id '${directSelectedStoryId}' does not match structured candidate '${structuredCandidate.id}'.`);
+  }
+  const selectedStoryId = directSelectedStoryId ?? (structuredCandidate ? normalizeStoryId(structuredCandidate.id) : null);
   if (!selectedStoryId) {
     if (options.selectedStoryId || options.selectedStoryPath) {
       throw new Error('Selected story input is present but no valid story id such as story-1 could be resolved.');
@@ -2270,9 +1938,14 @@ async function resolveSelectedStory(
     };
   }
 
-  const selectedCandidate = candidateById.get(selectedStoryId);
+  const selectedCandidate = structuredCandidate ?? candidateById.get(selectedStoryId);
   if (!selectedCandidate) {
     throw new Error(`Selected story '${selectedStoryId}' does not match any generated candidate.`);
+  }
+  const dossierClaimIds = new Set(dossier.evidenceUnits.map((unit) => unit.id));
+  const missingClaimIds = selectedCandidate.includedClaimIds.filter((claimId) => !dossierClaimIds.has(claimId));
+  if (missingClaimIds.length > 0) {
+    throw new Error(`Selected story references dossier claims that are no longer available: ${missingClaimIds.join(', ')}.`);
   }
 
   const selectionInputSource =
@@ -2298,12 +1971,19 @@ function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): s
     '# Story Candidates',
     '',
     `- Run ID: ${result.runId}`,
+    `- Planning status: ${result.storyPlan.status}`,
+    `- Story-plan audit: ${result.storyPlan.audit.status.toUpperCase()}`,
     result.selectionRequired
       ? '- Selection gate: STOP here until a human selects one story candidate.'
-      : `- Selected story: ${result.selectedStoryId ?? 'unknown'}`,
+      : result.storyPlan.status === 'insufficient-evidence'
+        ? '- Viability gate: STOP because the dossier does not support a manuscript story.'
+        : `- Selected story: ${result.selectedStoryId ?? 'unknown'}`,
     result.selectionRequired
-      ? '- V1 behavior: do not auto-select the highest score and do not generate manuscript planning artifacts yet.'
-      : '- Manuscript planning artifacts have been generated for the selected story; final manuscript drafting is the next step.',
+      ? '- Do not auto-select from viability diagnostics; human scientific judgment remains required.'
+      : result.storyPlan.status === 'insufficient-evidence'
+        ? '- No filler candidate or fallback workflow paper was generated.'
+        : '- Manuscript planning artifacts have been generated from the selected structured story.',
+    ...result.storyPlan.diagnostics.map((value) => `- ${value}`),
     '',
   ];
 
@@ -2311,20 +1991,23 @@ function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): s
     lines.push(`## ${candidate.id}`);
     lines.push('');
     lines.push(`- Framing: ${candidate.framing}`);
-    lines.push(`- Suitability score: ${candidate.suitabilityScore}/100`);
     lines.push(`- Recommended title style: ${candidate.recommendedTitleStyle}`);
     lines.push('');
-    lines.push('### Central Claim');
+    lines.push('### Scientific Question');
     lines.push('');
-    lines.push(candidate.centralClaim);
+    lines.push(`[${candidate.scientificQuestionClaimIds.join(', ')}] ${candidate.scientificQuestion}`);
+    lines.push('');
+    lines.push('### Central Contribution');
+    lines.push('');
+    lines.push(`[${candidate.claimGraph.leadClaimId}] ${candidate.centralContribution}`);
     lines.push('');
     lines.push('### Story');
     lines.push('');
     lines.push(candidate.story);
     lines.push('');
-    lines.push('### Narrative Arc');
+    lines.push('### Results Arc');
     lines.push('');
-    lines.push(...candidate.narrativeArc.map((value) => `- ${value}`));
+    lines.push(...candidate.resultsArc.map((entry) => `- ${entry.sequence}. [${entry.claimId}] ${entry.statement}`));
     lines.push('');
     lines.push('### Claim Bundle');
     lines.push('');
@@ -2335,13 +2018,31 @@ function renderStoryCandidatesMarkdown(result: ConcludeStoryGenerationResult): s
       lines.push(`  Validation focus: ${bundle.validationFocus}`);
     }
     lines.push('');
-    lines.push('### Supporting Packet Refs');
+    lines.push('### Included Claim IDs');
     lines.push('');
-    lines.push(...candidate.supportingPacketRefs.map((value) => `- ${value}`));
+    lines.push(...candidate.includedClaimIds.map((value) => `- ${value}`));
     lines.push('');
-    lines.push('### Boundary Packet Refs');
+    lines.push('### Excluded Claim IDs');
     lines.push('');
-    lines.push(...candidate.boundaryPacketRefs.map((value) => `- ${value}`));
+    lines.push(...candidate.excludedClaimIds.map((value) => `- ${value}`));
+    lines.push('');
+    lines.push('### Figure And Table Sequence');
+    lines.push('');
+    lines.push(...candidate.figureTableSequence.map((entry) => `- ${entry.sequence}. ${entry.kind} ${entry.assetId}: ${entry.claimIds.join(', ')}`));
+    lines.push('');
+    lines.push('### Limitation Placement');
+    lines.push('');
+    lines.push(...candidate.limitationPlacement.map((entry) => `- ${entry.placement}: ${entry.rationale}`));
+    lines.push('');
+    lines.push('### Viability Diagnostics');
+    lines.push('');
+    lines.push(`- Coherence: ${candidate.viability.coherence.level} — ${candidate.viability.coherence.rationale}`);
+    lines.push(`- Evidence coverage: ${candidate.viability.evidenceCoverage.includedResultClaims}/${candidate.viability.evidenceCoverage.availableResultClaims} claims across ${candidate.viability.evidenceCoverage.sourceGroups} source groups`);
+    lines.push(`- Figure readiness: ${candidate.viability.figureReadiness.status} — ${candidate.viability.figureReadiness.plannedAssets} planned assets`);
+    lines.push(`- Claim safety: ${candidate.viability.claimSafety.status} — ${candidate.viability.claimSafety.boundaryClaims} boundary claims`);
+    lines.push(`- Novelty risk: ${candidate.viability.noveltyRisk.level} — ${candidate.viability.noveltyRisk.rationale}`);
+    lines.push(`- Missing validation: ${candidate.viability.missingValidation.join(' | ')}`);
+    lines.push(`- Viability blockers: ${candidate.viabilityBlockers.join(' | ') || 'none'}`);
     lines.push('');
     lines.push('### Reviewer Objections');
     lines.push('');
@@ -2419,6 +2120,7 @@ async function writeConcludeStoryOutputs(result: ConcludeStoryGenerationResult):
   await FileSystemUtils.createDirectory(result.outputDir);
   await Promise.all([
     FileSystemUtils.writeFile(path.join(result.outputDir, 'story_candidates.md'), renderStoryCandidatesMarkdown(result)),
+    FileSystemUtils.writeFile(result.storyCandidatesJsonPath, `${JSON.stringify(result.storyPlan, null, 2)}\n`),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_packets.md'), renderEvidencePacketsMarkdown(result.evidencePackets)),
     FileSystemUtils.writeFile(path.join(result.outputDir, 'evidence_audit.md'), renderEvidenceAuditMarkdown(result.evidence)),
     FileSystemUtils.writeFile(result.evidenceDossierJsonPath, `${JSON.stringify(result.evidenceDossier, null, 2)}\n`),
@@ -2452,11 +2154,12 @@ export async function generateConcludeStoryCandidates(
   const evidenceDossier = await buildConcludeEvidenceDossier(preflight, now);
   const evidence = await harvestConcludeEvidence(preflight);
   const evidencePackets = buildEvidencePackets(evidence);
-  const candidates = buildStoryCandidates(evidence, evidencePackets, preflight.snapshot.contract).slice(0, 3);
+  const storyPlan = buildConcludeStoryPlan(evidenceDossier);
+  const candidates = storyPlan.candidates;
   const claimSafetyAudit = collectClaimSafetyAudit(evidence);
-  const selectedStory = await resolveSelectedStory(preflight.projectRoot, outputDir, options, candidates);
+  const selectedStory = await resolveSelectedStory(preflight.projectRoot, outputDir, options, candidates, evidenceDossier);
   const resultsClaims = selectedStory.selectedCandidate
-    ? buildResultsClaims(selectedStory.selectedCandidate, evidence, evidencePackets, claimSafetyAudit)
+    ? buildResultsClaims(selectedStory.selectedCandidate, evidenceDossier)
     : [];
   const planningArtifacts = selectedStory.selectedCandidate && selectedStory.selectedStoryPath
     ? buildPlanningArtifactPaths(outputDir, selectedStory.selectedStoryPath)
@@ -2466,24 +2169,30 @@ export async function generateConcludeStoryCandidates(
     runId,
     outputDir,
     storyCandidatesPath: path.join(outputDir, 'story_candidates.md'),
+    storyCandidatesJsonPath: path.join(outputDir, 'story_candidates.json'),
     evidencePacketsPath: path.join(outputDir, 'evidence_packets.md'),
     evidenceAuditPath: path.join(outputDir, 'evidence_audit.md'),
     evidenceDossierJsonPath: path.join(outputDir, 'evidence_dossier.json'),
     evidenceDossierMarkdownPath: path.join(outputDir, 'evidence_dossier.md'),
     claimSafetyAuditPath: path.join(outputDir, 'claim_safety_audit.md'),
     reviewerRiskAuditPath: path.join(outputDir, 'reviewer_risk_audit.md'),
-    selectionRequired: selectedStory.selectedCandidate === null,
+    selectionRequired: candidates.length > 0 && selectedStory.selectedCandidate === null,
     selectedStoryId: selectedStory.selectedStoryId,
     selectedStoryPath: selectedStory.selectedStoryPath,
     selectedCandidate: selectedStory.selectedCandidate,
     planningArtifacts,
     resultsClaims,
     candidates,
+    storyPlan,
     evidence,
     evidenceDossier,
     evidencePackets,
     claimSafetyAudit,
-    nextStep: selectedStory.selectedCandidate ? 'draft-manuscript' : 'select-story',
+    nextStep: selectedStory.selectedCandidate
+      ? 'draft-manuscript'
+      : storyPlan.status === 'insufficient-evidence'
+        ? 'insufficient-evidence'
+        : 'select-story',
   };
 
   await writeConcludeStoryOutputs(result);

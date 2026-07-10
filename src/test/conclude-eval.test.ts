@@ -4,9 +4,39 @@ import path from 'node:path';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { __testOnly, runConcludeEval } from '../services/conclude-eval.js';
 import { loadConcludeEvalOracle } from '../services/conclude-eval-oracle.js';
+import { generateConcludeStoryCandidates } from '../services/conclude.js';
 
 const PARKINSON_CASE_ENV = 'QDD_CONCLUDE_EVAL_CASE';
 const ORACLE_FIXTURE_DIR = path.resolve('src/test/fixtures/conclude/parkinson-oracle');
+
+test('Parkinson story-plan gate accepts distinct dossier-backed candidates when case path is configured', async (t) => {
+  const casePath = process.env[PARKINSON_CASE_ENV]?.trim();
+  if (!casePath) {
+    await t.skip(`Set ${PARKINSON_CASE_ENV} to run the Parkinson story-plan gate.`);
+    return;
+  }
+
+  const result = await generateConcludeStoryCandidates(casePath, {
+    outputDir: 'conclusions/symphony-bil-23-story-plan-gate-20260710T183000Z',
+    runId: 'symphony-bil-23-story-plan-gate-20260710T183000Z',
+    now: new Date('2026-07-10T10:30:00.000Z'),
+  });
+  const candidates = result.storyPlan.candidates;
+
+  assert.equal(result.storyPlan.status, 'ready-for-selection');
+  assert.equal(result.storyPlan.audit.status, 'pass');
+  assert.equal(result.storyPlan.audit.violations.length, 0);
+  assert.equal(result.nextStep, 'select-story');
+  assert.ok(candidates.length >= 2 && candidates.length <= 3);
+  assert.ok(candidates.every((candidate) => !['method', 'audit-report'].includes(candidate.framing)));
+  assert.ok(candidates.every((candidate) => candidate.viabilityBlockers.length === 0));
+  assert.ok(candidates.every((candidate) => !/data[- ]readiness|analysis matrix|QC packet|task status/i.test(candidate.resultsArc[0]?.statement ?? '')));
+  assert.equal(new Set(candidates.map((candidate) => candidate.centralContribution)).size, candidates.length);
+  assert.equal(new Set(candidates.map((candidate) => candidate.includedClaimIds.join('|'))).size, candidates.length);
+  assert.equal(new Set(candidates.map((candidate) => candidate.claimGraph.resultOrdering.join('|'))).size, candidates.length);
+  assert.equal(new Set(candidates.map((candidate) => candidate.figureTableSequence.map((entry) => entry.assetId).join('|'))).size, candidates.length);
+  assert.equal(await FileSystemUtils.fileExists(result.storyCandidatesJsonPath), true);
+});
 
 test('Parkinson conclude golden-case eval writes JSON and Markdown reports when case path is configured', async (t) => {
   const casePath = process.env[PARKINSON_CASE_ENV]?.trim();

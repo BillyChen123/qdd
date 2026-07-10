@@ -38,7 +38,8 @@ Current conclude behavior in `main`:
 - builds a versioned source-aware evidence dossier from bounded reads of reports, tables, and figure metadata
 - harvests QDD evidence from studies, tasks, memories, artifacts, evolution, and resources
 - compresses raw records into manuscript-oriented evidence packets
-- generates 2-3 story candidates and stops at the human story-selection gate
+- targets 2-3 dossier-backed viable story candidates and stops at the human story-selection gate
+- emits one candidate with `insufficient-story-diversity`, or stops at `insufficient-evidence`, when the evidence cannot support genuine story diversity
 - restores a selected story from `--selected-story-id` or `--selected-story-path`
 - writes manuscript-planning artifacts and the current final paper package after selection
 - reports blocked PDF/Word rendering status when TeX or pandoc dependencies are missing
@@ -58,7 +59,9 @@ Implementation work must continue to follow [`docs/09-qdd-conclude-prd.md`](../.
 Especially preserve these guardrails:
 
 - write only from existing QDD evidence
-- generate 2-3 story candidates before drafting
+- target 2-3 viable story candidates before drafting, but never invent candidates to meet a quota
+- build each candidate from a dossier-only scientific claim graph with explicit claim IDs, Results ordering, figure/table sequence, limitations, and multidimensional viability diagnostics
+- never introduce an audit-report, method paper, or QDD-workflow contribution unless the dossier itself scientifically studies and validates it
 - stop for user selection before final manuscript drafting
 - keep negative, dissolved, blocked, or downgraded studies as usable boundary evidence
 - downgrade weak associative claims instead of overstating mechanism
@@ -85,7 +88,7 @@ That means:
 - raw QDD records remain valuable as provenance
 - narrative outputs should be based on compressed evidence packets
 - story candidates should differ in real narrative arc, not just framing label
-- selected story should be stable and recoverable as a machine-readable drafting input
+- selected story should contain a versioned structured candidate snapshot and be recoverable without parsing prose
 - final drafting quality may improve through internal adapters or agent-backed drafting, but those remain implementation details of `qdd conclude`
 
 ## Boundary Rules

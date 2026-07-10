@@ -44,22 +44,26 @@ The dossier is an internal reasoning boundary. Raw task, study, status, and arti
 
 ### 3. Story Design
 
-Produce two or three genuinely different story candidates. Each candidate contains:
+Consume only the versioned scientific evidence dossier, not raw study or task prose. Build a manuscript claim graph whose nodes and edges record the lead claim, supporting claims, boundary or contradictory claims, Results ordering, figure/table plan, claim safety, missing validation, and reviewer risk.
 
-- central contribution and claim bundle
-- narrative arc and Results sequence
-- supporting and boundary packet references
-- figure and table plan
-- reviewer objections and claim limits
-- manuscript viability assessment
+Target two or three genuinely different viable story candidates. Each candidate contains:
+
+- scientific question, central contribution, and claim bundle
+- included and excluded dossier claim IDs
+- narrative arc and ordered Results claims
+- figure/table sequence and limitation placement
+- reviewer objections, claim limits, and viability blockers
+- multidimensional viability diagnostics for coherence, evidence coverage, figure readiness, claim safety, novelty risk, and missing validation
 
 Candidates must differ in contribution or scientific arc, not only in title or framing label.
+
+Candidate count is an outcome of the viability gate, not a quota. If only one scientific route is viable, emit that candidate with `insufficient-story-diversity`. If none is viable, stop at `insufficient-evidence` and do not generate a filler manuscript. An audit-report, method paper, or “QDD workflow is the contribution” route is allowed only when the dossier itself contains scientific evidence that directly studies and validates that contribution.
 
 ### 4. Human Selection
 
 Stop before drafting. The user selects a story or requests revision. V1 does not auto-select a manuscript story.
 
-The selected story must be stable and machine-readable so drafting can resume without reparsing raw task and study text.
+The selected story must be stored as versioned structured JSON or frontmatter containing the full selected candidate snapshot. Drafting resumes from those structured fields and must not recover selection by regex or prose parsing.
 
 ### 5. Manuscript Drafting
 
@@ -131,6 +135,7 @@ Core outputs:
 ```text
 evidence_dossier.json
 evidence_dossier.md
+story_candidates.json
 story_candidates.md
 evidence_packets.md
 selected_story.md
@@ -155,6 +160,8 @@ paper_rewriting_output/
 
 `evidence_dossier.json` is the versioned machine-readable boundary between source artifacts and later story planning. Its scientific narrative fields come from bounded reads of artifact content, while QDD study, task, artifact, path, row, and line identifiers remain in dedicated provenance fields. `evidence_dossier.md` renders the same contract for human review.
 
+`story_candidates.json` is the versioned dossier-only story plan. It records planning status, claim graphs, candidate-specific claim sets and ordering, figure/table sequences, viability diagnostics, and the story-plan audit. Reader-visible candidate statements reference dossier claim IDs; QDD provenance remains in the dossier sidecar.
+
 `selected_story.md` and the planning artifacts are intermediate contracts. `main.tex`, `references.bib`, reusable assets, and audits are the manuscript deliverable. PDF and Word files are present only after successful rendering.
 
 ## Golden Oracle
@@ -174,7 +181,7 @@ Evaluation must combine deterministic checks with semantic review of the generat
 
 ## Acceptance Criteria
 
-- Two or three story candidates differ in real contribution and narrative arc.
+- Two or three viable story candidates differ in central contribution, included claim set, Results ordering, and figure/table plan; a one-candidate or zero-candidate dossier stops honestly with the corresponding diagnostic.
 - The selection gate occurs before final drafting.
 - The selected story can be restored without copying raw task or study prose.
 - The final Results sequence follows scientific claims and figures rather than QDD object order.
