@@ -26,10 +26,10 @@ hooks:
     npm run build
 agent:
   max_concurrent_agents: 1
-  max_turns: 8
+  max_turns: 20
   max_retry_backoff_ms: 300000
 codex:
-  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.4"' --config model_reasoning_effort=xhigh app-server
+  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.6-sol"' --config model_reasoning_effort=xhigh app-server
   approval_policy: never
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
@@ -37,7 +37,7 @@ codex:
     networkAccess: true
 ---
 
-You are working on a Linear issue for the QDD repository.
+You are working on one Linear issue for the QDD repository.
 
 Issue:
 - Identifier: {{ issue.identifier }}
@@ -56,215 +56,133 @@ No description provided.
 {% if attempt %}
 Continuation context:
 - This is retry or continuation attempt #{{ attempt }}.
-- Resume from the current workspace state.
-- Do not repeat completed investigation unless the latest repository state requires it.
+- Resume from the current workspace and workpad state.
+- Recheck changed repository or issue state, but do not repeat completed work without reason.
 {% endif %}
 
 ## Mission
 
-Implement the QDD `conclude` skill described in `docs/09-qdd-conclude-prd.md`.
+Implement only the executable slice described by the Linear issue.
 
-Operate conservatively:
+- Keep issue scope bounded.
+- Use Chinese for workpad updates, handoffs, PR summaries, and final reports unless the issue requests English.
+- If the issue conflicts with a repository source of truth, stop the conflicting work and record the conflict.
+- Do not invent product requirements in this workflow file.
 
-- Work on one issue at a time.
-- Do not expand scope beyond the Linear issue and the PRD.
-- If the issue conflicts with the PRD, follow the PRD and record the conflict in the workpad.
-- Keep updates, handoff notes, PR summaries, and final reports in Chinese unless the issue explicitly requests English.
+## Required Reading
 
-## State Protocol
+Before implementation, read:
 
-Treat the Linear state as the control plane:
+1. the root `AGENTS.md`
+2. the Linear issue, acceptance criteria, and dependency relations
+3. files named in the issue's `References` or `Required Reading`
+4. for conclude work, `docs/09-qdd-conclude-prd.md` and `domain-skills/thesis/conclude/SKILL.md`
+5. the code and tests directly related to the requested slice
 
-- `Todo`, `In Progress`, and `Rework`: implement or revise the requested issue slice.
-- `Human Review`: do not work. This is the human review pause state and is intentionally not an active state.
-- `Merging`: do not add new feature scope. Confirm the issue has a pushed branch and PR, verify the review handoff is complete, merge the approved PR into `main`, then move the Linear issue to `Done`.
-- Linear `Blocked by` / `Blocks` relations are dependency gates. If the current issue has any non-terminal blocker, do not implement it; update the workpad with the blocker and leave the issue in a waiting state.
+Repository product truth priority is:
 
-For dependent issue chains:
+1. `AGENTS.md` project invariants
+2. feature contracts and repository specifications
+3. current Linear issue execution contract
+4. nearby code and tests
 
-- Upstream issues must merge to `main` before downstream implementation begins.
-- Downstream issues should remain `Todo + Blocked by` until their blockers are terminal.
-- Do not ignore Linear blockers just because the issue is in an active state.
+This workflow is the execution control plane rather than a product specification. An issue may change a higher-priority contract only when that contract update is explicit scope and ships in the same change. Otherwise, record the conflict and follow the higher-priority source.
 
-When the issue is in `Merging`:
+## Context Receipt
 
-1. Read the `## Codex Workpad` and PR metadata first.
-2. Confirm there is no explicit unresolved blocker or requested rework.
-3. Refresh the branch and `main`, resolve only merge-related conflicts if needed, and rerun the relevant validation.
-4. Merge through the GitHub PR if available. If PR tooling is unavailable but repository permissions allow it, merge the issue branch into `main` locally and push `main`.
-5. Update the workpad in Chinese with merge evidence, commit hash, validation commands, and final status.
-6. Move the Linear issue to `Done`.
+Create or update one persistent Linear comment headed `## Codex Workpad`. Before editing, record a compact context receipt:
 
-If merge cannot be completed because GitHub auth, branch protection, CI, or review state blocks it, keep the issue in `Merging` and record the exact blocker in the workpad.
+- issue identifier, state, and unresolved blockers
+- base branch and base SHA from `origin/main`
+- issue branch and current SHA
+- required-reading paths actually read
+- the acceptance slice being implemented
+- planned validation commands
 
-## Repository Context
+Git-tracked documents are bound by the recorded SHA; do not add separate file hashes unless the issue specifically requires them. If the issue description, dependency state, or base branch changes materially, refresh the receipt before continuing.
 
-QDD is a TypeScript CLI and local skill framework for Question-Driven Discovery.
+## State And Dependency Protocol
 
-Repository control plane:
+- `Todo`, `In Progress`, and `Rework`: implement or revise the issue slice.
+- `Human Review`: pause; do not perform active work.
+- `Merging`: add no feature scope. Complete only merge preparation, validation, merge, and final status updates.
+- `Done`, `Closed`, `Cancelled`, `Canceled`, `Duplicate`: terminal; do not work.
+- Respect real Linear `Blocked by` / `Blocks` relations. Prose-only dependency notes are not sufficient.
+- A downstream issue may start only after all blockers are terminal and their required changes are present in `main`.
 
-- Canonical GitHub repository: `https://github.com/BillyChen123/qdd`.
-- Git remote used by Symphony workspaces: `git@github.com:BillyChen123/qdd.git`.
-- Base branch for all issue branches, PRs, pulls, and merges: `main`.
-- Create one issue branch per Linear issue.
-- Open PRs against `main`. Do not target another base branch unless the Linear issue explicitly says so.
-- After a successful merge, ensure `origin/main` contains the merged change before moving the Linear issue to `Done`.
+If an active issue has a non-terminal blocker, record it in the workpad and do not implement around it.
 
-Important paths:
+## Repository And Branch Protocol
 
-- `docs/09-qdd-conclude-prd.md`: source PRD for the conclude skill.
-- `.codex/skills/`: workflow skill surfaces used by Codex.
-- `domain-skills/`: QDD domain-level skills and scripts.
-- `src/`: QDD CLI implementation.
-- `openspec/`: existing OpenSpec planning artifacts.
-- `package.json`: build and test commands.
-- Parkinson golden-case QDD project: `/data/chenyz/project/panrank_tmp/project/case/Parkinson`.
+- Canonical repository: `https://github.com/BillyChen123/qdd`
+- Clone remote: `git@github.com:BillyChen123/qdd.git`
+- Base branch: `main`
+- One branch per Linear issue.
+- Branch names begin with the lower-case issue identifier, for example `bil-20-...`.
+- Open PRs against `main`.
+- Preserve unrelated user or workspace changes.
+- Never commit credentials or secret values.
 
-Use the repository's existing patterns. Do not introduce a new framework or unrelated runtime.
+Before implementation:
 
-## Conclude Entry Model
+1. fetch `origin`
+2. confirm the recorded base SHA
+3. create or resume the issue branch
+4. inspect the current worktree and existing workpad
 
-Keep the two conclude surfaces distinct:
+## Execution And Workpad Protocol
 
-- `domain-skills/thesis/conclude/SKILL.md` is the durable conclude guidance: taste, scientific guardrails, workflow intent, and PaperSpine provenance expectations.
-- `qdd conclude` is the executable and canonical product entry point implemented under `src/commands/conclude.ts` and `src/services/conclude.ts`.
+Keep the workpad current with:
 
-The CLI is the testable automation surface. It should let a user run conclude inside any QDD project directory.
-The skill assets are not a second product entrypoint.
+- concise plan and progress
+- acceptance criteria status
+- decisions or contract conflicts
+- blockers and missing tools
+- commits and PR URL
+- exact validation evidence
 
-Current CLI shape:
+Implement the smallest coherent change that satisfies the issue. Follow existing repository patterns and do not introduce unrelated frameworks or refactors.
 
-```bash
-qdd conclude --json
-qdd conclude --output-dir conclusions/<run-id> --json
-qdd conclude --output-dir conclusions/<run-id> --selected-story-id story-1 --json
-qdd conclude --output-dir conclusions/<run-id> --selected-story-path conclusions/<run-id>/selected_story.md --json
-```
+## Validation Provenance
 
-Current behavior:
+Use the issue's `Validation` section and the relevant repository contract to choose tests. The workflow defines how validation is proven, not feature-specific test cases.
 
-- Without a selected story, generate story candidates, evidence audit, claim safety audit, reviewer risk audit, render status, then stop at the selection gate.
-- Without a selected story, also generate `evidence_packets.md` so story candidates can refer to manuscript-native compressed evidence instead of raw study/task prose.
-- With a selected story, generate a machine-readable `selected_story.md`, manuscript-planning artifacts under `paper_rewriting_output/`, and the final paper package centered on `paper_rewriting_output/final_paper/main.tex`.
-- PDF and Word rendering remain dependency-sensitive outputs: if TeX or pandoc is unavailable, render status must report the package as blocked rather than complete.
-- Quantitative draft evaluation is already available through the dedicated Parkinson conclude eval harness and should be used when a drafting-quality issue changes final-paper behavior.
-- Final manuscript quality and regression gates can still improve in later issues, but conclude's main spine is already implemented in `main`; do not reopen old scaffold/preflight/harvest/planning/draft slices unless a new issue explicitly identifies a regression.
+Final validation must be run against the committed handoff state. Record these five items in the workpad and PR summary:
 
-## Expected Development Posture
+1. issue identifier and base SHA
+2. tested SHA
+3. clean-worktree result from `git status --short`
+4. exact commands, including the resolved binary path and any case/input path
+5. result plus generated output/report paths
 
-1. Read `docs/09-qdd-conclude-prd.md` before making changes.
-2. Read the files directly related to the issue.
-3. Create or update a single persistent Linear comment headed `## Codex Workpad`.
-4. Keep the workpad current with plan, acceptance criteria, validation evidence, blockers, and confusions.
-5. Implement only the issue's slice.
-6. Run targeted validation before handoff.
-7. Open or update a PR when code changes are ready.
-8. Move the issue to `Human Review` only after validation passes and the workpad is current.
+If validation uses external project data, also record its resolved path and the output directory. If code or tracked test inputs change after validation, commit the change and rerun the affected validation; the previous tested SHA is no longer valid.
+
+Do not report a local run as evidence for a cloud commit unless the local checkout was at the same tested SHA. Do not report a generated score without the exact command and output path that produced it.
+
+If validation cannot run, record the failed command, missing dependency or credential, and the unverified acceptance criteria. Do not translate a skipped or blocked test into success.
+
+## Handoff Protocol
 
 Before moving an issue to `Human Review`:
 
-- Commit all intended changes on a branch named after the Linear issue.
-- Push that branch to `origin`.
-- Attach or record the GitHub PR URL in Linear.
-- If PR creation is unavailable, keep the issue in `In Progress` and record the exact blocker in the workpad.
+1. commit all intended changes on the issue branch
+2. run final validation on that commit
+3. confirm the worktree is clean
+4. push the branch to `origin`
+5. open or update a PR against `main`
+6. update the workpad with the context receipt, tested SHA, commands, results, output paths, and PR URL
 
-If Linear comment editing or GitHub push is unavailable, continue as far as possible in the local workspace, then record the exact blocker in the final response and workpad if available.
+If push, Linear comment editing, or PR creation is unavailable, leave the issue in `In Progress` and record the exact blocker.
 
-## Conclude PRD Guardrails
+When the issue is in `Merging`:
 
-The `conclude` skill must preserve these product constraints:
+1. read the workpad, tested SHA, and PR state
+2. confirm there is no unresolved blocker or requested rework
+3. refresh the branch and `main`
+4. resolve merge-only conflicts and rerun affected validation
+5. merge through the GitHub PR
+6. confirm the merged commit is present in `origin/main`
+7. update the workpad with merge SHA and final status
+8. move the Linear issue to `Done`
 
-- It turns accumulated QDD research evidence into an auditable manuscript-oriented package.
-- It must generate 2-3 story candidates before drafting.
-- It must stop for user story selection before producing the final manuscript.
-- It must use existing QDD evidence rather than inventing new analysis results.
-- It must treat negative, dissolved, blocked, or downgraded studies as useful boundary evidence.
-- It must explicitly downgrade weak biological claims.
-- It must preserve PaperSpine upstream license and provenance if vendored.
-- It must report missing TeX or pandoc tooling as blocked rendering status, not success.
-
-Do not silently convert associative evidence into causal or mechanistic claims.
-
-## Recommended Issue Shape
-
-Prefer issue descriptions written in OpenSpec propose style:
-
-1. `Goal`
-2. `Current State`
-3. `Scope`
-4. `Non-Goals`
-5. `Implementation Notes`
-6. `Acceptance Criteria`
-7. `Validation`
-8. `Dependencies`
-9. `References`
-
-## Recommended Issue Slices
-
-Use these as the intended decomposition unless the Linear issue states a narrower slice:
-
-1. Align the conclude product contract and rebuild the manuscript-native story pipeline.
-2. Upgrade manuscript drafting quality and tighten Parkinson regression gates.
-
-Avoid reopening already-completed historical slices such as scaffold-only setup, preflight-only work, harvest-only work, or first-pass draft packaging unless the new issue explicitly identifies a regression in `main`.
-
-## Validation
-
-Use the smallest validation set that proves the issue slice:
-
-- `npm run build`
-- `npm test` when code paths are changed
-- targeted fixture or smoke test when new parsing, harvesting, or rendering behavior is added
-
-For any issue that changes conclude behavior, also run a Parkinson golden-case smoke when the project exists at `/data/chenyz/project/panrank_tmp/project/case/Parkinson`:
-
-```bash
-npm run build
-tmp_run="conclusions/symphony-${issue.identifier,,}-$(date -u +%Y%m%dT%H%M%SZ)"
-(cd /data/chenyz/project/panrank_tmp/project/case/Parkinson && node /path/to/qdd/bin/qdd.js conclude --output-dir "$tmp_run" --json)
-```
-
-Replace `/path/to/qdd` with the current Symphony workspace path. For example, from a workspace root, use `node "$PWD/bin/qdd.js"`.
-
-If the implemented slice supports selected-story planning or drafting, run a second pass with an explicit selected story:
-
-```bash
-(cd /data/chenyz/project/panrank_tmp/project/case/Parkinson && node /path/to/qdd/bin/qdd.js conclude --output-dir "$tmp_run" --selected-story-id story-1 --json)
-```
-
-Report the generated Parkinson output paths in the Linear workpad and PR summary. At minimum include:
-
-- `story_candidates.md`
-- `evidence_audit.md`
-- `claim_safety_audit.md`
-- `reviewer_risk_audit.md`
-- `render_status.md`
-- `paper_rewriting_output/` when selected-story planning is available
-- `paper_rewriting_output/final_paper/main.tex` when final drafting is available
-
-For future draft-generation or evaluation issues, the Parkinson golden-case report must also include:
-
-- final draft path, such as `paper_rewriting_output/final_paper/main.tex`
-- render status for PDF and Word
-- quantitative rubric scores for logical coherence, novelty/significance, evidence traceability, claim safety, negative evidence use, manuscript viability, and citation integrity
-- a short Chinese note explaining what improved and what remains weak
-
-For conclude draft evaluation issues, prefer the dedicated harness:
-
-```bash
-npm run build
-QDD_CONCLUDE_EVAL_CASE=/data/chenyz/project/panrank_tmp/project/case/Parkinson npm run conclude:eval
-```
-
-Harness behavior requirements:
-
-- If `QDD_CONCLUDE_EVAL_CASE` is unset, the helper and test harness must skip cleanly and explain why.
-- If `QDD_CONCLUDE_EVAL_CASE` is set, the harness must run the selected-story conclude draft path and generate:
-  - `conclude_eval.json`
-  - `conclude_eval.md`
-- The report must include baseline/current-score-ready fields: total score, per-dimension scores, hard-fail status, and 3-5 key improvements.
-- Regression checks should be strong enough to catch raw task-study leakage, report-tone drift, and associative-to-causal overclaim when those behaviors are relevant to the changed slice.
-
-Any later conclude draft or draft-evaluation issue should report the current Parkinson eval score in the Linear workpad and PR summary.
-
-If validation cannot run because dependencies or tools are missing, report the missing dependency and the command that failed.
+If authentication, branch protection, CI, or review state blocks merging, keep the issue in `Merging` and record the exact blocker.

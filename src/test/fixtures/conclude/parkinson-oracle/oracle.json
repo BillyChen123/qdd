@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "caseId": "parkinson-rna-processing",
+  "purpose": "Evaluate whether conclude turns project evidence into a coherent, bounded scientific story rather than an evidence inventory.",
+  "expectedFacts": [
+    {
+      "id": "state-axis",
+      "fact": "Within the analysed substantia-nigra astrocyte state axis, QKI and CELF2 were elevated in the protective-like state.",
+      "sourceRefs": ["ART-019", "ART-020", "ART-021", "ART-022", "ART-104"],
+      "support": [
+        "QKI log2FC=1.24, FDR=1.04e-119",
+        "CELF2 log2FC=1.40, FDR=7.08e-100"
+      ]
+    },
+    {
+      "id": "candidate-dtu",
+      "fact": "Candidate-guided DTU identified two CELF2 transcript signals and one borderline QKI transcript signal among 27 candidates.",
+      "sourceRefs": ["ART-121", "ART-122", "ART-123", "ART-124"],
+      "support": [
+        "CELF2 ENST00000631460.1 FDR=0.0043",
+        "CELF2 ENST00000609692.5 FDR=0.043",
+        "QKI ENST00000275262.11 FDR=0.056"
+      ]
+    },
+    {
+      "id": "global-dtu",
+      "fact": "A transcriptome-wide analysis across 12 available donors identified 674 significant transcripts spanning 577 genes.",
+      "sourceRefs": ["ART-128", "ART-129", "ART-130", "ART-131"],
+      "support": [
+        "CELF2 ENST00000631460.1 remained significant with FDR=0.012 and log2FC=-3.20"
+      ]
+    },
+    {
+      "id": "pathway-destination",
+      "fact": "The DTU foreground was enriched around mitochondrial quality control, autophagy, trafficking, and proteostasis programs.",
+      "sourceRefs": ["ART-137", "ART-138", "ART-139", "ART-140"],
+      "support": []
+    },
+    {
+      "id": "event-localization",
+      "fact": "Event-local reconstruction localized transcript-structure differences for 54 of 55 prioritized genes.",
+      "sourceRefs": ["ART-155", "ART-156", "ART-157", "ART-159"],
+      "support": [
+        "51 loci involved alternative first-exon or transcription-start usage",
+        "45 loci involved alternative last-exon or termination usage",
+        "48 loci involved exon-count changes"
+      ]
+    },
+    {
+      "id": "motif-compatibility",
+      "fact": "CELF2-compatible evidence was concentrated in a subset of localized mitochondrial-quality-control and autophagy loci.",
+      "sourceRefs": ["ART-155", "ART-156", "ART-159", "ART-160", "ART-162"],
+      "support": [
+        "8 of 54 localized loci reached strict CELF2 motif-compatible support",
+        "14 of 54 reached binding-context-compatible support",
+        "5 of 16 core genes versus 3 of 38 non-core candidates reached the strict tier"
+      ]
+    }
+  ],
+  "expectedStoryRelationships": [
+    "The astrocyte state result motivates an RNA-processing question.",
+    "The limitations of 3-prime snRNA-seq motivate a move to full-length transcript data.",
+    "Candidate DTU motivates the transcriptome-wide test.",
+    "Transcriptome-wide DTU motivates pathway interpretation.",
+    "Pathway interpretation motivates event-local reconstruction.",
+    "The final model integrates these layers without claiming that one factor causes Parkinson's disease."
+  ],
+  "claimLimits": [
+    "The evidence does not prove that QKI, CELF2, or a single splicing factor drives Parkinson's disease.",
+    "Motif compatibility is not equivalent to direct binding or functional causality.",
+    "Three-prime snRNA-seq does not resolve complete transcript isoforms.",
+    "Candidate and donor-level findings must retain their stated power and validation limits.",
+    "The strongest supported conclusion is an RNA-processing-linked transcript-architecture model with bounded mechanistic interpretation."
+  ],
+  "requiredManuscriptSignals": [
+    "A contribution-led title and abstract",
+    "A Results sequence that follows the expected scientific relationships",
+    "Quantitative support for central claims",
+    "Figure or table anchors for central Results claims",
+    "A Discussion that separates supported conclusions from validation needs",
+    "Verified external citations for field-context statements"
+  ],
+  "forbiddenVisiblePatterns": [
+    "EV-ART-",
+    "EV-STUDY-",
+    "EV-TASK-",
+    "ART-[0-9]{3}",
+    "STUDY-[0-9]{3}",
+    "TASK-[0-9]{3}",
+    "current wording is already bounded",
+    "must be added later",
+    "this section frames",
+    "requires a narrowed analytical path"
+  ],
+  "hardFailures": [
+    {
+      "id": "evidence-inventory-prose",
+      "description": "Visible manuscript prose concatenates artifact, study, or task descriptions instead of synthesizing a result."
+    },
+    {
+      "id": "fragmented-or-metadata-prose",
+      "description": "Visible prose contains sentence fragments, duplicated punctuation, field labels, or metadata-shaped text."
+    },
+    {
+      "id": "unsupported-central-claim",
+      "description": "A central claim contradicts the expected facts, omits decisive available values, or exceeds a claim limit."
+    },
+    {
+      "id": "missing-result-anchor",
+      "description": "A major Results claim has no usable figure, table, or verifiable quantitative anchor when one exists."
+    },
+    {
+      "id": "invalid-citation",
+      "description": "An external citation is fabricated, unresolved, or missing from BibTeX."
+    },
+    {
+      "id": "meta-writing",
+      "description": "The manuscript exposes drafting instructions, audit language, future placeholders, or workflow commentary."
+    },
+    {
+      "id": "false-positive-evaluation",
+      "description": "The evaluator passes a draft with any hard failure because expected sections or files exist."
+    }
+  ]
+}
