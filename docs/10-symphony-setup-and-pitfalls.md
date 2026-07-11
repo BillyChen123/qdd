@@ -360,27 +360,27 @@ codex:
 BIL-9 和 BIL-10 暴露了一个典型问题：
 
 ```text
-BIL-9: evidence harvest / CLI integration
-BIL-10: story candidates / selection gate
+Issue A: upstream implementation slice
+Issue B: dependent integration slice
 ```
 
-逻辑上 BIL-10 应该依赖 BIL-9。但当 `max_concurrent_agents` 提高到 2 且两张 issue 都处于 active state 时，BIL-10 先 merge 到 `main`，导致 BIL-9 的 PR 变成 dirty/conflict。
+逻辑上 Issue B 应该依赖 Issue A。但当 `max_concurrent_agents` 提高到 2 且两张 issue 都处于 active state 时，Issue B 先 merge 到 `main`，导致 Issue A 的 PR 变成 dirty/conflict。
 
 处理原则：
 
 - 不要把依赖关系只写在 issue 描述里。
-- 在 Linear 中建立 `BIL-9 blocks BIL-10` 这类 relation。
+- 在 Linear 中建立 `Issue A blocks Issue B` 这类 relation。
 - 下游 issue 保持 `Todo + Blocked by`，不要提前手动改到 `In Progress`。
 - 如果已经乱序 merge，优先评估后 merge 的 PR 是否覆盖前置任务；必要时关闭旧 PR，另开 integration rescue issue。
 
 本次最终采用：
 
 ```text
-BIL-10 Done
+Issue B Done
   blocks
-BIL-11 Integrate conclude evidence harvest CLI after story candidate merge
+Issue C Integration rescue
   blocks
-BIL-12 Generate selected-story manuscript planning artifacts
+Issue D Downstream slice
 ```
 
 ## 调试检查表

@@ -17,8 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-runtime-assets.mjs",
     "dev": "tsc --watch -p tsconfig.json",
-    "test": "node --test dist/test/*.js",
-    "conclude:eval": "node scripts/run-conclude-eval.mjs"
+    "test": "node --test dist/test/*.js"
   },
   "engines": {
     "node": ">=20.19.0"
