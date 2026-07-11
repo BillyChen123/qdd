@@ -2,123 +2,279 @@
 
 ## Product Definition
 
-`qdd conclude` turns accumulated QDD evidence into an auditable manuscript draft. Its job is not to summarize every study. Its job is to identify the strongest defensible contribution, organize supporting and limiting evidence into a scientific story, and write that story as a TeX manuscript.
+QDD Conclude is a human-guided workflow skill that turns a completed or
+synthesis-ready QDD project into a coherent, evidence-rich scientific paper.
+The user opens a general-purpose agent such as Codex or Claude Code and invokes
+`$qdd-conclude` from inside the QDD project.
 
-The canonical executable surface is the CLI command `qdd conclude`. `domain-skills/thesis/conclude/` supplies durable guidance and provenance; it is not a second product.
+Conclude is not a TypeScript manuscript generator and is not currently an
+autonomous QDD runtime phase. The general-purpose agent performs the research
+synthesis, discusses the intended narrative with the user, writes the complete
+story in Markdown, revises it with the user, and only then renders that accepted
+story as TeX.
 
-Conclude may be used mid-project to audit evidence and compare stories, or near project completion to produce a draft package. It does not run new biological analyses.
+The central product problem is not collecting more files. A mature QDD project
+already contains questions, study memories, evidence, reports, figures, tables,
+and provenance. Conclude must transform those materials from an evidence
+inventory into a project-level scientific understanding, and then into one
+logically coherent, contribution-centered paper.
 
-## Source Boundaries
+## Current Product Stage
 
-Conclude reads the QDD project state, including contracts, evolution, memories, studies, tasks, artifact indexes, reports, figures, tables, and code provenance.
+This PRD defines **human mode only**.
 
-For scientific writing, source priority is:
+- The production surface is the `$qdd-conclude` workflow skill loaded by Codex,
+  Claude Code, or another supported general-purpose agent.
+- `qdd init` installs the workflow skill into the project alongside
+  `qdd-start`, `qdd-propose`, `qdd-explore`, `qdd-apply`, and `qdd-close`.
+- The QDD CLI may provide read, validation, provenance, and rendering helpers,
+  but it does not own scientific synthesis or manuscript writing.
+- An Agent SDK may run the same skill in tests to simulate multi-turn user
+  interaction and evaluate behavior. The SDK is not the human-mode product
+  entry point.
+- Auto-mode integration is future work. It must not be implemented until the
+  human workflow and its evaluation cases are mature.
 
-1. promoted figure, table, dataset summary, and report content
-2. reproducible analysis outputs and their provenance
-3. study-level interpretation and stable project memory
-4. task records and workflow status, used only to locate or audit evidence
+Tool-specific invocation syntax may differ, but the installed workflow identity
+is `qdd-conclude`. For Codex, the expected explicit invocation is
+`$qdd-conclude`.
 
-Artifact descriptions, study summaries, and task text are not manuscript prose. They may guide retrieval, but scientific claims must be reconstructed from the underlying result content.
+## Bootstrap And Skill Ownership
 
-External literature supports background, related work, methods, and discussion. It must never supply results that the QDD project did not produce.
+Conclude is a project-level QDD workflow skill, not an ordinary task executor or
+domain skill. It must be projected by `qdd init` into the same project-local
+workflow surfaces as the existing core loop, including:
 
-## Workflow Contract
+```text
+.codex/skills/qdd/qdd-conclude/SKILL.md
+.claude/skills/qdd/qdd-conclude/SKILL.md
+```
 
-### 1. Preflight
+Claude command and Codex prompt projections may also be installed where the
+existing bootstrap architecture requires them. Refreshing bootstrap assets with
+`qdd init . --refresh-bootstrap` must refresh conclude as well.
 
-Validate that the project has readable QDD state and report available TeX and Word rendering tools. Missing render dependencies produce `BLOCKED`, not success.
+The installed skill contains the actual production instructions followed by the
+general-purpose agent. It must not be reduced to a thin prompt that delegates
+semantic work to a deterministic service. `qdd-conclude` must never be written
+into an ordinary task's `skills:` field.
 
-### 2. Evidence Dossier
+## Agent-Native Responsibility
 
-Build manuscript-oriented evidence packets from source artifacts. Each packet should capture:
+The general-purpose research agent owns all semantic and editorial work:
 
-- the scientific observation or comparison
-- quantitative support and uncertainty when available
-- reusable figure or table anchors
-- scope and claim limits
-- provenance back to QDD sources
-- its role as supporting, boundary, negative-validation, or context evidence
+- reconstructing the project question and its evolution
+- synthesizing knowledge across studies
+- locating and inspecting the underlying study outputs and promoted artifacts
+- deciding the central contribution and story logic with the user
+- selecting, viewing, and integrating figures and tables
+- deciding what to emphasize, de-emphasize, or omit
+- writing and revising `research_synthesis.md` and `story.md`
+- finding and verifying the external literature needed by the paper
+- keeping claims proportionate to the evidence while telling the strongest
+  coherent positive story
+- producing a faithful TeX rendering after the user accepts `story.md`
 
-The dossier is an internal reasoning boundary. Raw task, study, status, and artifact-description language must not flow directly into the story or manuscript.
+Deterministic code may support mechanical operations such as QDD-state reading,
+path validation, provenance checks, bibliography validation, TeX conversion,
+and PDF rendering. It must not replace agent reasoning with regexes, keyword
+scores, ranking heuristics, fixed biological templates, deterministic claim
+selection, or assembled narrative fragments.
 
-### 3. Story Design
+## QDD Source Model
 
-Produce two or three genuinely different story candidates. Each candidate contains:
+The agent uses different QDD sources for different purposes.
 
-- central contribution and claim bundle
-- narrative arc and Results sequence
-- supporting and boundary packet references
-- figure and table plan
-- reviewer objections and claim limits
-- manuscript viability assessment
+### Memory
 
-Candidates must differ in contribution or scientific arc, not only in title or framing label.
+`context/memory/*.md` is the primary semantic index of what each closed study
+established, how it was interpreted, what was reused, and what remained open.
+Memory helps the agent understand the project without reconstructing every study
+from task logs.
 
-### 4. Human Selection
+Memory is interpretation and navigation, not sufficient evidence for a
+manuscript claim. Important claims must be verified against the underlying
+study output or artifact.
 
-Stop before drafting. The user selects a story or requests revision. V1 does not auto-select a manuscript story.
+### Evolution
 
-The selected story must be stable and machine-readable so drafting can resume without reparsing raw task and study text.
+`evolution.yaml` explains how the research question was confirmed, refined,
+pivoted, or dissolved across studies. It helps the agent reconstruct why one
+scientific question led to another.
 
-### 5. Manuscript Drafting
+Question evolution is a reasoning source, not a required manuscript chronology.
+The paper should select the logical path needed by its central contribution
+rather than replay the order in which the project was executed.
 
-After selection, produce planning artifacts and a TeX manuscript package. Results are organized around scientific claims and figures, not around the order of QDD studies, tasks, or artifacts.
+### Studies And Study Outputs
 
-### 6. Audit And Rendering
+Study records provide local question, method, execution, and interpretation
+context. The agent must be allowed to inspect all relevant finalized study
+outputs, including:
 
-Audit claim safety, evidence traceability, citation integrity, figure coverage, and manuscript viability. Always write `main.tex`; render PDF or Word only when dependencies are available.
+```text
+studies/STUDY-XXX/output/reports/
+studies/STUDY-XXX/output/figures/
+studies/STUDY-XXX/output/tables/
+studies/STUDY-XXX/output/data/
+studies/STUDY-XXX/output/code/
+```
 
-## Manuscript Quality Contract
+Promoted artifacts are not an access boundary. A relevant finalized study
+output may support the paper even if it was not promoted earlier. Temporary,
+scratch-only, or unverifiable output must not support a central claim.
 
-A passing draft must satisfy all of the following:
+### Artifacts
 
-- The title, abstract, Results, and Discussion express one coherent, evidence-bounded contribution.
-- Each major Results claim is synthesized from artifact content and includes the relevant comparison, effect, statistic, or uncertainty when available.
-- Each major Results claim maps to at least one usable figure, table, or verifiable value.
-- Results paragraphs advance a question-to-answer chain; they do not enumerate evidence records.
-- Internal provenance remains auditable outside visible prose. Manuscript text cites internal results through scientific descriptions and figure/table references, not labels such as `ART-166`, `STUDY-016`, or `TASK-043`.
-- Visible prose contains no QDD execution language, status fields, audit instructions, evidence IDs, artifact descriptions, or writing placeholders.
-- Negative evidence narrows claims or motivates the next question; it is not dumped as a checklist.
-- External claims use verified BibTeX entries and matching TeX citations.
-- Associative, proxy, or underpowered evidence is not promoted to causal or mechanistic proof.
-- If the evidence cannot support a viable manuscript story, conclude stops with a diagnostic instead of generating filler.
+Promoted artifacts are high-value, reusable evidence anchors and should be
+inspected early. They provide canonical paths and provenance for important
+reports, figures, tables, data, and code.
 
-A useful Results paragraph usually contains a claim, the decisive observation or comparison, quantitative support, a figure/table anchor, and a bounded interpretation. This is a semantic requirement, not a fixed sentence template.
+Artifact existence alone is not evidence. The agent must read the report or
+table content, verify the relevant values, and inspect the actual rendered image
+when a figure affects interpretation or appears in the paper. A filename,
+caption, artifact description, or task completion status is insufficient.
 
-## Failure Modes
+## Core Workflow
 
-The following are hard failures even when a draft has all expected sections:
+### 1. Preflight And Orientation
 
-- concatenated artifact or study descriptions
-- sentence fragments, duplicated punctuation, or metadata-shaped prose
-- a paper organized as an inventory of studies, tasks, or artifacts
-- Results claims with no actual value, comparison, or figure/table support when those sources exist
-- internal evidence IDs exposed as manuscript citations
-- unverified or fabricated external citations
-- meta-writing such as “this section frames,” “must be added later,” or “current wording is bounded”
-- a generic Introduction/Discussion that does not follow from the selected evidence chain
-- a positive score produced only from section counts, file existence, or provenance comments
+The agent confirms that it is inside a readable QDD project, reads project
+instructions, checks QDD state, and identifies relevant project context. It
+reads memory and evolution first to form a project map, then uses that map to
+locate the studies, outputs, artifacts, reports, figures, and tables that require
+deep inspection.
 
-The versioned examples and quality oracle live under `src/test/fixtures/conclude/parkinson-oracle/`.
+The agent may ask for missing run-level preferences such as output language,
+paper type, target venue, length, or template. These are writing parameters, not
+product architecture decisions. When the user has not specified them and they
+do not block meaningful progress, the agent uses conservative defaults.
 
-## Example Policy
+### 2. Project Research Synthesis
 
-No single paper is the expected output.
+The agent writes `research_synthesis.md` before proposing a manuscript story.
+This document answers:
 
-- Nature-family analysis papers may calibrate contribution-first structure, paragraph flow, and figure-led Results, but they are not copied or used as literal golden text.
-- Parkinson `ART-166` is a useful reference for turning evidence into a sequential biological argument, quantitative Results paragraphs, and a figure plan. It remains a project report and may contain product-facing language that should not appear in a normal scientific manuscript.
-- Acceptance is defined by scientific facts, relationships, claim limits, and failure constraints rather than exact wording.
+> What did the QDD project establish when its studies and evidence are considered
+> together?
 
-## Claim And Citation Rules
+It must integrate across studies rather than enumerate them. It should make
+legible:
 
-- Use “associated with,” “consistent with,” or “supports a bounded hypothesis” when evidence is associative or proxy-based.
-- Use causal or mechanistic language only when the project contains corresponding perturbational or functional evidence.
-- Keep source-to-claim provenance in evidence packets, audits, comments, or companion maps; do not expose workflow identifiers as readable manuscript prose.
-- Use verified BibTeX-backed citations for external knowledge. An empty bibliography with “citations to be added later” is an incomplete draft, not citation success.
-- Explicitly record downgraded and prohibited claims in `claim_safety_audit.md`.
+- the project question and the important changes in that question
+- the major findings that remained stable across the project
+- how results support, complement, contradict, refine, or redirect one another
+- which study outputs, reports, figures, tables, and values are decisive
+- what project-level scientific model or understanding emerged
+- which possible contribution appears strong enough to organize a paper
 
-## Output Contract
+`research_synthesis.md` should preserve relevant complexity, including negative
+or contradictory evidence when it materially changes the project-level
+understanding. It is a scientific synthesis, not an evidence packet collection,
+claim graph, omission ledger, or manuscript outline.
+
+### 3. Gate 1: Narrative Intent Alignment
+
+After the research synthesis exists, the agent enters a multi-turn discussion
+with the user before creating `story.md`. This interaction should resemble
+`qdd-explore`: the agent proposes its current understanding, the user corrects
+or redirects it, and both sides converge on one intended paper narrative.
+
+The discussion aligns:
+
+- the paper's central contribution
+- what the paper should emphasize
+- what should be de-emphasized or left outside the main story
+- where the story begins
+- how the Results logic progresses
+- what unified understanding the story should reach
+- what the reader should remember after reading the paper
+
+This is not a candidate-selection engine. The agent may present alternatives
+when genuinely different scientific framings exist, but it must not manufacture
+a fixed number of candidates, scores, claim bundles, or structured story packets.
+
+The user controls editorial emphasis among scientifically honest framings. If a
+requested omission would make the central narrative materially false or
+misleading, the agent must surface that conflict during alignment.
+
+Gate 1 passes only when the user clearly indicates that the central narrative
+and story logic are aligned. Before that point, the agent may keep temporary
+notes, but it must not treat a provisional `story.md` as confirmed manuscript
+content.
+
+### 4. Complete Story Writing
+
+After Gate 1, the agent writes `story.md`. This is not a plan for a future
+manuscript. It is the complete, human-readable, canonical content source for the
+paper.
+
+Depending on paper type, `story.md` normally contains:
+
+- a working title
+- an abstract
+- introduction and motivation
+- a complete Results narrative
+- selected figures and tables embedded or linked in the appropriate positions
+- figure and table captions
+- discussion and scientific interpretation
+- methods at the level supported by project sources
+- external citation anchors in the places where literature support is needed
+
+The agent decides which figures, tables, evidence, section structure, and claim
+wording best execute the aligned narrative. The user does not need to approve
+those decisions separately before seeing the resulting story.
+
+The paper should tell one strong, positive, contribution-centered story.
+Negative evidence belongs in the main narrative only when it rules out an
+important alternative, explains a necessary pivot, supports specificity, or
+otherwise strengthens the story's logic. Conclude does not require a visible
+boundary section, exhaustive limitation list, claim-safety audit, or ledger of
+unused evidence.
+
+### 5. Gate 2: Story Review And Revision
+
+The user reviews the actual `story.md`, including its prose, logic, evidence,
+figures, tables, and emphasis. The user may accept it, request local edits,
+change emphasis, restructure sections, replace or remove material, or request a
+substantial rewrite.
+
+The agent revises `story.md` directly and repeats this review loop until the user
+clearly accepts it. If feedback changes the central narrative, the agent may
+reopen narrative alignment within the same discussion before rewriting the
+story. `story.md` always represents the current manuscript content, not an
+immutable one-time selection.
+
+Gate 2 is the final semantic and editorial checkpoint. Conclude must not render
+the final TeX package before the user accepts `story.md`.
+
+### 6. TeX Rendering And Completion
+
+After Gate 2, the agent converts the accepted `story.md` into the final TeX
+package. This stage may:
+
+- map Markdown sections into TeX structure
+- place figures and tables
+- generate labels, cross-references, and captions
+- resolve existing citation anchors into `\cite{}` commands and verified BibTeX
+  entries
+- apply a suitable document class or user-supplied template
+- run mechanical TeX, bibliography, path, and asset checks
+- compile PDF when the local environment supports it
+
+The TeX stage must preserve the accepted story. It must not introduce a new
+central claim, reorder the scientific argument, replace figures for editorial
+reasons, or substantially rewrite manuscript content. Necessary literature
+research and semantically meaningful citation placement should already be
+visible in `story.md` during Gate 2. Minor citation completion is allowed only
+when it does not change the paper's claims or logic.
+
+After producing the TeX package and reporting any blocked rendering dependency,
+the `$qdd-conclude` workflow ends. Later user-directed editing of TeX or the
+published manuscript is ordinary writing work outside this conclude lifecycle.
+There is no third TeX approval gate.
+
+## Deliverable Contract
 
 Default output directory:
 
@@ -129,63 +285,158 @@ conclusions/<run-id>/
 Core outputs:
 
 ```text
-evidence_dossier.json
-evidence_dossier.md
-story_candidates.md
-evidence_packets.md
-selected_story.md
-evidence_audit.md
-claim_safety_audit.md
-reviewer_risk_audit.md
-render_status.md
-paper_rewriting_output/
-  confirmed_contribution.md
-  results_validation.md
-  reviewer_audit.md
-  citation_support_bank.md
-  section_blueprints.md
-  writing_rationale_matrix.md
-  final_paper/
-    main.tex
-    references.bib
-    figures/
-    paper.pdf
-    paper.docx
+research_synthesis.md
+story.md
+final_paper/
+  main.tex
+  references.bib
+  figures/
 ```
 
-`evidence_dossier.json` is the versioned machine-readable boundary between source artifacts and later story planning. Its scientific narrative fields come from bounded reads of artifact content, while QDD study, task, artifact, path, row, and line identifiers remain in dedicated provenance fields. `evidence_dossier.md` renders the same contract for human review.
+Conditional rendered output:
 
-`selected_story.md` and the planning artifacts are intermediate contracts. `main.tex`, `references.bib`, reusable assets, and audits are the manuscript deliverable. PDF and Word files are present only after successful rendering.
+```text
+final_paper/paper.pdf
+```
 
-## Golden Oracle
+`research_synthesis.md` is the project-level scientific understanding.
+`story.md` is the accepted canonical manuscript content. `main.tex` and the
+rendered files are faithful presentation derivatives of `story.md`.
 
-The repository oracle is a small, versioned quality standard independent of the full local Parkinson project. It contains:
+The agent may use temporary notes while reasoning, but no evidence dossier,
+claim graph, Results-beat schema, evidence-role map, omission ledger, viability
+score, or writing-rationale matrix is a required product contract.
 
-- curated expected scientific facts and relationships
-- explicit claim limits
-- required manuscript signals
-- forbidden visible patterns and hard failures
-- excerpts from a known failed draft with failure explanations
-- a reference story shape derived from `ART-166`, without prescribing exact prose
+## Story Quality Contract
 
-The full Parkinson project remains an optional end-to-end input selected through `QDD_CONCLUDE_EVAL_CASE`. It is not itself the oracle.
+An acceptable `story.md` must:
 
-Evaluation must combine deterministic checks with semantic review of the generated manuscript. Section presence, TeX validity, evidence comments, and output-file existence are necessary but insufficient. Any hard failure makes the run non-passing regardless of its aggregate score.
+- express one clear and worthwhile central contribution
+- remain faithful to inspected study outputs and artifacts
+- integrate evidence across studies rather than summarize studies in order
+- organize Results as a logical question-to-answer progression
+- contain enough quantitative, visual, and methodological detail to support its
+  main claims
+- use figures and tables as parts of the argument rather than decoration
+- keep claims proportionate to the evidence without turning the paper into a
+  defensive list of boundaries
+- keep QDD workflow IDs, task status, artifact metadata, and provenance syntax
+  out of visible prose
+- use real, verifiable external literature where background or discussion claims
+  require support
+- read as a scientific paper rather than a project log, audit report, evidence
+  inventory, or collection of disconnected findings
+
+If the project supports a coherent research synthesis but not a defensible
+paper, the agent must say so during narrative alignment rather than generate
+filler. The user may still choose to produce a bounded research report, but the
+skill must not mislabel it as a supported scientific manuscript.
+
+## Hard Failure Modes
+
+The following fail the product even when expected files exist:
+
+- treating a CLI command, TypeScript service, or SDK runner as the human-mode
+  production author
+- creating `story.md` before narrative intent has been aligned with the user
+- rendering TeX before the user has accepted `story.md`
+- generating a fixed set of scored story candidates when no real framing
+  ambiguity exists
+- restricting evidence access to promoted artifacts and ignoring relevant
+  finalized study outputs
+- relying on memory, captions, filenames, or metadata without verifying decisive
+  underlying evidence
+- using a figure-dependent claim without the agent inspecting the rendered image
+- concatenating study summaries or artifact descriptions into manuscript prose
+- organizing the paper around QDD execution chronology
+- introducing new scientific claims or story logic during TeX conversion
+- fabricating or mismatching citations, metrics, values, datasets, or results
+- declaring conclude complete while either human gate is unresolved
+
+## Evaluation Contract
+
+Deterministic tests should verify bootstrap projection, required file paths,
+mechanical validation, TeX conversion, citation integrity, and faithful asset
+handling.
+
+Agent SDK evaluations may load the same production skill against a representative
+QDD fixture and simulate the two multi-turn human gates. SDK evaluation must
+cover at least:
+
+1. the agent reads memory/evolution and then verifies relevant study outputs and
+   artifacts
+2. `research_synthesis.md` integrates findings across studies
+3. user feedback during Gate 1 changes the eventual central narrative and story
+   logic
+4. the agent does not require fixed candidate selection
+5. the agent writes `story.md` only after narrative alignment
+6. user rejection during Gate 2 causes `story.md` to be revised or rewritten
+7. TeX is produced only after story acceptance
+8. the TeX manuscript is semantically faithful to `story.md`
+9. relevant figures are actually inspected and integrated into the story
+
+The versioned Parkinson fixture may provide known facts, relationships, figures,
+claim-strength expectations, and examples of bad evidence-dump writing. It must
+not become a fixed biological story template or exact-text oracle. Semantic
+review of `research_synthesis.md` and `story.md` is required; file existence,
+section counts, keyword scores, and TeX validity are insufficient.
 
 ## Acceptance Criteria
 
-- Two or three story candidates differ in real contribution and narrative arc.
-- The selection gate occurs before final drafting.
-- The selected story can be restored without copying raw task or study prose.
-- The final Results sequence follows scientific claims and figures rather than QDD object order.
-- Every major Results claim is supported by artifact content and auditable provenance.
-- Visible manuscript prose contains no QDD execution identifiers or meta-writing.
-- Claim strength stays within the evidence and external citations are verifiable.
-- Missing evidence or dependencies are reported honestly as gaps or blockers.
-- The versioned oracle rejects the known Parkinson bad case and prevents false-positive quality scores.
+- `qdd init` installs and refreshes `qdd-conclude` alongside the five existing
+  QDD workflow skills for supported general-purpose agents.
+- A user can invoke `$qdd-conclude` inside a QDD project without starting an SDK
+  or dedicated conclude CLI authoring pipeline.
+- The agent reads memory and evolution for project understanding and may inspect
+  any relevant finalized study output as well as promoted artifacts.
+- The agent writes a cross-study `research_synthesis.md` grounded in underlying
+  reports, values, figures, and tables.
+- Gate 1 is a multi-turn narrative-alignment conversation, not a fixed story
+  selection form.
+- The agent creates a complete `story.md` only after Gate 1 passes.
+- Gate 2 allows repeated review and rewriting of `story.md` until the user
+  accepts it.
+- `story.md` contains the complete scientific and editorial content of the paper,
+  including integrated figures/tables and citation locations.
+- TeX generation begins only after Gate 2 and remains faithful to the accepted
+  `story.md`.
+- The workflow ends after producing and validating the TeX package and reporting
+  conditional PDF render status; no third gate is required.
+- SDK tests simulate both gates but do not redefine the production entry point.
+- Auto-mode integration remains explicitly out of scope for this human-mode
+  release.
 
-## PaperSpine Provenance
+## PaperSpine And Other Writing Methods
 
-PaperSpine patterns may be reused for contribution confirmation, results validation, reviewer audit, citation support, LaTeX checks, and final artifact audit. Any vendored source must preserve its license, upstream version, commit, and local modification notes.
+PaperSpine may inform contribution-first writing, Results validation, reviewer
+awareness, citation support, manuscript structure, and LaTeX discipline. Other
+strong scientific-writing methods may be adopted when they produce better
+QDD-specific synthesis and story quality.
 
-PaperSpine is an implementation resource, not the product identity or quality oracle for QDD conclude.
+PaperSpine is a source of experience, not the product architecture, a required
+runtime dependency, or QDD's identity. Conclude's distinctive responsibility is
+the transformation from QDD memory, question evolution, studies, and evidence
+into a coherent project-level synthesis and an accepted canonical `story.md`.
+
+Any vendored external source must preserve its license, upstream repository,
+version, commit, and local modification notes.
+
+## Superseded Requirements And Symphony Sequencing
+
+This PRD supersedes earlier requirements for a `qdd conclude` production CLI
+author, Agent SDK production session, evidence-dossier pipeline, deterministic
+story planner, fixed story candidates, canonical claim graph, evidence-role
+engine, omission ledger, viability scoring, or a large mandatory planning
+artifact tree.
+
+Mechanical TeX, citation, path, provenance, fixture, and rendering code may be
+reused when it respects `story.md` as the accepted semantic source of truth.
+Deterministic scientific planning and runtime-generated manuscript prose must
+not remain as production fallbacks.
+
+For Symphony delivery, this human-mode architecture contract must merge to
+`main` before implementation issues begin. Downstream issues should be split by
+bounded responsibility, such as bootstrap projection, workflow-skill content,
+source inspection, two-gate SDK evaluation, and faithful TeX rendering. Each
+issue must use a base commit that already contains this PRD and must not expand
+scope into auto mode.

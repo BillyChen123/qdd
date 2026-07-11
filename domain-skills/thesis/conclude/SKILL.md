@@ -1,115 +1,182 @@
 ---
 name: thesis/conclude
-description: Durable QDD conclude guidance for turning accumulated project evidence into an auditable manuscript-oriented package through the `qdd conclude` CLI. This skill captures taste, scientific guardrails, manuscript-native workflow intent, and PaperSpine provenance expectations without becoming a second user-facing product entrypoint.
+description: Human-mode QDD conclude guidance for synthesizing project evidence, aligning narrative intent, writing an accepted story.md, and rendering it as TeX.
 ---
 
-# thesis/conclude
+# QDD Conclude Guidance
 
-## Entry
+## Product Position
 
-- user-facing skill name: `conclude`
-- committed source directory: `domain-skills/thesis/conclude/`
-- skill type: durable manuscript guidance + provenance surface
-- canonical executable entry point: `qdd conclude`
-- current status: active guidance for the implemented conclude pipeline
+The intended user-facing workflow is `$qdd-conclude`, installed by `qdd init`
+alongside the other project-level QDD workflow skills. The user invokes it in a
+general-purpose agent such as Codex or Claude Code.
 
-This repository stores the durable conclude guidance here, while the runnable automation surface lives in the CLI implementation under `src/commands/conclude.ts` and `src/services/conclude.ts`.
-It does not replace the CLI. Users run `qdd conclude`; the skill assets here constrain how conclude should reason and what it should preserve.
+This directory currently preserves conclude guidance and PaperSpine provenance
+during the contract migration. It is not an ordinary task executor and must not
+be written into task `skills:`. The production bootstrap implementation must
+project equivalent instructions into the project-local `qdd-conclude` workflow
+skill surface.
 
-## When To Use
+Human mode is the current product. Agent SDK runs are for repeatable behavior
+testing only. Auto-mode integration is future work.
 
-Use this skill when a QDD project is ready for manuscript-oriented synthesis or when a mid-project evidence audit is needed.
+## Core Principle
 
-Typical moments:
-
-- the project has accumulated reusable figures, tables, reports, and study memories
-- the frontier is synthesis-ready or close to synthesis-ready
-- the user wants an auditable writing package built from existing QDD evidence rather than new analysis
-- the user wants to compare multiple story candidates before choosing one for drafting
-
-Treat this skill as the durable taste and guardrail layer for the CLI workflow, not as a separate non-CLI product or as a manual-only scaffold.
-Do not write `thesis/conclude` into task `skills:` for ordinary task execution; conclude remains a project-level synthesis surface.
-
-## Current Scope
-
-Current conclude behavior in `main`:
-
-- `qdd conclude` runs QDD preflight and render-tool detection
-- builds a versioned source-aware evidence dossier from bounded reads of reports, tables, and figure metadata
-- harvests QDD evidence from studies, tasks, memories, artifacts, evolution, and resources
-- compresses raw records into manuscript-oriented evidence packets
-- generates 2-3 story candidates and stops at the human story-selection gate
-- restores a selected story from `--selected-story-id` or `--selected-story-path`
-- writes manuscript-planning artifacts and the current final paper package after selection
-- reports blocked PDF/Word rendering status when TeX or pandoc dependencies are missing
-- uses a dedicated Parkinson conclude eval harness when draft-quality issues need quantitative regression checks
-
-Current limitations that still matter:
-
-- conclude is still conservative and should not invent new biological analyses
-- external citation coverage is incomplete unless verified BibTeX support is provided
-- final manuscript quality can continue to improve, but the product contract is already CLI-first rather than scaffold-only
-- PaperSpine source is not yet fully vendored beyond provenance placeholders
-
-## Required Product Constraints
-
-Implementation work must continue to follow [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md).
-
-Especially preserve these guardrails:
-
-- write only from existing QDD evidence
-- generate 2-3 story candidates before drafting
-- stop for user selection before final manuscript drafting
-- keep negative, dissolved, blocked, or downgraded studies as usable boundary evidence
-- downgrade weak associative claims instead of overstating mechanism
-- report missing TeX or pandoc tooling as blocked rendering status
-- keep internal evidence anchors traceable back to QDD artifacts
-- keep raw study/task execution language out of central claim, story, and selected-story narrative bodies
-- prefer manuscript-native evidence packets and story packets over direct reuse of raw `StudyRecord` / `TaskRecord` text
-- keep scientific statements and QDD provenance in separate dossier fields; task/study completion is not supporting evidence
-
-## Workflow Intent
-
-The intended conclude boundary is:
-
-1. raw QDD records and artifacts
-2. evidence audit plus manuscript-oriented evidence packets
-3. story candidates with central claim, narrative arc, claim bundle, packet refs, reviewer objections, and claim safety limits
-4. selected story packet that is stable to restore
-5. planning artifacts and final paper package
-
-This workflow should stay manuscript-native even when internal provenance remains rich.
-
-That means:
-
-- raw QDD records remain valuable as provenance
-- narrative outputs should be based on compressed evidence packets
-- story candidates should differ in real narrative arc, not just framing label
-- selected story should be stable and recoverable as a machine-readable drafting input
-- final drafting quality may improve through internal adapters or agent-backed drafting, but those remain implementation details of `qdd conclude`
-
-## Boundary Rules
-
-- Do not write `thesis/conclude` into task `skills:`.
-- Do not treat this skill as a second interactive surface separate from `qdd conclude`.
-- Do not claim PDF or Word success when required tooling is missing.
-- Do not use external literature to invent results that QDD did not produce.
-- Do not let workflow status text such as `TASK-xxx`, `status closed`, `None.`, or checklist fragments become central manuscript prose.
-
-## Skill Layout
+The agent must transform QDD evidence through three distinct content layers:
 
 ```text
-domain-skills/thesis/conclude/
-├── SKILL.md
-├── README.md
-└── vendor/
-    └── paperspine/
-        ├── PROVENANCE.md
-        ├── UPSTREAM.md
-        ├── VERSION
-        ├── COMMIT
-        └── LICENSE
+QDD project evidence
+  -> research_synthesis.md
+  -> story.md
+  -> final_paper/main.tex
 ```
 
-`vendor/paperspine/` remains reserved for the eventual PaperSpine fork or vendor import required by the PRD.
-At the moment it still holds provenance placeholders rather than a full upstream source vendor.
+- `research_synthesis.md` explains what the project established across studies.
+- `story.md` is the complete, accepted, human-readable manuscript content.
+- `main.tex` is a faithful presentation derivative of `story.md`.
+
+The agent performs all scientific synthesis, narrative design, evidence
+selection, figure integration, literature work, and manuscript writing.
+Deterministic code may validate or render but must not author the science.
+
+## Read The Project
+
+Start from:
+
+1. project instructions and stable project context
+2. `context/memory/*.md`
+3. `evolution.yaml`
+4. relevant study records
+5. relevant finalized study outputs
+6. promoted artifacts and provenance
+
+Use memory and evolution to understand what changed and to locate evidence.
+Verify important claims against underlying reports, values, tables, figures,
+data, or code.
+
+Promoted artifacts are a high-value index, not an access boundary. Inspect
+relevant finalized outputs under:
+
+```text
+studies/STUDY-XXX/output/reports/
+studies/STUDY-XXX/output/figures/
+studies/STUDY-XXX/output/tables/
+studies/STUDY-XXX/output/data/
+studies/STUDY-XXX/output/code/
+```
+
+Do not use temporary or unverifiable files as central evidence. When a figure
+matters to interpretation or inclusion, inspect the actual rendered image;
+metadata and captions alone are insufficient.
+
+## Write The Research Synthesis
+
+Write `research_synthesis.md` before manuscript alignment. Synthesize across
+studies and explain:
+
+- how the project question evolved
+- what stable findings emerged
+- how findings support, complement, contradict, refine, or redirect one another
+- which underlying results and assets are decisive
+- what project-level scientific understanding formed
+- what contribution may be strong enough to organize a paper
+
+Do not produce an evidence inventory, study-by-study chronology, claim graph, or
+mandatory evidence packet collection.
+
+## Gate 1: Narrative Intent Alignment
+
+Discuss the intended paper with the user before creating `story.md`. Work like
+`qdd-explore`: offer the current interpretation, ask focused questions where
+human intent matters, incorporate corrections, and converge through dialogue.
+
+Align:
+
+- the central contribution
+- what to emphasize
+- what to de-emphasize or omit
+- the beginning of the story
+- the Results progression
+- the final unified understanding
+- the intended reader takeaway
+
+This is not fixed candidate selection. Present genuinely different alternatives
+only when the science supports them. Do not manufacture multiple options or
+scores.
+
+The user may choose among scientifically honest emphases. Surface a conflict if
+an omission would make the paper materially misleading. Gate 1 passes only when
+the user clearly indicates that the narrative intent and story logic are aligned.
+
+## Write The Complete Story
+
+After Gate 1, write `story.md` as the complete canonical manuscript content, not
+as an outline or planning packet. Normally include:
+
+- working title and abstract
+- introduction and motivation
+- complete Results prose
+- selected figures and tables in their intended positions
+- captions
+- discussion
+- methods supported by project sources
+- external citation anchors
+
+Tell one positive, contribution-centered story. Use negative evidence in the
+main narrative only when it rules out an important alternative, explains a
+necessary pivot, supports specificity, or otherwise strengthens the logic.
+
+Choose and inspect the figures, tables, evidence, section structure, wording,
+and literature needed to execute the aligned narrative. Keep claims
+proportionate to evidence without turning the manuscript into a boundary audit.
+
+## Gate 2: Story Review And Revision
+
+Present the actual `story.md` to the user. Accept feedback about prose, logic,
+emphasis, evidence, figures, tables, organization, or the complete narrative.
+Revise or rewrite `story.md` and repeat review until the user clearly accepts it.
+
+If feedback changes the central narrative, reopen alignment within the same
+discussion and then update the story. Do not render final TeX while Gate 2 is
+unresolved.
+
+## Render TeX And Finish
+
+After Gate 2, convert the accepted `story.md` into:
+
+```text
+final_paper/main.tex
+final_paper/references.bib
+final_paper/figures/
+```
+
+Resolve citation anchors, place figures and tables, create labels and
+cross-references, apply the requested or conservative TeX format, validate the
+package, and compile PDF when tooling is available.
+
+TeX rendering must not change the accepted scientific story or introduce new
+claims. Semantically meaningful literature and citation placement should already
+be visible in `story.md`; final rendering mainly resolves and formats them.
+
+Report missing render tooling honestly. Once the TeX package is produced and
+validated, conclude ends. There is no third TeX approval gate.
+
+## Quality Rules
+
+- Integrate findings across studies instead of replaying project chronology.
+- Make figures and tables parts of the scientific argument, not decoration.
+- Ground major claims in inspected underlying evidence.
+- Keep QDD IDs, task status, artifact metadata, and workflow language out of
+  manuscript prose.
+- Never fabricate literature, values, metrics, datasets, figures, or results.
+- Do not force a paper when the project supports only a research synthesis.
+- Do not use deterministic planning or prose generation as a fallback.
+
+## PaperSpine Use
+
+PaperSpine and other strong writing methods may guide contribution-first
+writing, Results validation, reviewer awareness, citation support, manuscript
+structure, and LaTeX discipline. They are sources of experience, not required
+runtime architectures.
+
+Any vendored source must preserve its license and exact upstream provenance.

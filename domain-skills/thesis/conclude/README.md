@@ -1,25 +1,31 @@
-# conclude guardrail
+# QDD Conclude Guidance
 
-This directory is the committed source of truth for the durable QDD conclude guardrails and PaperSpine provenance.
+This directory preserves conclude guidance and PaperSpine provenance while the
+human-mode `$qdd-conclude` workflow skill is added to QDD bootstrap.
 
-Current state:
+The intended product is a project-level workflow skill installed by `qdd init`
+for general-purpose agents such as Codex and Claude Code. It is not:
 
-- conclude is an active CLI product surfaced through `qdd conclude`
-- this directory stores guardrails, workflow intent, and vendor provenance
-- this directory is not a second product entrypoint
-- manuscript-native evidence and story-packet guidance lives here, while executable automation lives in the CLI implementation
+- an ordinary task executor skill
+- a `qdd conclude` manuscript-authoring CLI
+- an Agent SDK production workflow
+- a deterministic evidence or story pipeline
+- an auto-mode phase in the current release
 
-Included here:
+The content flow is:
 
-- guardrail contract in `SKILL.md`
-- PaperSpine vendor provenance placeholders and metadata under `vendor/paperspine/`
-- durable conclude-facing documentation that should stay aligned with the product PRD
+```text
+QDD memory, evolution, studies, outputs, and artifacts
+  -> research_synthesis.md
+  -> Gate 1: narrative intent alignment
+  -> complete story.md
+  -> Gate 2: story review and revision
+  -> faithful TeX rendering
+```
 
-Not included here:
+`story.md` is the accepted semantic source of truth. TeX is a presentation
+derivative, and conclude ends after the accepted story is rendered and validated.
 
-- a separate manual-only conclude workflow
-- task executor registration through task `skills:`
-- a second conclude product outside the CLI
-- new biological analysis generation
-
-Use [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md) as the product source of truth and [`WORKFLOW.md`](../../../WORKFLOW.md) as the Symphony execution contract.
+Use [`docs/09-qdd-conclude-prd.md`](../../../docs/09-qdd-conclude-prd.md) as the
+product and architecture source of truth. `WORKFLOW.md` remains the Symphony
+execution contract.
