@@ -53,8 +53,10 @@ QDD's main workflow remains:
 - `qdd-explore`
 - `qdd-apply`
 - `qdd-close`
+- `qdd-conclude`
 
-These are the core research-loop surfaces.
+These are the project-level human workflow surfaces. Auto mode orchestrates the
+bounded research loop and does not include `qdd-conclude`.
 
 Additional command surfaces may exist for focused capabilities. They do not redefine the main QDD object model.
 
@@ -240,7 +242,7 @@ That means:
 If working on the current conclude workstream, use these feature-local sources of truth:
 
 - `docs/09-qdd-conclude-prd.md`
-- `domain-skills/thesis/conclude/SKILL.md`
+- `src/runtime/bootstrap-prompts/qdd-conclude.md`
 - `WORKFLOW.md`
 
 ## Repository Structure

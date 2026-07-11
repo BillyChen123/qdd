@@ -18,8 +18,8 @@ export type ArtifactScope = 'project' | 'study' | 'task';
 // 当前支持注入 bootstrap 资产的 Agent / 工具类型。
 export type BootstrapTool = 'claude' | 'codex';
 
-// QDD 当前定义的核心工作流名称。
-export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
+// qdd init 当前安装的项目级 human workflow 名称。
+export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close' | 'qdd-conclude';
 
 // project-level boundary 当前所处的状态。
 // 这组状态主要服务于旧版 boundary 兼容层。
@@ -37,9 +37,9 @@ export type TaskPromotionStatus = 'pending' | 'none' | 'candidate-recorded' | 'r
 // 每一层默认绑定的角色名称。
 export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
 
-// 命令上下文名称。
-// 当前和 bootstrap workflow 共享同一组命名。
-export type QddCommand = BootstrapWorkflow;
+// CLI instructions / runtime 当前支持的命令上下文名称。
+// qdd-conclude 目前只作为通用 agent 的 human workflow 安装，不是 CLI 或 auto runtime phase。
+export type QddCommand = Exclude<BootstrapWorkflow, 'qdd-conclude'>;
 
 // 项目级研究合同。
 // 用来描述这个 QDD 项目的总主题、初始问题、运行模式，以及边界约束。
