@@ -10,7 +10,6 @@ import { closeStudyCommand } from '../commands/close-study.js';
 import { validateCommand } from '../commands/validate.js';
 import { artifactsListCommand } from '../commands/artifacts-list.js';
 import { contextCommand } from '../commands/context.js';
-import { concludeCommand } from '../commands/conclude.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 import { autoCommand } from '../commands/auto.js';
@@ -75,22 +74,6 @@ program
   .action(async (options?: { json?: boolean }) => {
     try {
       await artifactsListCommand(options);
-    } catch (error) {
-      console.error(`Error: ${(error as Error).message}`);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('conclude')
-  .description('Build an auditable scientific evidence dossier and conclude package')
-  .option('--output-dir <path>', 'Project-local output directory; defaults to conclusions/<run-id>')
-  .option('--selected-story-id <id>', 'Selected story candidate id such as story-1')
-  .option('--selected-story-path <path>', 'Project-local selected story markdown; defaults to <output-dir>/selected_story.md when present')
-  .option('--json', 'Output as JSON')
-  .action(async (options?: { outputDir?: string; selectedStoryId?: string; selectedStoryPath?: string; json?: boolean }) => {
-    try {
-      await concludeCommand(options);
     } catch (error) {
       console.error(`Error: ${(error as Error).message}`);
       process.exit(1);
