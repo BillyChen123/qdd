@@ -1,0 +1,7 @@
+mode,cycle,selectivity_start_pct,selectivity_end_pct,conversion_end_pct
+continuous,1,82,78,74
+continuous,5,70,66,63
+continuous,10,64,61,57
+pulsed,1,84,81,79
+pulsed,5,83,80,78
+pulsed,10,83,80,77

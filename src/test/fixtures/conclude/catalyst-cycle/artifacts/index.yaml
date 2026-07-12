@@ -1,0 +1,28 @@
+artifacts:
+  - id: ART-001
+    type: report
+    format: .md
+    path: artifacts/reports/ART-001-screening-report.md
+    produced_by: STUDY-001/TASK-001
+    reusable: true
+    scope: project
+    description: Promoted computational precursor screening report.
+    schema: markdown-report
+  - id: ART-002
+    type: table
+    format: .csv
+    path: artifacts/tables/ART-002-screening.csv
+    produced_by: STUDY-001/TASK-001
+    reusable: true
+    scope: project
+    description: Promoted precursor screening table.
+    schema: csv-table
+  - id: ART-003
+    type: report
+    format: .md
+    path: artifacts/reports/ART-003-cycling-report.md
+    produced_by: STUDY-003/TASK-001
+    reusable: true
+    scope: project
+    description: Promoted flow-reactor cycling validation report.
+    schema: markdown-report

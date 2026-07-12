@@ -1,0 +1,12 @@
+theme: Dynamic catalyst states and regeneration-aware operation
+initial_question: Which catalyst precursor combines high selectivity with stable operation?
+mode: human
+scope:
+  in_scope:
+    - computational precursor screening
+    - operando state measurements
+    - flow-reactor cycling validation
+  out_of_scope:
+    - atomic-scale causal assignment
+    - industrial lifetime claims
+termination_type: best_effort

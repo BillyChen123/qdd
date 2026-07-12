@@ -1,0 +1,42 @@
+schema_version: 1
+id: catalyst-state-cycling
+name: Static catalyst screening redirected to dynamic state cycling
+run_id: catalyst-eval
+provenance:
+  kind: versioned-representative
+  source: src/test/fixtures/conclude/catalyst-cycle
+  notes: Synthetic, self-contained non-biomedical QDD case spanning simulation, operando measurement, and flow-reactor validation.
+navigation_files:
+  - contract.yaml
+  - context/resources.md
+  - evolution.yaml
+  - artifacts/index.yaml
+  - context/memory/STUDY-001.md
+  - context/memory/STUDY-002.md
+  - context/memory/STUDY-003.md
+evidence_outputs:
+  - artifacts/reports/ART-001-screening-report.md
+  - artifacts/tables/ART-002-screening.csv
+  - studies/STUDY-002/output/reports/operando-report.md
+  - studies/STUDY-002/output/tables/state-selectivity.tsv
+  - studies/STUDY-003/output/reports/cycling-report.md
+  - studies/STUDY-003/output/tables/cycling-performance.csv
+unpromoted_finalized_outputs:
+  - studies/STUDY-002/output/reports/operando-report.md
+  - studies/STUDY-002/output/tables/state-selectivity.tsv
+figures:
+  - studies/STUDY-003/output/figures/cycle-stability.ppm
+gates:
+  gate1_feedback: >-
+    Gate 1 feedback: a static catalyst-ranking paper would miss the strongest contribution. First revise research_synthesis.md itself so it describes the actual unlabelled color-band raster and uses association rather than causal or mechanistic language. Emphasize that operando state conversion is associated with the selectivity/deactivation trade-off and that pulsed regeneration turns this dynamic model into a sustained operating strategy, without claiming an unsupported atomic mechanism. De-emphasize the screening leaderboard. Explain the new Results logic and wait without writing story.md.
+  gate1_acceptance: >-
+    Gate 1 accepted. Write the complete story as prediction of a promising precursor, operando evidence that its active state is transient, and reactor validation that state cycling sustains performance.
+  gate2_feedback: >-
+    Gate 2: revise the actual manuscript. Open Results with the discrepancy between static stability predictions and measured deactivation, then use the association in operando evidence to interpret it before introducing pulsed regeneration. Integrate the cycling figure as the unlabelled color-band raster that was actually viewed, not as axes, traces, symbols, or a line plot, and include a quantitative performance table. Name every comparison baseline, keep the operando and cycling experiments distinct, use only the generic method detail present in sources, remove all QDD identifiers or workflow metadata from visible prose, and use precise citation-needed anchors wherever literature support is required.
+  gate2_acceptance: >-
+    Gate 2 accepted after revision. Stop before TeX rendering.
+reviewer_focus:
+  - Check that the static calculation is presented as precursor screening, not proof of the active catalyst state.
+  - Check the reported 82 to 61 percent continuous-mode decline and 80 percent tenth-cycle pulsed performance against required evidence outputs.
+  - Check that the cycling figure caption and prose reflect repeated recovery in pulsed mode rather than monotonic stability.
+  - Check that the provided figure is one unpanelled 10 by 6 color raster with repeated green-yellow pulsed bands and red declining bands; it has no axes, labels, trajectories, or open and filled symbols.

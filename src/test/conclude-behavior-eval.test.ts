@@ -5,13 +5,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { runConcludeBehaviorEval } from '../test-support/conclude-behavior-eval.js';
 
-test('conclude behavior eval fake path enforces source access and two human gates', async () => {
-  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-behavior-eval-'));
-  const report = await runConcludeBehaviorEval({ mode: 'fake', outputRoot });
+for (const caseName of ['sdk-two-gate', 'catalyst-cycle']) {
+test(`conclude behavior eval fake path enforces source access and two human gates for ${caseName}`, async () => {
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), `qdd-conclude-${caseName}-`));
+  const report = await runConcludeBehaviorEval({ mode: 'fake', outputRoot, casePath: caseName });
 
   assert.equal(report.status, 'passed');
+  assert.equal(report.schema_version, 2);
+  assert.equal(report.case.fingerprint_sha256.length, 64);
   assert.equal(report.harness.status, 'PASS');
+  assert.equal(report.semantic_review.verdict, 'blocked');
+  await assert.rejects(fs.access(path.join(report.project_path, 'eval-case.yaml')));
   assert.ok(report.harness.assertions.every((entry) => entry.status === 'pass'));
+  assert.equal(report.harness.assertions.some((entry) => entry.id === 'qdd_ids_absent_from_story'), true);
+  assert.equal(report.harness.assertions.some((entry) => entry.id === 'qdd_metadata_absent_from_story'), true);
   assert.deepEqual(
     report.gates.map((entry) => `${entry.gate}:${entry.action}`),
     ['gate_1:feedback', 'gate_1:accepted', 'gate_2:feedback', 'gate_2:accepted']
@@ -22,9 +29,13 @@ test('conclude behavior eval fake path enforces source access and two human gate
     path: string;
     stage: string;
   }>;
-  assert.ok(accessLog.some((entry) => entry.action === 'read' && entry.path === 'studies/STUDY-002/output/reports/spatial-validation.md'));
-  assert.ok(accessLog.some((entry) => entry.action === 'view_image' && entry.path.endsWith('regional-response.ppm')));
+  assert.ok(accessLog.some((entry) => entry.action === 'read' && entry.path.startsWith('studies/STUDY-002/output/reports/')));
+  assert.ok(accessLog.some((entry) => entry.action === 'view_image' && entry.path.endsWith('.ppm')));
   assert.equal(accessLog.some((entry) => entry.path.includes('/final_paper/')), false);
+
+  const transcript = await fs.readFile(report.outputs.transcript, 'utf-8');
+  assert.match(transcript, /via nearest-neighbor rendering/);
+  assert.match(transcript, /rendering at \d+x\d+/);
 
   const storyWrites = accessLog.filter((entry) => entry.action === 'write' && entry.path.endsWith('/story.md'));
   assert.deepEqual(storyWrites.map((entry) => entry.stage), ['story_draft', 'gate2_revision']);
@@ -32,21 +43,32 @@ test('conclude behavior eval fake path enforces source access and two human gate
   const before = await fs.readFile(report.outputs.story_before_gate2_revision, 'utf-8');
   const after = await fs.readFile(report.outputs.story, 'utf-8');
   assert.notEqual(after, before);
-  assert.match(after, /Regional counterexamples immediately challenged/);
-  assert.match(after, /not universally protective/);
+  assert.match(after, /revised contribution-first story/);
 
   const reportMarkdown = await fs.readFile(report.outputs.report_markdown, 'utf-8');
   assert.match(reportMarkdown, /## Harness Assertions/);
-  assert.match(reportMarkdown, /## Semantic Observations/);
+  assert.match(reportMarkdown, /## Semantic Review/);
   assert.match(reportMarkdown, /## Environment Blockers/);
-  assert.match(reportMarkdown, /not manuscript-quality oracles/);
+  assert.match(reportMarkdown, /never reduced to a numeric or aggregate score/);
+
+  const installedSkill = await fs.readFile(report.installed_skill_path, 'utf-8');
+  assert.match(installedSkill, /A value being inside another group's observed range does not establish statistical equivalence/);
+  assert.match(installedSkill, /Describe only panels, labels, encodings, and patterns that visibly exist/);
+  assert.match(installedSkill, /Treat every technical noun and modifier as a source-bound claim/);
+  assert.match(installedSkill, /Audit titles and section headings separately for claim strength/);
+  assert.match(installedSkill, /does not authorize method, mechanism, or domain specificity/);
+  assert.match(installedSkill, /run a literal terminology-provenance audit/);
+  assert.match(installedSkill, /a plausible-looking reference list is not a substitute/);
 });
+}
 
 test('conclude behavior eval live path cleanly blocks without credentials', async () => {
   const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-live-blocked-'));
   const report = await runConcludeBehaviorEval({ mode: 'live', outputRoot, credentialOverride: null });
   assert.equal(report.status, 'blocked');
+  assert.equal(report.schema_version, 2);
   assert.equal(report.harness.status, 'NOT_RUN');
+  assert.equal(report.semantic_review.verdict, 'blocked');
   assert.equal(report.environment_blockers.length, 1);
   assert.match(report.environment_blockers[0] ?? '', /credential is missing/);
   assert.doesNotMatch(await fs.readFile(report.outputs.report_json, 'utf-8'), /sk-ant-/);
