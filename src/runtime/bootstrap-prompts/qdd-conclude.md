@@ -142,7 +142,15 @@ Choose the figures, tables, evidence, section structure, wording, and literature
 
 Use negative evidence in the main narrative when it rules out an important alternative, explains a necessary pivot, establishes specificity, or otherwise strengthens the logic. Do not expose QDD workflow IDs, task status, artifact metadata, or provenance syntax in manuscript prose.
 
-Use real, verifiable external literature. Never fabricate or mismatch citations, metrics, values, datasets, figures, methods, or results.
+Before presenting the draft, perform a source-bounded editorial pass:
+
+- Trace every major Results claim and quantitative statement to a report, table, or directly inspected artifact. A value being inside another group's observed range does not establish statistical equivalence or indistinguishability unless the source reports the relevant analysis.
+- Keep causal and necessity language at the strength supported by the design. Observational co-occurrence, spatial adjacency, and matched counterexamples may support association, conditioning, or inconsistency with a simpler account; they do not by themselves prove that one factor determines, requires, explains, or mechanistically gates another.
+- Write Methods only from details present in inspected sources. Do not infer sample structure, collection procedures, assays, statistical tests, controls, or data availability from a result table or project status.
+- For each included figure, compare the actual viewed image with its caption and every in-text callout. Describe only panels, labels, encodings, and patterns that visibly exist in that asset. Do not invent a scatter plot, panel, legend, resolution, or derived visualization because the underlying values could support one. If the argument needs a new derivative figure, create it from verified data, inspect the rendered result, and cite that new asset instead.
+- Use bibliography entries only after verifying the exact work and its support through supplied literature or an available literature-search source. When verification is unavailable, leave a precise citation-needed anchor in `story.md`; a plausible-looking reference list is not a substitute.
+
+Never fabricate or mismatch citations, metrics, values, datasets, figures, methods, or results.
 
 ---
 

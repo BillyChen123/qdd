@@ -1,6 +1,8 @@
+import { type ConcludeEvalCase } from './conclude-eval-case.js';
 export type ConcludeEvalMode = 'fake' | 'live';
 export type ConcludeEvalStatus = 'passed' | 'failed' | 'blocked';
-export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision';
+export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'semantic_review';
+export type SemanticReviewStatus = 'pass' | 'fail' | 'cannot_assess';
 export interface ConcludeEvalTranscriptEntry {
     sequence: number;
     timestamp: string;
@@ -24,12 +26,21 @@ export interface ConcludeEvalAssertion {
     detail: string;
 }
 export interface ConcludeEvalReport {
-    schema_version: 1;
+    schema_version: 2;
     mode: ConcludeEvalMode;
     status: ConcludeEvalStatus;
     started_at: string;
     finished_at: string;
     model: string;
+    provider: string;
+    repository_commit: string;
+    production_skill_sha256: string;
+    case: {
+        id: string;
+        name: string;
+        fingerprint_sha256: string;
+        provenance: ConcludeEvalCase['provenance'];
+    };
     fixture_path: string;
     project_path: string;
     installed_skill_path: string;
@@ -43,17 +54,15 @@ export interface ConcludeEvalReport {
         access_log: string;
         report_json: string;
         report_markdown: string;
+        semantic_review_json: string;
+        semantic_review_transcript: string;
+        semantic_review_access_log: string;
     };
     harness: {
         status: 'PASS' | 'FAIL' | 'NOT_RUN';
         assertions: ConcludeEvalAssertion[];
     };
-    semantic_observations: Array<{
-        id: string;
-        status: 'simulated' | 'review_required' | 'not_run';
-        detail: string;
-        evidence_paths: string[];
-    }>;
+    semantic_review: ConcludeSemanticReview;
     environment_blockers: string[];
     gates: Array<{
         gate: 'gate_1' | 'gate_2';
@@ -71,8 +80,36 @@ export interface RunConcludeEvalOptions {
     mode: ConcludeEvalMode;
     outputRoot: string;
     model?: string;
+    provider?: string;
+    casePath?: string;
     credentialOverride?: string | null;
 }
-export declare const CONCLUDE_EVAL_FIXTURE_PATH: string;
+export interface ConcludeSemanticReview {
+    protocol_version: 1;
+    verdict: 'accepted' | 'revision_required' | 'blocked';
+    summary: string;
+    dimensions: Array<{
+        id: string;
+        status: SemanticReviewStatus;
+        analysis: string;
+        evidence_paths: string[];
+    }>;
+    major_claim_checks: Array<{
+        claim: string;
+        status: SemanticReviewStatus;
+        analysis: string;
+        source_paths: string[];
+    }>;
+    figure_checks: Array<{
+        figure_path: string;
+        status: SemanticReviewStatus;
+        analysis: string;
+    }>;
+    findings: Array<{
+        severity: 'critical' | 'major' | 'minor';
+        detail: string;
+        evidence_paths: string[];
+    }>;
+}
 export declare function runConcludeBehaviorEval(options: RunConcludeEvalOptions): Promise<ConcludeEvalReport>;
 //# sourceMappingURL=conclude-behavior-eval.d.ts.map

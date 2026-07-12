@@ -1,0 +1,39 @@
+schema_version: 1
+id: spatial-niche-response
+name: Cross-cohort signal refined by spatial niche evidence
+run_id: sdk-eval
+provenance:
+  kind: versioned-representative
+  source: src/test/fixtures/conclude/sdk-two-gate
+  notes: Synthetic, self-contained QDD case created to exercise discovery-to-spatial refinement without prescribing manuscript text.
+navigation_files:
+  - contract.yaml
+  - context/resources.md
+  - evolution.yaml
+  - artifacts/index.yaml
+  - context/memory/STUDY-001.md
+  - context/memory/STUDY-002.md
+underlying_outputs:
+  - studies/STUDY-001/output/reports/discovery-report.md
+  - studies/STUDY-001/output/tables/discovery-summary.csv
+  - studies/STUDY-002/output/reports/spatial-validation.md
+  - studies/STUDY-002/output/tables/niche-response.tsv
+unpromoted_finalized_outputs:
+  - studies/STUDY-002/output/reports/spatial-validation.md
+  - studies/STUDY-002/output/tables/niche-response.tsv
+figures:
+  - studies/STUDY-002/output/figures/regional-response.ppm
+gates:
+  gate1_feedback: >-
+    Gate 1 feedback: do not make marker discovery the central contribution. Center the paper on how immune-niche organization explains conditional regional response; use the unpromoted spatial validation as the logical turn and de-emphasize the marker catalogue. Explain the revised Results logic and wait for confirmation without creating story.md.
+  gate1_acceptance: >-
+    Gate 1 accepted. Write the complete story around discovery of a reproducible signal, spatial counterexamples to signal sufficiency, and the cross-study conditional niche explanation.
+  gate2_feedback: >-
+    Gate 2: the first draft is not accepted. Move the spatial counterexample into the first half of Results, reduce study-order narration, make the inspected figure carry the logical turn, and make the Discussion emphasize conditional rather than universal response. Rewrite story.md rather than merely describing the edits.
+  gate2_acceptance: >-
+    Gate 2 accepted after revision. End this evaluation at story acceptance; TeX belongs to the downstream issue.
+reviewer_focus:
+  - Check that four immune-rich high-signal regions respond while two immune-poor high-signal regions are counterexamples.
+  - Check that the figure description reflects the observed adjacency of productive red regions and immune-rich gold neighborhoods.
+  - Check that the provided figure is one unpanelled 8 by 6 spatial raster; it contains no scatter plot, panel b, region labels, or quantitative axes.
+  - Check that the manuscript does not overstate the observational evidence as causal or universally predictive.

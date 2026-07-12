@@ -1,0 +1,35 @@
+studies:
+  - id: STUDY-001
+    question: Which precursor is predicted to be selective and stable?
+    kind: refinement
+    resolves: [B001]
+    opens: [B002]
+    candidates: [Does the predicted surface remain intact under reaction conditions?]
+    ts: 2026-04-03T09:00:00.000Z
+  - id: STUDY-002
+    question: Does the predicted surface remain intact under reaction conditions?
+    kind: pivot
+    resolves: [B002]
+    opens: [B003]
+    candidates: [Can controlled regeneration preserve the selective transient state?]
+    ts: 2026-04-17T09:00:00.000Z
+  - id: STUDY-003
+    question: Can controlled regeneration preserve the selective transient state?
+    kind: refinement
+    resolves: [B003]
+    opens: [B004]
+    candidates: [How long does state cycling remain effective at scale?]
+    ts: 2026-05-02T09:00:00.000Z
+boundaries:
+  - id: B001
+    text: Rank plausible catalyst precursors.
+    state: resolved
+  - id: B002
+    text: Determine whether the screened surface persists during reaction.
+    state: resolved
+  - id: B003
+    text: Test whether regeneration stabilizes reactor performance.
+    state: resolved
+  - id: B004
+    text: Establish industrial-scale lifetime and causal atomic mechanism.
+    state: open
