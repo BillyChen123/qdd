@@ -25,10 +25,16 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
+    "@citation-js/core": "^0.8.1",
+    "@citation-js/plugin-bibtex": "^0.8.1",
     "commander": "^14.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.4",
     "@types/node": "^24.2.0",
     "typescript": "^5.9.3"
   }
