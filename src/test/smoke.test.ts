@@ -39,6 +39,41 @@ async function createTempProject(prefix: string, options: { tools?: string[] } =
   return projectRoot;
 }
 
+async function withTempCodexHome<T>(prefix: string, callback: (codexHome: string) => Promise<T>): Promise<T> {
+  const previousCodexHome = process.env.CODEX_HOME;
+  const codexHome = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  process.env.CODEX_HOME = codexHome;
+  try {
+    return await callback(codexHome);
+  } finally {
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = previousCodexHome;
+    }
+  }
+}
+
+function assertConcludeSkillContent(content: string): void {
+  assert.match(content, /^---\nname: qdd-conclude\n/);
+  assert.match(content, /generatedBy: "3"/);
+  assert.match(content, /general-purpose research agent and scientific manuscript author/);
+  assert.match(content, /research_synthesis\.md/);
+  assert.match(content, /Gate 1: Align Narrative Intent/);
+  assert.match(content, /Gate 2: Review And Revise The Story/);
+  assert.match(content, /Do not create `story\.md` before Gate 1 passes/);
+  assert.match(content, /Do not create the final TeX package before Gate 2 passes/);
+  assert.doesNotMatch(content, /qdd conclude/);
+  assert.doesNotMatch(content, /evidence dossier/i);
+}
+
+async function readBootstrapManifest(projectRoot: string): Promise<{
+  version: number;
+  tools: Array<{ tool: string; assets: Array<{ workflow: string; path: string }> }>;
+}> {
+  return readYamlFile(projectRoot, '.qdd/bootstrap.yaml');
+}
+
 async function collectTextFiles(root: string, ignoredSegments: string[] = []): Promise<string[]> {
   const files: string[] = [];
   const entries = await fs.readdir(root, { withFileTypes: true });
@@ -1574,6 +1609,91 @@ test('qdd init creates the new protocol scaffold and bootstrap assets', async ()
   assert.ok(catalog.skills.some((entry) => entry.id === 'singlecell/scrna/sc-batch-integration'));
   assert.ok(catalog.skills.some((entry) => entry.id === 'public-data/cellxgene-discover'));
   assert.ok(!catalog.skills.some((entry) => entry.id === 'brain/singlecell/scrna-planning'));
+});
+
+test('qdd init installs qdd-conclude for Claude only with command, skill, and manifest records', async () => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-claude-'));
+  await initCommand(projectRoot, { tools: ['claude'] });
+
+  const commandPath = path.join(projectRoot, '.claude', 'commands', 'qdd-conclude.md');
+  const skillPath = path.join(projectRoot, '.claude', 'skills', 'qdd-conclude', 'SKILL.md');
+  assertConcludeSkillContent(await fs.readFile(skillPath, 'utf-8'));
+  assert.match(await fs.readFile(commandPath, 'utf-8'), /Gate 1: Align Narrative Intent/);
+  await assert.rejects(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-conclude', 'SKILL.md')));
+
+  const manifest = await readBootstrapManifest(projectRoot);
+  assert.equal(manifest.version, 3);
+  assert.deepEqual(manifest.tools.map((entry) => entry.tool), ['claude']);
+  assert.deepEqual(
+    manifest.tools[0]?.assets.filter((entry) => entry.workflow === 'qdd-conclude').map((entry) => entry.path),
+    ['.claude/commands/qdd-conclude.md', '.claude/skills/qdd-conclude/SKILL.md']
+  );
+});
+
+test('qdd init installs qdd-conclude for Codex only with prompt, project skill, and manifest records', async () => {
+  await withTempCodexHome('qdd-conclude-codex-home-', async (codexHome) => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-codex-'));
+    await initCommand(projectRoot, { tools: ['codex'] });
+
+    const skillPath = path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-conclude', 'SKILL.md');
+    const promptPath = path.join(codexHome, 'prompts', 'qdd-conclude.md');
+    assertConcludeSkillContent(await fs.readFile(skillPath, 'utf-8'));
+    const prompt = await fs.readFile(promptPath, 'utf-8');
+    assert.match(prompt, /argument-hint: optional paper intent, venue, or format preferences/);
+    assert.match(prompt, /Gate 2: Review And Revise The Story/);
+    await assert.rejects(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-conclude.md')));
+
+    const manifest = await readBootstrapManifest(projectRoot);
+    assert.deepEqual(manifest.tools.map((entry) => entry.tool), ['codex']);
+    assert.deepEqual(
+      manifest.tools[0]?.assets.filter((entry) => entry.workflow === 'qdd-conclude').map((entry) => entry.path),
+      [promptPath, '.codex/skills/qdd/qdd-conclude/SKILL.md']
+    );
+  });
+});
+
+test('qdd init installs qdd-conclude for the default Claude and Codex tool matrix', async () => {
+  await withTempCodexHome('qdd-conclude-default-home-', async (codexHome) => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-default-'));
+    await initCommand(projectRoot);
+
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-conclude.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.claude', 'skills', 'qdd-conclude', 'SKILL.md')));
+    await assert.doesNotReject(fs.access(path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-conclude', 'SKILL.md')));
+    await assert.doesNotReject(fs.access(path.join(codexHome, 'prompts', 'qdd-conclude.md')));
+
+    const manifest = await readBootstrapManifest(projectRoot);
+    assert.deepEqual(manifest.tools.map((entry) => entry.tool), ['claude', 'codex']);
+    for (const tool of manifest.tools) {
+      assert.equal(tool.assets.filter((entry) => entry.workflow === 'qdd-conclude').length, 2);
+    }
+
+    const catalog = JSON.parse(await fs.readFile(path.join(projectRoot, '.qdd', 'skills-catalog.json'), 'utf-8')) as {
+      skills: Array<{ id: string }>;
+    };
+    assert.ok(!catalog.skills.some((entry) => entry.id === 'qdd-conclude'));
+    assert.ok(!catalog.skills.some((entry) => entry.id === 'thesis/conclude'));
+  });
+});
+
+test('qdd init refreshes qdd-conclude while preserving the recorded tool matrix', async () => {
+  await withTempCodexHome('qdd-conclude-refresh-home-', async (codexHome) => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-refresh-'));
+    await initCommand(projectRoot, { tools: ['codex'] });
+
+    const skillPath = path.join(projectRoot, '.codex', 'skills', 'qdd', 'qdd-conclude', 'SKILL.md');
+    const promptPath = path.join(codexHome, 'prompts', 'qdd-conclude.md');
+    await fs.writeFile(skillPath, 'stale conclude skill\n', 'utf-8');
+    await fs.writeFile(promptPath, 'stale conclude prompt\n', 'utf-8');
+
+    await initCommand(projectRoot, { refreshBootstrap: true });
+
+    assertConcludeSkillContent(await fs.readFile(skillPath, 'utf-8'));
+    assert.match(await fs.readFile(promptPath, 'utf-8'), /research_synthesis\.md/);
+    await assert.rejects(fs.access(path.join(projectRoot, '.claude', 'commands', 'qdd-conclude.md')));
+    const manifest = await readBootstrapManifest(projectRoot);
+    assert.deepEqual(manifest.tools.map((entry) => entry.tool), ['codex']);
+  });
 });
 
 test('qdd instructions are aligned to contract, evolution, memory, and research-map', async () => {

@@ -11,7 +11,7 @@
   <p>
     <a href="#quick-start">Quick Start</a>
     ·
-    <a href="#the-five-core-flows">Core Flows</a>
+    <a href="#the-six-human-workflows">Human Workflows</a>
     ·
     <a href="#auto-mode">Auto Mode</a>
     ·
@@ -42,7 +42,7 @@ cd my-qdd-project
 qdd init .
 ```
 
-Then either run the five flows manually through your agent workflow, or start Auto Mode:
+Then either run the six human workflows through your agent, or start Auto Mode for the core research loop:
 
 ```bash
 qdd auto --max-turns unlimited
@@ -77,9 +77,9 @@ QDD is built for that gap:
 | Public-data searches are hard to audit | Dataset and reference choices are recorded as reusable evidence |
 | Domain knowledge must be re-explained every turn | Domain skills are injected into the right role at the right time |
 
-## The Five Core Flows
+## The Six Human Workflows
 
-QDD is intentionally small. The human-facing mental model is five flows plus Auto Mode.
+QDD is intentionally small. The human-facing model is five research-loop workflows plus a project-level conclude workflow. Auto Mode covers the research loop only.
 
 ### 1. Start
 
@@ -100,6 +100,10 @@ Execute the study tasks. QDD injects task-local domain skills, runs code inside 
 ### 5. Close
 
 Synthesize evidence and update the research frontier. A close event can refine, confirm, pivot, or dissolve a question. QDD records what changed, what remains open, which artifacts are reusable, and what next candidates are worth pursuing.
+
+### 6. Conclude
+
+Use `$qdd-conclude` in Codex or the corresponding `qdd-conclude` entry in Claude Code when the project is synthesis-ready. The general-purpose agent writes a cross-study research synthesis, aligns the manuscript narrative with the user, writes and revises the complete `story.md`, and renders TeX only after the user accepts that story. Conclude is human-only and is not an Auto Mode phase.
 
 ## Auto Mode
 

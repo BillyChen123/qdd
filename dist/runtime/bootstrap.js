@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { readYamlFile, writeYamlFile } from './store.js';
-const BOOTSTRAP_VERSION = 2;
+const BOOTSTRAP_VERSION = 3;
 const DEFAULT_BOOTSTRAP_TOOLS = ['claude', 'codex'];
 const SUPPORTED_BOOTSTRAP_TOOLS = ['claude', 'codex'];
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -31,6 +31,10 @@ const WORKFLOW_METADATA = {
     'qdd-close': {
         description: 'Validate, synthesize evidence, close a study, and carry forward stable project context',
         tags: ['qdd', 'research', 'workflow', 'close'],
+    },
+    'qdd-conclude': {
+        description: 'Synthesize a QDD project, align and write its manuscript story, then render accepted content as TeX',
+        tags: ['qdd', 'research', 'workflow', 'conclude', 'writing'],
     },
 };
 const AUTO_ENTRY_SKILL_ID = 'qdd-auto';
@@ -81,7 +85,10 @@ async function getWorkflowContents() {
     })));
 }
 function formatCodexPrompt(content) {
-    return `---\ndescription: ${content.description}\nargument-hint: optional study id or research direction\n---\n\n${content.body}\n`;
+    const argumentHint = content.id === 'qdd-conclude'
+        ? 'optional paper intent, venue, or format preferences'
+        : 'optional study id or research direction';
+    return `---\ndescription: ${content.description}\nargument-hint: ${argumentHint}\n---\n\n${content.body}\n`;
 }
 function formatClaudeCommand(content) {
     return `---\nname: ${escapeYamlValue(content.id)}\ndescription: ${escapeYamlValue(content.description)}\ncategory: ${escapeYamlValue('QDD')}\ntags: ${formatTagsArray(content.tags)}\n---\n\n${content.body}\n`;

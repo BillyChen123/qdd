@@ -9,6 +9,7 @@
 3. `qdd-explore`：人和 Agent 讨论并完善 `study.md` / `task.md`
 4. `qdd-apply`：Agent 读取假设和任务要求，写代码、跑结果、产出证据
 5. `qdd-close`：Agent 评判假设，把可复用内容写回 `context` / `artifacts`，并给出 follow-up 方向
+6. `qdd-conclude`：通用 Agent 跨 study 综合证据，经两轮人工确认写出完整 `story.md`，再忠实渲染为 TeX
 
 当前代码中的实际入口分别是：
 
@@ -17,6 +18,7 @@
 - `qdd-explore` -> 安装后的 `qdd-explore`
 - `qdd-apply` -> 安装后的 `qdd-apply`
 - `qdd-close` -> 安装后的 `qdd-close`
+- `qdd-conclude` -> Codex 中的 `$qdd-conclude`，或 Claude Code 中的 `/qdd-conclude`
 
 另外，底层脚手架命令仍然是：
 
@@ -273,8 +275,17 @@ $CODEX_HOME/prompts/
 也就是说：
 
 - `.codex/skills/qdd/` 是**项目级**的 QDD workflow skill surface
-- `.claude/skills/qdd/` 是**项目级**的 QDD workflow skill surface
+- `.claude/skills/` 和 `.claude/commands/` 是 Claude Code 的**项目级** QDD workflow surface
 - `~/.codex/prompts/` 是**用户级**的
+
+`qdd-conclude` 的关键安装路径是：
+
+```text
+.codex/skills/qdd/qdd-conclude/SKILL.md
+.claude/skills/qdd-conclude/SKILL.md
+.claude/commands/qdd-conclude.md
+$CODEX_HOME/prompts/qdd-conclude.md
+```
 
 这和 OpenSpec 的做法一致，便于多个项目共用同一组 Codex prompt 名称。
 
@@ -327,6 +338,13 @@ qdd init .
 3. `qdd-explore`
 4. `qdd-apply`
 5. `qdd-close`
+
+项目达到可综合状态后，使用第六个 human workflow 生成论文：
+
+- Codex：`$qdd-conclude`
+- Claude Code：`/qdd-conclude`
+
+它先生成跨 study 的 `research_synthesis.md`，在 Gate 1 与用户对齐叙事后才写完整 `story.md`，并在 Gate 2 接受该 story 后才渲染 TeX。它不是 `qdd conclude` CLI，也不会启动 auto 或 SDK production session。
 
 如果 Agent 需要结构化读取边界，最常用的是：
 

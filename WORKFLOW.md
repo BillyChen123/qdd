@@ -77,7 +77,7 @@ Before implementation, read:
 1. the root `AGENTS.md`
 2. the Linear issue, acceptance criteria, and dependency relations
 3. files named in the issue's `References` or `Required Reading`
-4. for conclude work, `docs/09-qdd-conclude-prd.md` and `domain-skills/thesis/conclude/SKILL.md`
+4. for conclude work, `docs/09-qdd-conclude-prd.md` and `src/runtime/bootstrap-prompts/qdd-conclude.md`
 5. the code and tests directly related to the requested slice
 
 Repository product truth priority is:

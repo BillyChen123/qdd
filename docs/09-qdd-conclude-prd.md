@@ -47,7 +47,8 @@ workflow surfaces as the existing core loop, including:
 
 ```text
 .codex/skills/qdd/qdd-conclude/SKILL.md
-.claude/skills/qdd/qdd-conclude/SKILL.md
+.claude/skills/qdd-conclude/SKILL.md
+.claude/commands/qdd-conclude.md
 ```
 
 Claude command and Codex prompt projections may also be installed where the

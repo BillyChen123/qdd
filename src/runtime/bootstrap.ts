@@ -7,7 +7,7 @@ import { FileSystemUtils } from '../utils/file-system.js';
 import { PATHS } from './constants.js';
 import { readYamlFile, writeYamlFile } from './store.js';
 
-const BOOTSTRAP_VERSION = 2;
+const BOOTSTRAP_VERSION = 3;
 const DEFAULT_BOOTSTRAP_TOOLS: BootstrapTool[] = ['claude', 'codex'];
 const SUPPORTED_BOOTSTRAP_TOOLS: readonly BootstrapTool[] = ['claude', 'codex'];
 
@@ -49,6 +49,10 @@ const WORKFLOW_METADATA: Record<BootstrapWorkflow, { description: string; tags: 
   'qdd-close': {
     description: 'Validate, synthesize evidence, close a study, and carry forward stable project context',
     tags: ['qdd', 'research', 'workflow', 'close'],
+  },
+  'qdd-conclude': {
+    description: 'Synthesize a QDD project, align and write its manuscript story, then render accepted content as TeX',
+    tags: ['qdd', 'research', 'workflow', 'conclude', 'writing'],
   },
 };
 
@@ -113,7 +117,10 @@ async function getWorkflowContents(): Promise<WorkflowContent[]> {
 }
 
 function formatCodexPrompt(content: WorkflowContent): string {
-  return `---\ndescription: ${content.description}\nargument-hint: optional study id or research direction\n---\n\n${content.body}\n`;
+  const argumentHint = content.id === 'qdd-conclude'
+    ? 'optional paper intent, venue, or format preferences'
+    : 'optional study id or research direction';
+  return `---\ndescription: ${content.description}\nargument-hint: ${argumentHint}\n---\n\n${content.body}\n`;
 }
 
 function formatClaudeCommand(content: WorkflowContent): string {

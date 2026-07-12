@@ -3,12 +3,12 @@ export type QuestionChangeType = 'refinement' | 'confirmation' | 'pivot' | 'diss
 export type ArtifactType = 'data' | 'code' | 'figure' | 'table' | 'report';
 export type ArtifactScope = 'project' | 'study' | 'task';
 export type BootstrapTool = 'claude' | 'codex';
-export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close';
+export type BootstrapWorkflow = 'qdd-start' | 'qdd-propose' | 'qdd-explore' | 'qdd-apply' | 'qdd-close' | 'qdd-conclude';
 export type BoundaryStatus = 'open' | 'narrowed' | 'resolved' | 'dissolved';
 export type BoundaryUpdateAction = 'add' | 'narrow' | 'resolve' | 'dissolve';
 export type TaskPromotionStatus = 'pending' | 'none' | 'candidate-recorded' | 'registered';
 export type QddRole = 'thesis-manager' | 'study-brain' | 'executor';
-export type QddCommand = BootstrapWorkflow;
+export type QddCommand = Exclude<BootstrapWorkflow, 'qdd-conclude'>;
 export interface ResearchContract {
     theme: string;
     initial_question: string;
