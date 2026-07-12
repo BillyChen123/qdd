@@ -162,6 +162,21 @@ Do not report a local run as evidence for a cloud commit unless the local checko
 
 If validation cannot run, record the failed command, missing dependency or credential, and the unverified acceptance criteria. Do not translate a skipped or blocked test into success.
 
+For conclude live evaluation, use `deepseek-v4-pro` through the configured Anthropic-compatible endpoint unless the issue explicitly changes the target model. Fake evaluation may validate harness contracts, but it is not a substitute for required live evidence.
+
+Conclude live evaluation is capability-aware. The writer and mechanical harness determine whether the generated synthesis and story are ready for `Human Review`; a model-based semantic reviewer is advisory and must not act as a hard gate. In particular:
+
+- when the configured model cannot inspect image pixels, the writer may select and cite figures from captions, study outputs, reports, and provenance
+- record visual verification as unavailable and defer it to human review; do not claim visual observations that are unsupported by the textual evidence
+- reviewer outcomes such as `revision_required`, `blocked`, or `cannot_assess` are diagnostic findings, not live-evaluation failure, when they result from model capability limits
+- lack of model vision must not block `Human Review`, trigger autonomous retries, or cause production-code changes
+
+Before any paid conclude live evaluation, complete build, deterministic tests, fixture checks, credential checks, and provider-availability checks that can fail without a model call. Reuse an existing accepted `story.md` when the issue tests only downstream rendering or validation. A renderer-only issue must not rerun the full synthesis, two-gate writer, or semantic-review flow.
+
+Do not repeat a paid writer run merely to improve an advisory reviewer outcome. A live retry is allowed only for a concrete writer or harness defect that the issue is in scope to fix; record the reason before retrying. Model vision limitations and unchanged provider failures are not retry reasons.
+
+Before moving a conclude issue to `Human Review`, render its primary human-review output directly in the Linear workpad. For manuscript behavior evaluation, include the final `story.md`; a local filesystem path alone is not sufficient.
+
 ## Handoff Protocol
 
 Before moving an issue to `Human Review`:
