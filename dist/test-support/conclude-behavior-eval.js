@@ -747,6 +747,7 @@ class SemanticReviewConversation {
     async executeTool(toolUse) {
         const relativePath = String(toolUse.input.path ?? '');
         let content;
+        let isError = false;
         if (toolUse.name === 'read_file') {
             this.addAccess('read', relativePath);
             content = await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8');
@@ -761,17 +762,23 @@ class SemanticReviewConversation {
             content = [image.block, { type: 'text', text: image.summary }];
         }
         else if (toolUse.name === 'submit_semantic_review') {
-            const requiredReads = [
-                ...this.evalCase.evidence_outputs,
-                ...this.evalCase.unpromoted_finalized_outputs,
-            ];
-            const unread = requiredReads.filter((requiredPath) => !this.accessLog.some((entry) => entry.action === 'read' && entry.path === requiredPath));
-            const unviewed = this.evalCase.figures.filter((requiredPath) => !this.accessLog.some((entry) => entry.action === 'view_image' && entry.path === requiredPath));
-            if (unread.length > 0 || unviewed.length > 0) {
-                throw new Error(`Semantic reviewer skipped required evidence: ${[...unread, ...unviewed].join(', ')}`);
+            try {
+                const requiredReads = [
+                    ...this.evalCase.evidence_outputs,
+                    ...this.evalCase.unpromoted_finalized_outputs,
+                ];
+                const unread = requiredReads.filter((requiredPath) => !this.accessLog.some((entry) => entry.action === 'read' && entry.path === requiredPath));
+                const unviewed = this.evalCase.figures.filter((requiredPath) => !this.accessLog.some((entry) => entry.action === 'view_image' && entry.path === requiredPath));
+                if (unread.length > 0 || unviewed.length > 0) {
+                    throw new Error(`Semantic reviewer skipped required evidence: ${[...unread, ...unviewed].join(', ')}`);
+                }
+                this.review = validateSemanticReview(toolUse.input, this.evalCase);
+                content = 'Semantic review accepted by the protocol validator.';
             }
-            this.review = validateSemanticReview(toolUse.input, this.evalCase);
-            content = 'Semantic review accepted by the protocol validator.';
+            catch (error) {
+                isError = true;
+                content = `Semantic review submission rejected: ${error.message} Correct the review and call submit_semantic_review again.`;
+            }
         }
         else {
             throw new Error(`Unsupported semantic review tool: ${toolUse.name}`);
@@ -780,7 +787,7 @@ class SemanticReviewConversation {
             ? content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
             : content;
         this.transcript.push(this.entry('tool', 'tool_result', transcriptContent, toolUse.name, relativePath || undefined));
-        return { type: 'tool_result', tool_use_id: toolUse.id, content };
+        return { type: 'tool_result', tool_use_id: toolUse.id, content, ...(isError ? { is_error: true } : {}) };
     }
 }
 const SEMANTIC_REVIEW_SYSTEM_PROMPT = `You are an independent scientific manuscript reviewer evaluating a QDD conclude run.
