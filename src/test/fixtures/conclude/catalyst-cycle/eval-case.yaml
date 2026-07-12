@@ -32,7 +32,7 @@ gates:
   gate1_acceptance: >-
     Gate 1 accepted. Write the complete story as prediction of a promising precursor, operando evidence that its active state is transient, and reactor validation that state cycling sustains performance.
   gate2_feedback: >-
-    Gate 2: revise the actual manuscript. Open Results with the discrepancy between static stability predictions and measured deactivation, then use the association in operando evidence to interpret it before introducing pulsed regeneration. Integrate the cycling figure as the unlabelled color-band raster that was actually viewed, not as axes, traces, symbols, or a line plot, and include a quantitative performance table. Name every comparison baseline, keep the operando and cycling experiments distinct, use only the generic method detail present in sources, and remove all QDD identifiers or workflow metadata from visible prose.
+    Gate 2: revise the actual manuscript. Open Results with the discrepancy between static stability predictions and measured deactivation, then use the association in operando evidence to interpret it before introducing pulsed regeneration. Integrate the cycling figure as the unlabelled color-band raster that was actually viewed, not as axes, traces, symbols, or a line plot, and include a quantitative performance table. Name every comparison baseline, keep the operando and cycling experiments distinct, use only the generic method detail present in sources, remove all QDD identifiers or workflow metadata from visible prose, and use precise citation-needed anchors wherever literature support is required.
   gate2_acceptance: >-
     Gate 2 accepted after revision. Stop before TeX rendering.
 reviewer_focus:

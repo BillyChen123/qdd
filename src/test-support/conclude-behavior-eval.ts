@@ -946,9 +946,15 @@ function validateSemanticReview(raw: Record<string, unknown>, evalCase: Conclude
     throw new Error(`Semantic review omitted figures: ${missingFigures.join(', ')}`);
   }
   const hasFailedDimension = review.dimensions.some((entry) => entry.status !== 'pass');
+  const hasFailedClaimOrFigure = review.major_claim_checks.some((entry) => entry.status !== 'pass')
+    || review.figure_checks.some((entry) => entry.status !== 'pass');
   const hasMaterialFinding = review.findings.some((entry) => entry.severity === 'critical' || entry.severity === 'major');
-  if (review.verdict === 'accepted' && (hasFailedDimension || hasMaterialFinding)) {
-    throw new Error('Semantic review verdict cannot be accepted with a failed dimension or material finding.');
+  const unsupportedFigurePass = review.figure_checks.some((entry) =>
+    entry.status === 'pass'
+    && /unsupported image|could not (?:be )?(?:rendered|inspected)|cannot (?:be |independently )?(?:render|inspect)/i.test(entry.analysis)
+  );
+  if (review.verdict === 'accepted' && (hasFailedDimension || hasFailedClaimOrFigure || hasMaterialFinding || unsupportedFigurePass)) {
+    throw new Error('Semantic review verdict cannot be accepted with a failed check, material finding, or uninspected figure.');
   }
   return review;
 }
@@ -1077,16 +1083,17 @@ Apply a strict source-bound standard. Exact numeric transcription is not enough 
 - Methods details, sample structure, controls, assays, or availability statements absent from inspected sources;
 - a caption or callout for a panel, plot, label, encoding, or visual pattern that is not present in the directly viewed image. A report, filename, or table cannot substitute for comparing the actual image structure to the manuscript;
 - a complete citation or bibliography entry that you cannot verify against supplied literature evidence. Familiarity with a plausible publication is not verification. If no literature source or search tool is available, precise citation-needed anchors are acceptable but unsupported full citations are not.
+- a literature-dependent statement with neither a verified supporting citation nor an explicit citation-needed location.
 - a QDD study, task, artifact identifier, status, checklist, internal path, or provenance statement exposed anywhere in visible manuscript content, including Methods and availability statements.
 - an ambiguous baseline for a difference or recovery claim, or prose that merges measurements from separate studies/runs into one continuous experiment without source support.
 
-Apply these rules to both research_synthesis.md and story.md. An unsupported inference or invented figure interpretation in the synthesis is a review failure even if the final story omits it.
+Apply the source-fidelity, claim-strength, and figure rules to both research_synthesis.md and story.md. An unsupported inference or invented figure interpretation in the synthesis is a review failure even if the final story omits it. QDD identifiers remain appropriate navigation aids in the internal research synthesis; manuscript-hygiene restrictions apply to story.md.
 
 Judge all eight dimensions independently:
 1. cross_study_synthesis: whether the synthesis answers what the project established across studies, including support, refinement, redirection, or conflict, rather than dumping evidence or replaying execution order.
 2. contribution_and_results_logic: whether one worthwhile contribution drives a continuous question-to-answer Results argument.
 3. evidence_and_claim_fidelity: whether values, statistical language, methods, scope, causal strength, and major claims match inspected outputs, including relevant finalized unpromoted outputs; fabricated or materially distorted evidence fails.
-4. figure_table_integration: whether figures/tables do argumentative work and their captions, callouts, panel structure, manuscript statements, and directly viewed content agree.
+4. figure_table_integration: whether figures/tables do argumentative work and their captions, callouts, panel structure, manuscript statements, and directly viewed content agree. If an image is unsupported, unrenderable, or unclear, retry view_image; if it remains unavailable, use cannot_assess and require revision. Case-specific focus, reports, captions, and tables never substitute for direct image inspection.
 5. gate_feedback_fidelity: whether Gate 1 and Gate 2 editorial feedback materially changed the contribution, emphasis, and organization without mechanical candidate selection.
 6. manuscript_completeness_and_hygiene: whether story.md is readable manuscript content with title, abstract, introduction, Results, discussion, methods, integrated figure/table captions, and no QDD IDs, internal paths, status/checklist, metadata, or project-log prose.
 7. citation_discipline: whether literature-dependent statements have honest citation locations and every full citation is verifiable from an inspected literature source. Explicit citation-needed anchors are acceptable in this story-stage evaluation when no literature source was supplied.
