@@ -204,6 +204,8 @@ During rendering you may:
 
 Preserve the accepted story. Do not add a new central claim, reorder the scientific argument, replace figures for editorial reasons, or substantially rewrite manuscript content during conversion. Minor citation completion is allowed only when it does not change the claims or logic.
 
-Report the generated paths and validation results. If PDF compilation is blocked by missing local tooling, report the missing dependency honestly while still validating the TeX package as far as possible.
+Probe once for an existing local TeX compiler. Do not install, download, or configure a TeX distribution as part of conclude. If no compiler is available, report PDF status as `unavailable` and complete all compiler-free checks for `main.tex`, `references.bib`, figures, paths, references, citations, and story coverage. Missing local TeX tooling is not a workflow failure, does not reopen either gate, and must not trigger retries or additional model work.
+
+Report the generated paths and validation results.
 
 The workflow ends after the accepted story has been rendered into a validated TeX package and conditional PDF status has been reported. Do not declare conclude complete while either human gate remains unresolved.

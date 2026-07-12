@@ -175,6 +175,8 @@ Before any paid conclude live evaluation, complete build, deterministic tests, f
 
 Do not repeat a paid writer run merely to improve an advisory reviewer outcome. A live retry is allowed only for a concrete writer or harness defect that the issue is in scope to fix; record the reason before retrying. Model vision limitations and unchanged provider failures are not retry reasons.
 
+PDF compilation is capability-aware and optional. Probe once for an existing local TeX compiler, but do not install, download, or configure a TeX distribution during a Symphony issue unless the issue explicitly scopes that environment work. If no compiler is available, validate `main.tex`, `references.bib`, figures, paths, references, citations, and story coverage mechanically; report PDF status as `unavailable`. Missing local TeX tooling must not fail the issue, block `Human Review`, trigger retries, or consume model calls.
+
 Before moving a conclude issue to `Human Review`, render its primary human-review output directly in the Linear workpad. For manuscript behavior evaluation, include the final `story.md`; a local filesystem path alone is not sufficient.
 
 ## Handoff Protocol

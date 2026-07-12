@@ -263,6 +263,13 @@ package. This stage may:
 - run mechanical TeX, bibliography, path, and asset checks
 - compile PDF when the local environment supports it
 
+PDF compilation is a best-effort capability, not a completion gate. The agent
+may probe once for an existing compiler, but must not install, download, or
+configure a TeX distribution as part of conclude. When no compiler is
+available, it records PDF status as `unavailable`, completes all compiler-free
+package checks, and continues to normal handoff. Missing local TeX tooling does
+not invalidate the accepted story or validated TeX package.
+
 The TeX stage must preserve the accepted story. It must not introduce a new
 central claim, reorder the scientific argument, replace figures for editorial
 reasons, or substantially rewrite manuscript content. Necessary literature
@@ -270,7 +277,7 @@ research and semantically meaningful citation placement should already be
 visible in `story.md` during Gate 2. Minor citation completion is allowed only
 when it does not change the paper's claims or logic.
 
-After producing the TeX package and reporting any blocked rendering dependency,
+After producing the TeX package and reporting the conditional PDF status,
 the `$qdd-conclude` workflow ends. Later user-directed editing of TeX or the
 published manuscript is ordinary writing work outside this conclude lifecycle.
 There is no third TeX approval gate.
@@ -402,7 +409,8 @@ section counts, keyword scores, and TeX validity are insufficient.
 - TeX generation begins only after Gate 2 and remains faithful to the accepted
   `story.md`.
 - The workflow ends after producing and validating the TeX package and reporting
-  conditional PDF render status; no third gate is required.
+  conditional PDF render status; an unavailable local compiler is nonblocking
+  and no third gate is required.
 - SDK tests simulate both gates but do not redefine the production entry point.
 - Auto-mode integration remains explicitly out of scope for this human-mode
   release.
