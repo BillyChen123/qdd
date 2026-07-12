@@ -38,6 +38,9 @@ for (const caseName of ['sdk-two-gate', 'catalyst-cycle']) {
         const installedSkill = await fs.readFile(report.installed_skill_path, 'utf-8');
         assert.match(installedSkill, /A value being inside another group's observed range does not establish statistical equivalence/);
         assert.match(installedSkill, /Describe only panels, labels, encodings, and patterns that visibly exist/);
+        assert.match(installedSkill, /Treat every technical noun and modifier as a source-bound claim/);
+        assert.match(installedSkill, /Audit titles and section headings separately for claim strength/);
+        assert.match(installedSkill, /does not authorize method, mechanism, or domain specificity/);
         assert.match(installedSkill, /a plausible-looking reference list is not a substitute/);
     });
 }
