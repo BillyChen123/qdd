@@ -600,6 +600,7 @@ function evaluateAssertions(conversation, evalCase, paths, installedSkill, synth
     const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
     const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
     const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
+    const qddMetadataPattern = /\b(?:project research map|boundary tracking|artifact registr(?:y|ies)|study definitions?|internal study outputs?)\b/i;
     return [
         assertion('production_skill_loaded', installedSkill.includes('name: qdd-conclude') && installedSkill.includes('Gate 1: Align Narrative Intent') && installedSkill.includes('Gate 2: Review And Revise The Story'), 'Harness loaded the qdd init-projected .claude/skills/qdd-conclude/SKILL.md.'),
         assertion('two_gate_order', gateOrder === 'gate_1:feedback -> gate_1:accepted -> gate_2:feedback -> gate_2:accepted', gateOrder || 'No gate events recorded.'),
@@ -611,7 +612,8 @@ function evaluateAssertions(conversation, evalCase, paths, installedSkill, synth
         assertion('gate2_rewrites_story', storyExists && storyBeforeRevision.length > 0 && storyAfterRevision.length > 0 && sha256(storyBeforeRevision) !== sha256(storyAfterRevision), `before=${storyBeforeRevision ? sha256(storyBeforeRevision) : '-'}, after=${storyAfterRevision ? sha256(storyAfterRevision) : '-'}`),
         assertion('no_tex_before_gate2_acceptance', texWrites.length === 0, texWrites.length === 0 ? 'No final_paper write occurred during the two-gate evaluation.' : `${texWrites.length} premature TeX writes.`),
         assertion('credential_values_absent', secretViolations.length === 0, secretViolations.length === 0 ? 'No credential-shaped values found in generated text.' : secretViolations.join(', ')),
-        assertion('qdd_ids_absent_from_story', !/\b(?:STUDY|TASK|ART)-\d{3}\b/.test(visibleStory), 'Visible story content must not expose QDD study, task, or artifact identifiers.'),
+        assertion('qdd_ids_absent_from_story', !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory), 'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'),
+        assertion('qdd_metadata_absent_from_story', !qddMetadataPattern.test(visibleStory), 'Visible story content must not expose QDD research-map, boundary, artifact-registry, or study-definition metadata prose.'),
     ];
 }
 function assertion(id, passed, detail) {
@@ -788,6 +790,9 @@ Apply a strict source-bound standard. Exact numeric transcription is not enough 
 - a caption or callout for a panel, plot, label, encoding, or visual pattern that is not present in the directly viewed image. A report, filename, or table cannot substitute for comparing the actual image structure to the manuscript;
 - a complete citation or bibliography entry that you cannot verify against supplied literature evidence. Familiarity with a plausible publication is not verification. If no literature source or search tool is available, precise citation-needed anchors are acceptable but unsupported full citations are not.
 - a QDD study, task, artifact identifier, status, checklist, internal path, or provenance statement exposed anywhere in visible manuscript content, including Methods and availability statements.
+- an ambiguous baseline for a difference or recovery claim, or prose that merges measurements from separate studies/runs into one continuous experiment without source support.
+
+Apply these rules to both research_synthesis.md and story.md. An unsupported inference or invented figure interpretation in the synthesis is a review failure even if the final story omits it.
 
 Judge all eight dimensions independently:
 1. cross_study_synthesis: whether the synthesis answers what the project established across studies, including support, refinement, redirection, or conflict, rather than dumping evidence or replaying execution order.

@@ -16,6 +16,7 @@ for (const caseName of ['sdk-two-gate', 'catalyst-cycle']) {
         await assert.rejects(fs.access(path.join(report.project_path, 'eval-case.yaml')));
         assert.ok(report.harness.assertions.every((entry) => entry.status === 'pass'));
         assert.equal(report.harness.assertions.some((entry) => entry.id === 'qdd_ids_absent_from_story'), true);
+        assert.equal(report.harness.assertions.some((entry) => entry.id === 'qdd_metadata_absent_from_story'), true);
         assert.deepEqual(report.gates.map((entry) => `${entry.gate}:${entry.action}`), ['gate_1:feedback', 'gate_1:accepted', 'gate_2:feedback', 'gate_2:accepted']);
         const accessLog = JSON.parse(await fs.readFile(report.outputs.access_log, 'utf-8'));
         assert.ok(accessLog.some((entry) => entry.action === 'read' && entry.path.startsWith('studies/STUDY-002/output/reports/')));

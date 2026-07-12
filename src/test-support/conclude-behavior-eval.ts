@@ -822,6 +822,7 @@ function evaluateAssertions(
   const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
   const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
   const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
+  const qddMetadataPattern = /\b(?:project research map|boundary tracking|artifact registr(?:y|ies)|study definitions?|internal study outputs?)\b/i;
 
   return [
     assertion(
@@ -882,8 +883,13 @@ function evaluateAssertions(
     ),
     assertion(
       'qdd_ids_absent_from_story',
-      !/\b(?:STUDY|TASK|ART)-\d{3}\b/.test(visibleStory),
-      'Visible story content must not expose QDD study, task, or artifact identifiers.'
+      !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory),
+      'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'
+    ),
+    assertion(
+      'qdd_metadata_absent_from_story',
+      !qddMetadataPattern.test(visibleStory),
+      'Visible story content must not expose QDD research-map, boundary, artifact-registry, or study-definition metadata prose.'
     ),
   ];
 }
@@ -1072,6 +1078,9 @@ Apply a strict source-bound standard. Exact numeric transcription is not enough 
 - a caption or callout for a panel, plot, label, encoding, or visual pattern that is not present in the directly viewed image. A report, filename, or table cannot substitute for comparing the actual image structure to the manuscript;
 - a complete citation or bibliography entry that you cannot verify against supplied literature evidence. Familiarity with a plausible publication is not verification. If no literature source or search tool is available, precise citation-needed anchors are acceptable but unsupported full citations are not.
 - a QDD study, task, artifact identifier, status, checklist, internal path, or provenance statement exposed anywhere in visible manuscript content, including Methods and availability statements.
+- an ambiguous baseline for a difference or recovery claim, or prose that merges measurements from separate studies/runs into one continuous experiment without source support.
+
+Apply these rules to both research_synthesis.md and story.md. An unsupported inference or invented figure interpretation in the synthesis is a review failure even if the final story omits it.
 
 Judge all eight dimensions independently:
 1. cross_study_synthesis: whether the synthesis answers what the project established across studies, including support, refinement, redirection, or conflict, rather than dumping evidence or replaying execution order.

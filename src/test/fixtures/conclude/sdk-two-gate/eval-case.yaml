@@ -25,11 +25,11 @@ figures:
   - studies/STUDY-002/output/figures/regional-response.ppm
 gates:
   gate1_feedback: >-
-    Gate 1 feedback: do not make marker discovery the central contribution. Center the paper on how immune-niche organization explains conditional regional response; use the unpromoted spatial validation as the logical turn and de-emphasize the marker catalogue. Explain the revised Results logic and wait for confirmation without creating story.md.
+    Gate 1 feedback: do not make marker discovery the central contribution. Center the paper on how regional response is conditional on immune-niche organization without turning this observational association into causal or necessity language; use the unpromoted spatial validation as the logical turn and de-emphasize the marker catalogue. Explain the revised Results logic and wait for confirmation without creating story.md.
   gate1_acceptance: >-
     Gate 1 accepted. Write the complete story around discovery of a reproducible signal, spatial counterexamples to signal sufficiency, and the cross-study conditional niche explanation.
   gate2_feedback: >-
-    Gate 2: the first draft is not accepted. Move the spatial counterexample into the first half of Results, reduce study-order narration, make the inspected figure carry the logical turn, and make the Discussion emphasize conditional rather than universal response. Rewrite story.md rather than merely describing the edits.
+    Gate 2: the first draft is not accepted. Move the spatial counterexample into the first half of Results, reduce study-order narration, make the inspected single-raster figure carry the logical turn without inventing panels or plots, and make the Discussion emphasize observational conditional association rather than contribution, causality, necessity, or universal response. Do not call values indistinguishable without a reported analysis, do not infer missing Methods, and keep QDD workflow metadata out of every visible section. Rewrite story.md rather than merely describing the edits.
   gate2_acceptance: >-
     Gate 2 accepted after revision. End this evaluation at story acceptance; TeX belongs to the downstream issue.
 reviewer_focus:
