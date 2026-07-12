@@ -202,10 +202,58 @@ During rendering you may:
 - apply a suitable document class or a user-supplied template
 - run mechanical TeX, bibliography, path, asset, and compilation checks
 
+Use the neutral renderer supplied by QDD rather than hand-authoring a second
+scientific manuscript in TeX:
+
+```bash
+qdd render-story conclusions/<run-id>/story.md \
+  --gate2-accepted \
+  --bibliography conclusions/<run-id>/verified-references.bib \
+  --json
+```
+
+Pass `--gate2-accepted` only after the user has explicitly accepted the complete
+current `story.md`. If the story has no citation anchors, omit `--bibliography`.
+The renderer writes `final_paper/render-report.json` in addition to the core
+package and reports story-block coverage, section order, figure/table anchors,
+cross-references, citation keys, BibTeX parsing, assets, TeX syntax, the compiler
+path when found, and `pdf_status`.
+
+Before Gate 2, keep renderable semantics explicit in `story.md`:
+
+- use the first H1 as the manuscript title and `## Abstract` for the abstract
+- use ordinary Markdown headings and paragraphs in their intended paper order
+- place each figure in its own paragraph as
+  `![complete caption](project-relative/path.png){#fig:key}`
+- place `Table: Complete caption {#tbl:key}` immediately before each GFM table
+- write figure/table callouts as `@fig:key` and `@tbl:key`
+- write verified citation anchors as `[@key]` or `[@key1; @key2]`
+- keep math inside `$...$` or `$$...$$`, and use Markdown code spans or fences
+  for code
+
+The renderer copies PDF/PNG/JPEG assets and losslessly maps ASCII P3 PPM assets
+to PNG. It selects only cited entries from the supplied verified BibTeX file;
+it never invents a citation or moves an anchor. Missing assets, broken refs,
+missing/duplicate/malformed BibTeX keys, unsupported Markdown, and incomplete or
+reordered story coverage are hard mechanical failures.
+
+If rendering exposes a scientific or editorial change, edit `story.md`, return
+the changed story to Gate 2, and obtain acceptance again. Never repair
+substantive content only in `main.tex`. Purely mechanical input errors may be
+fixed at their source, but do not bypass the accepted story contract.
+
 Preserve the accepted story. Do not add a new central claim, reorder the scientific argument, replace figures for editorial reasons, or substantially rewrite manuscript content during conversion. Minor citation completion is allowed only when it does not change the claims or logic.
 
-Probe once for an existing local TeX compiler. Do not install, download, or configure a TeX distribution as part of conclude. If no compiler is available, report PDF status as `unavailable` and complete all compiler-free checks for `main.tex`, `references.bib`, figures, paths, references, citations, and story coverage. Missing local TeX tooling is not a workflow failure, does not reopen either gate, and must not trigger retries or additional model work.
+Let the renderer perform the single probe for an existing local TeX compiler;
+do not probe separately. It may use only already-local compiler resources and
+must not install, download, or configure a TeX distribution. If no compiler is
+available, report PDF status as `unavailable` and complete all compiler-free
+checks for `main.tex`, `references.bib`, figures, paths, references, citations,
+and story coverage. Missing local TeX tooling is not a workflow failure, does
+not reopen either gate, and must not trigger retries or additional model work.
 
-Report the generated paths and validation results.
+Report the generated paths and validation results from `render-report.json`.
+After reporting `compiled` or nonblocking `unavailable`, finish conclude. Do not
+ask for a third approval of the TeX derivative.
 
 The workflow ends after the accepted story has been rendered into a validated TeX package and conditional PDF status has been reported. Do not declare conclude complete while either human gate remains unresolved.

@@ -50,6 +50,13 @@ function assertConcludeSkillContent(content) {
     assert.match(content, /Gate 2: Review And Revise The Story/);
     assert.match(content, /Do not create `story\.md` before Gate 1 passes/);
     assert.match(content, /Do not create the final TeX package before Gate 2 passes/);
+    assert.match(content, /qdd render-story/);
+    assert.match(content, /--gate2-accepted/);
+    assert.match(content, /render-report\.json/);
+    assert.match(content, /\{#fig:key\}/);
+    assert.match(content, /\{#tbl:key\}/);
+    assert.match(content, /do not probe separately/);
+    assert.match(content, /Do not\s+ask for a third approval/);
     assert.doesNotMatch(content, /qdd conclude/);
     assert.doesNotMatch(content, /evidence dossier/i);
 }
