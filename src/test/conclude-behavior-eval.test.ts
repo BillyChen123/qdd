@@ -35,6 +35,7 @@ test(`conclude behavior eval fake path enforces source access and two human gate
 
   const transcript = await fs.readFile(report.outputs.transcript, 'utf-8');
   assert.match(transcript, /via nearest-neighbor rendering/);
+  assert.match(transcript, /rendering at \d+x\d+/);
 
   const storyWrites = accessLog.filter((entry) => entry.action === 'write' && entry.path.endsWith('/story.md'));
   assert.deepEqual(storyWrites.map((entry) => entry.stage), ['story_draft', 'gate2_revision']);
@@ -56,6 +57,7 @@ test(`conclude behavior eval fake path enforces source access and two human gate
   assert.match(installedSkill, /Treat every technical noun and modifier as a source-bound claim/);
   assert.match(installedSkill, /Audit titles and section headings separately for claim strength/);
   assert.match(installedSkill, /does not authorize method, mechanism, or domain specificity/);
+  assert.match(installedSkill, /run a literal terminology-provenance audit/);
   assert.match(installedSkill, /a plausible-looking reference list is not a substitute/);
 });
 }

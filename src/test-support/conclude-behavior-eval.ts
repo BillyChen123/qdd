@@ -374,7 +374,13 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, typeBuffer, data, crc]);
 }
 
-function ppmToPng(source: string): { buffer: Buffer; originalWidth: number; originalHeight: number } {
+function ppmToPng(source: string): {
+  buffer: Buffer;
+  originalWidth: number;
+  originalHeight: number;
+  renderedWidth: number;
+  renderedHeight: number;
+} {
   const tokens = source
     .split(/\r?\n/)
     .flatMap((line) => line.replace(/#.*/, '').trim().split(/\s+/))
@@ -391,7 +397,7 @@ function ppmToPng(source: string): { buffer: Buffer; originalWidth: number; orig
     throw new Error('Invalid PPM sample count.');
   }
 
-  const scale = Math.max(1, Math.ceil(192 / width), Math.ceil(192 / height));
+  const scale = Math.max(1, Math.ceil(256 / width), Math.ceil(256 / height));
   const renderedWidth = width * scale;
   const renderedHeight = height * scale;
   const scanlines = Buffer.alloc(renderedHeight * (1 + renderedWidth * 3));
@@ -422,7 +428,7 @@ function ppmToPng(source: string): { buffer: Buffer; originalWidth: number; orig
     pngChunk('IDAT', deflateSync(scanlines)),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
-  return { buffer, originalWidth: width, originalHeight: height };
+  return { buffer, originalWidth: width, originalHeight: height, renderedWidth, renderedHeight };
 }
 
 async function imageForModel(filePath: string): Promise<{ block: EvalImageBlock; summary: string }> {
@@ -435,7 +441,7 @@ async function imageForModel(filePath: string): Promise<{ block: EvalImageBlock;
         type: 'image',
         source: { type: 'base64', media_type: 'image/png', data: image.buffer.toString('base64') },
       },
-      summary: `multimodal image supplied from ${image.originalWidth}x${image.originalHeight} PPM via nearest-neighbor rendering (${image.buffer.length} PNG bytes, sha256=${sha256(image.buffer)})`,
+      summary: `multimodal image supplied from ${image.originalWidth}x${image.originalHeight} PPM via nearest-neighbor rendering at ${image.renderedWidth}x${image.renderedHeight} (${image.buffer.length} PNG bytes, sha256=${sha256(image.buffer)})`,
     };
   }
 
