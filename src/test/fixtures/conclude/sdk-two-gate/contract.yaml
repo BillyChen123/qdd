@@ -1,0 +1,11 @@
+theme: Conditional tissue response across discovery and spatial validation
+initial_question: What reproducible tissue program distinguishes responding regions?
+mode: human
+scope:
+  in_scope:
+    - discovery expression evidence
+    - spatial validation and tissue-niche interpretation
+  out_of_scope:
+    - causal intervention claims
+    - clinical deployment
+termination_type: best_effort

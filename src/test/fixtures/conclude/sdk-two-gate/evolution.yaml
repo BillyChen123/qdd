@@ -1,0 +1,31 @@
+studies:
+  - id: STUDY-001
+    question: What reproducible tissue program distinguishes responding samples?
+    kind: refinement
+    resolves:
+      - B001
+    opens:
+      - B002
+    candidates:
+      - Does spatial organization explain where the program predicts response?
+    ts: 2026-06-01T10:00:00.000Z
+  - id: STUDY-002
+    question: Does spatial organization explain where the program predicts response?
+    kind: refinement
+    resolves:
+      - B002
+    opens:
+      - B003
+    candidates:
+      - Can the conditional niche model be tested prospectively?
+    ts: 2026-06-08T10:00:00.000Z
+boundaries:
+  - id: B001
+    text: Identify a reproducible response-associated program.
+    state: resolved
+  - id: B002
+    text: Determine whether marker abundance or spatial organization explains regional response.
+    state: resolved
+  - id: B003
+    text: Prospective causal validation remains outside the current evidence.
+    state: open

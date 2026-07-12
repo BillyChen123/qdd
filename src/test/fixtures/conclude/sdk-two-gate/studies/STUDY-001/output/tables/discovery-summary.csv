@@ -1,0 +1,5 @@
+batch,group,n,mean_response_program,mean_immune_organization
+A,responding,6,0.84,0.78
+A,non_responding,6,0.40,0.33
+B,responding,6,0.80,0.74
+B,non_responding,6,0.38,0.29

@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { runConcludeBehaviorEval } from '../test-support/conclude-behavior-eval.js';
+
+test('conclude behavior eval fake path enforces source access and two human gates', async () => {
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-behavior-eval-'));
+  const report = await runConcludeBehaviorEval({ mode: 'fake', outputRoot });
+
+  assert.equal(report.status, 'passed');
+  assert.equal(report.harness.status, 'PASS');
+  assert.ok(report.harness.assertions.every((entry) => entry.status === 'pass'));
+  assert.deepEqual(
+    report.gates.map((entry) => `${entry.gate}:${entry.action}`),
+    ['gate_1:feedback', 'gate_1:accepted', 'gate_2:feedback', 'gate_2:accepted']
+  );
+
+  const accessLog = JSON.parse(await fs.readFile(report.outputs.access_log, 'utf-8')) as Array<{
+    action: string;
+    path: string;
+    stage: string;
+  }>;
+  assert.ok(accessLog.some((entry) => entry.action === 'read' && entry.path === 'studies/STUDY-002/output/reports/spatial-validation.md'));
+  assert.ok(accessLog.some((entry) => entry.action === 'view_image' && entry.path.endsWith('regional-response.ppm')));
+  assert.equal(accessLog.some((entry) => entry.path.includes('/final_paper/')), false);
+
+  const storyWrites = accessLog.filter((entry) => entry.action === 'write' && entry.path.endsWith('/story.md'));
+  assert.deepEqual(storyWrites.map((entry) => entry.stage), ['story_draft', 'gate2_revision']);
+
+  const before = await fs.readFile(report.outputs.story_before_gate2_revision, 'utf-8');
+  const after = await fs.readFile(report.outputs.story, 'utf-8');
+  assert.notEqual(after, before);
+  assert.match(after, /Regional counterexamples immediately challenged/);
+  assert.match(after, /not universally protective/);
+
+  const reportMarkdown = await fs.readFile(report.outputs.report_markdown, 'utf-8');
+  assert.match(reportMarkdown, /## Harness Assertions/);
+  assert.match(reportMarkdown, /## Semantic Observations/);
+  assert.match(reportMarkdown, /## Environment Blockers/);
+  assert.match(reportMarkdown, /not manuscript-quality oracles/);
+});
+
+test('conclude behavior eval live path cleanly blocks without credentials', async () => {
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-live-blocked-'));
+  const report = await runConcludeBehaviorEval({ mode: 'live', outputRoot, credentialOverride: null });
+  assert.equal(report.status, 'blocked');
+  assert.equal(report.harness.status, 'NOT_RUN');
+  assert.equal(report.environment_blockers.length, 1);
+  assert.match(report.environment_blockers[0] ?? '', /credential is missing/);
+  assert.doesNotMatch(await fs.readFile(report.outputs.report_json, 'utf-8'), /sk-ant-/);
+});
