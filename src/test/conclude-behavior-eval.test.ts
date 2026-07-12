@@ -17,6 +17,7 @@ test(`conclude behavior eval fake path enforces source access and two human gate
   assert.equal(report.semantic_review.verdict, 'blocked');
   await assert.rejects(fs.access(path.join(report.project_path, 'eval-case.yaml')));
   assert.ok(report.harness.assertions.every((entry) => entry.status === 'pass'));
+  assert.equal(report.harness.assertions.some((entry) => entry.id === 'qdd_ids_absent_from_story'), true);
   assert.deepEqual(
     report.gates.map((entry) => `${entry.gate}:${entry.action}`),
     ['gate_1:feedback', 'gate_1:accepted', 'gate_2:feedback', 'gate_2:accepted']
@@ -30,6 +31,9 @@ test(`conclude behavior eval fake path enforces source access and two human gate
   assert.ok(accessLog.some((entry) => entry.action === 'read' && entry.path.startsWith('studies/STUDY-002/output/reports/')));
   assert.ok(accessLog.some((entry) => entry.action === 'view_image' && entry.path.endsWith('.ppm')));
   assert.equal(accessLog.some((entry) => entry.path.includes('/final_paper/')), false);
+
+  const transcript = await fs.readFile(report.outputs.transcript, 'utf-8');
+  assert.match(transcript, /via nearest-neighbor rendering/);
 
   const storyWrites = accessLog.filter((entry) => entry.action === 'write' && entry.path.endsWith('/story.md'));
   assert.deepEqual(storyWrites.map((entry) => entry.stage), ['story_draft', 'gate2_revision']);

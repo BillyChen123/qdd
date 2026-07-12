@@ -373,7 +373,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, typeBuffer, data, crc]);
 }
 
-function ppmToPng(source: string): Buffer {
+function ppmToPng(source: string): { buffer: Buffer; originalWidth: number; originalHeight: number } {
   const tokens = source
     .split(/\r?\n/)
     .flatMap((line) => line.replace(/#.*/, '').trim().split(/\s+/))
@@ -390,43 +390,51 @@ function ppmToPng(source: string): Buffer {
     throw new Error('Invalid PPM sample count.');
   }
 
-  const scanlines = Buffer.alloc(height * (1 + width * 3));
-  let sourceIndex = 0;
+  const scale = Math.max(1, Math.ceil(192 / width), Math.ceil(192 / height));
+  const renderedWidth = width * scale;
+  const renderedHeight = height * scale;
+  const scanlines = Buffer.alloc(renderedHeight * (1 + renderedWidth * 3));
   let targetIndex = 0;
-  for (let row = 0; row < height; row++) {
+  for (let row = 0; row < renderedHeight; row++) {
     scanlines[targetIndex++] = 0;
-    for (let column = 0; column < width * 3; column++) {
-      scanlines[targetIndex++] = Math.round((samples[sourceIndex++] / maxValue) * 255);
+    const sourceRow = Math.floor(row / scale);
+    for (let column = 0; column < renderedWidth; column++) {
+      const sourceColumn = Math.floor(column / scale);
+      const sourceIndex = (sourceRow * width + sourceColumn) * 3;
+      for (let channel = 0; channel < 3; channel++) {
+        scanlines[targetIndex++] = Math.round((samples[sourceIndex + channel] / maxValue) * 255);
+      }
     }
   }
 
   const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
+  header.writeUInt32BE(renderedWidth, 0);
+  header.writeUInt32BE(renderedHeight, 4);
   header[8] = 8;
   header[9] = 2;
   header[10] = 0;
   header[11] = 0;
   header[12] = 0;
-  return Buffer.concat([
+  const buffer = Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     pngChunk('IHDR', header),
     pngChunk('IDAT', deflateSync(scanlines)),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
+  return { buffer, originalWidth: width, originalHeight: height };
 }
 
 async function imageForModel(filePath: string): Promise<{ block: EvalImageBlock; summary: string }> {
   const extension = path.extname(filePath).toLowerCase();
   if (extension === '.ppm') {
     const source = await fs.readFile(filePath, 'utf-8');
-    const png = ppmToPng(source);
+    const image = ppmToPng(source);
     return {
       block: {
         type: 'image',
-        source: { type: 'base64', media_type: 'image/png', data: png.toString('base64') },
+        source: { type: 'base64', media_type: 'image/png', data: image.buffer.toString('base64') },
       },
-      summary: `multimodal image supplied (${png.length} PNG bytes, sha256=${sha256(png)})`,
+      summary: `multimodal image supplied from ${image.originalWidth}x${image.originalHeight} PPM via nearest-neighbor rendering (${image.buffer.length} PNG bytes, sha256=${sha256(image.buffer)})`,
     };
   }
 
@@ -813,6 +821,7 @@ function evaluateAssertions(
   const storyWrites = accesses.filter((entry) => entry.action === 'write' && entry.path === paths.story);
   const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
   const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
+  const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
 
   return [
     assertion(
@@ -870,6 +879,11 @@ function evaluateAssertions(
       'credential_values_absent',
       secretViolations.length === 0,
       secretViolations.length === 0 ? 'No credential-shaped values found in generated text.' : secretViolations.join(', ')
+    ),
+    assertion(
+      'qdd_ids_absent_from_story',
+      !/\b(?:STUDY|TASK|ART)-\d{3}\b/.test(visibleStory),
+      'Visible story content must not expose QDD study, task, or artifact identifiers.'
     ),
   ];
 }
@@ -1057,6 +1071,7 @@ Apply a strict source-bound standard. Exact numeric transcription is not enough 
 - Methods details, sample structure, controls, assays, or availability statements absent from inspected sources;
 - a caption or callout for a panel, plot, label, encoding, or visual pattern that is not present in the directly viewed image. A report, filename, or table cannot substitute for comparing the actual image structure to the manuscript;
 - a complete citation or bibliography entry that you cannot verify against supplied literature evidence. Familiarity with a plausible publication is not verification. If no literature source or search tool is available, precise citation-needed anchors are acceptable but unsupported full citations are not.
+- a QDD study, task, artifact identifier, status, checklist, internal path, or provenance statement exposed anywhere in visible manuscript content, including Methods and availability statements.
 
 Judge all eight dimensions independently:
 1. cross_study_synthesis: whether the synthesis answers what the project established across studies, including support, refinement, redirection, or conflict, rather than dumping evidence or replaying execution order.
@@ -1064,7 +1079,7 @@ Judge all eight dimensions independently:
 3. evidence_and_claim_fidelity: whether values, statistical language, methods, scope, causal strength, and major claims match inspected outputs, including relevant finalized unpromoted outputs; fabricated or materially distorted evidence fails.
 4. figure_table_integration: whether figures/tables do argumentative work and their captions, callouts, panel structure, manuscript statements, and directly viewed content agree.
 5. gate_feedback_fidelity: whether Gate 1 and Gate 2 editorial feedback materially changed the contribution, emphasis, and organization without mechanical candidate selection.
-6. manuscript_completeness_and_hygiene: whether story.md is readable manuscript content with title, abstract, introduction, Results, discussion, methods, integrated figure/table captions, and no QDD IDs, status/checklist, metadata, or project-log prose.
+6. manuscript_completeness_and_hygiene: whether story.md is readable manuscript content with title, abstract, introduction, Results, discussion, methods, integrated figure/table captions, and no QDD IDs, internal paths, status/checklist, metadata, or project-log prose.
 7. citation_discipline: whether literature-dependent statements have honest citation locations and every full citation is verifiable from an inspected literature source. Explicit citation-needed anchors are acceptable in this story-stage evaluation when no literature source was supplied.
 8. omission_and_balance: whether selection supports a clear positive story without omitting evidence in a way that makes the contribution materially misleading.
 
