@@ -14,9 +14,9 @@ navigation_files:
   - context/memory/STUDY-001.md
   - context/memory/STUDY-002.md
   - context/memory/STUDY-003.md
-underlying_outputs:
-  - studies/STUDY-001/output/reports/screening-report.md
-  - studies/STUDY-001/output/tables/screening.csv
+evidence_outputs:
+  - artifacts/reports/ART-001-screening-report.md
+  - artifacts/tables/ART-002-screening.csv
   - studies/STUDY-002/output/reports/operando-report.md
   - studies/STUDY-002/output/tables/state-selectivity.tsv
   - studies/STUDY-003/output/reports/cycling-report.md
@@ -28,7 +28,7 @@ figures:
   - studies/STUDY-003/output/figures/cycle-stability.ppm
 gates:
   gate1_feedback: >-
-    Gate 1 feedback: a static catalyst-ranking paper would miss the strongest contribution. Emphasize that operando state conversion is associated with the selectivity/deactivation trade-off and that pulsed regeneration turns this dynamic model into a sustained operating strategy, without claiming an unsupported atomic mechanism. De-emphasize the screening leaderboard. Explain the new Results logic and wait without writing story.md.
+    Gate 1 feedback: a static catalyst-ranking paper would miss the strongest contribution. First revise research_synthesis.md itself so it describes the actual unlabelled color-band raster and uses association rather than causal or mechanistic language. Emphasize that operando state conversion is associated with the selectivity/deactivation trade-off and that pulsed regeneration turns this dynamic model into a sustained operating strategy, without claiming an unsupported atomic mechanism. De-emphasize the screening leaderboard. Explain the new Results logic and wait without writing story.md.
   gate1_acceptance: >-
     Gate 1 accepted. Write the complete story as prediction of a promising precursor, operando evidence that its active state is transient, and reactor validation that state cycling sustains performance.
   gate2_feedback: >-
@@ -37,6 +37,6 @@ gates:
     Gate 2 accepted after revision. Stop before TeX rendering.
 reviewer_focus:
   - Check that the static calculation is presented as precursor screening, not proof of the active catalyst state.
-  - Check the reported 82 to 61 percent continuous-mode decline and 80 percent tenth-cycle pulsed performance against underlying outputs.
+  - Check the reported 82 to 61 percent continuous-mode decline and 80 percent tenth-cycle pulsed performance against required evidence outputs.
   - Check that the cycling figure caption and prose reflect repeated recovery in pulsed mode rather than monotonic stability.
   - Check that the provided figure is one unpanelled 10 by 6 color raster with repeated green-yellow pulsed bands and red declining bands; it has no axes, labels, trajectories, or open and filled symbols.

@@ -9,7 +9,7 @@ export interface ConcludeEvalCase {
         notes: string;
     };
     navigation_files: string[];
-    underlying_outputs: string[];
+    evidence_outputs: string[];
     unpromoted_finalized_outputs: string[];
     figures: string[];
     gates: {

@@ -510,7 +510,7 @@ class ScriptedFakeEvalModel implements EvalModel {
       case 1:
         return this.evalCase.navigation_files.map((filePath) => tool('read_file', { path: filePath }));
       case 2:
-        return this.evalCase.underlying_outputs.map((filePath) => tool('read_file', { path: filePath }));
+        return this.evalCase.evidence_outputs.map((filePath) => tool('read_file', { path: filePath }));
       case 3:
         return this.evalCase.figures.map((filePath) => tool('view_image', { path: filePath }));
       case 4:
@@ -815,7 +815,7 @@ function evaluateAssertions(
   secretViolations: string[]
 ): ConcludeEvalAssertion[] {
   const accesses = conversation.accessLog;
-  const firstEvidenceIndex = accesses.findIndex((entry) => /^studies\/STUDY-\d{3}\/output\//.test(entry.path));
+  const firstEvidenceIndex = accesses.findIndex((entry) => evalCase.evidence_outputs.includes(entry.path));
   const evolutionIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path === 'evolution.yaml');
   const memoryIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path.startsWith('context/memory/'));
   const storyWrites = accesses.filter((entry) => entry.action === 'write' && entry.path === paths.story);
@@ -838,7 +838,7 @@ function evaluateAssertions(
     assertion(
       'navigation_before_underlying_evidence',
       firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex,
-      `evolution=${evolutionIndex}, memory=${memoryIndex}, first underlying output=${firstEvidenceIndex}`
+      `evolution=${evolutionIndex}, memory=${memoryIndex}, first required evidence=${firstEvidenceIndex}`
     ),
     assertion(
       'unpromoted_finalized_output_read',
@@ -855,11 +855,11 @@ function evaluateAssertions(
       evalCase.figures.join(', ')
     ),
     assertion(
-      'underlying_outputs_read',
-      evalCase.underlying_outputs.every((requiredPath) =>
+      'evidence_outputs_read',
+      evalCase.evidence_outputs.every((requiredPath) =>
         accesses.some((entry) => entry.action === 'read' && entry.path === requiredPath)
       ),
-      `${evalCase.underlying_outputs.length} required underlying outputs`
+      `${evalCase.evidence_outputs.length} required evidence outputs or artifacts`
     ),
     assertion(
       'synthesis_before_story',
@@ -1047,7 +1047,7 @@ class SemanticReviewConversation {
       content = [image.block, { type: 'text', text: image.summary }];
     } else if (toolUse.name === 'submit_semantic_review') {
       const requiredReads = [
-        ...this.evalCase.underlying_outputs,
+        ...this.evalCase.evidence_outputs,
         ...this.evalCase.unpromoted_finalized_outputs,
       ];
       const unread = requiredReads.filter((requiredPath) =>
@@ -1080,7 +1080,7 @@ This is a semantic protocol, not a scoring rubric. Never produce a numeric score
 Apply a strict source-bound standard. Exact numeric transcription is not enough when the manuscript invents an analysis, experimental detail, method, visual element, or strength of inference around that value. Treat each of the following as a major finding requiring revision:
 - statistical significance, equivalence, indistinguishability, reproducibility, or sufficiency language without the corresponding source analysis;
 - causal or necessity language such as determines, requires, explains, drives, or mechanistically gates when sources only show observational association, adjacency, or counterexamples;
-- Methods details, sample structure, controls, assays, or availability statements absent from inspected sources;
+- design or Methods details, specimen count or identity, measurement independence, matching, controls, assays, or availability statements absent from inspected sources, regardless of which manuscript section contains them;
 - a caption or callout for a panel, plot, label, encoding, or visual pattern that is not present in the directly viewed image. A report, filename, or table cannot substitute for comparing the actual image structure to the manuscript;
 - a complete citation or bibliography entry that you cannot verify against supplied literature evidence. Familiarity with a plausible publication is not verification. If no literature source or search tool is available, precise citation-needed anchors are acceptable but unsupported full citations are not.
 - a literature-dependent statement with neither a verified supporting citation nor an explicit citation-needed location.
@@ -1120,14 +1120,14 @@ async function runSemanticReview(options: {
     `Case: ${options.evalCase.id} - ${options.evalCase.name}`,
     `Research synthesis path: ${options.paths.synthesis}`,
     `Final story path: ${options.paths.story}`,
-    `Required underlying outputs: ${options.evalCase.underlying_outputs.join(', ')}`,
+    `Required evidence outputs and artifacts: ${options.evalCase.evidence_outputs.join(', ')}`,
     `Finalized unpromoted outputs: ${options.evalCase.unpromoted_finalized_outputs.join(', ')}`,
     `Figures requiring direct inspection: ${options.evalCase.figures.join(', ')}`,
     `Case-specific factual risks: ${options.evalCase.reviewer_focus.join(' | ')}`,
     `Gate history: ${JSON.stringify(options.conversation.gates)}`,
     `Behavior transcript: ${JSON.stringify(options.conversation.transcript)}`,
     `Story before Gate 2 revision:\n${options.storyBeforeRevision}`,
-    'Independently read the synthesis, final story, all listed underlying outputs, and view every listed figure. Then submit the protocol review.',
+    'Independently read the synthesis, final story, all listed evidence outputs and artifacts, and view every listed figure. Then submit the protocol review.',
   ].join('\n\n'));
   return { review, transcript: reviewer.transcript, accessLog: reviewer.accessLog };
 }

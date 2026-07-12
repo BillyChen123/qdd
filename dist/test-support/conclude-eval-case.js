@@ -40,7 +40,7 @@ function validateCase(raw) {
             notes: requireString(provenance.notes, 'provenance.notes'),
         },
         navigation_files: requireStrings(value.navigation_files, 'navigation_files'),
-        underlying_outputs: requireStrings(value.underlying_outputs, 'underlying_outputs'),
+        evidence_outputs: requireStrings(value.evidence_outputs, 'evidence_outputs'),
         unpromoted_finalized_outputs: requireStrings(value.unpromoted_finalized_outputs, 'unpromoted_finalized_outputs'),
         figures: requireStrings(value.figures, 'figures'),
         gates: {
@@ -87,7 +87,7 @@ export async function loadConcludeEvalCase(casePath) {
     }
     const requiredPaths = new Set([
         ...definition.navigation_files,
-        ...definition.underlying_outputs,
+        ...definition.evidence_outputs,
         ...definition.unpromoted_finalized_outputs,
         ...definition.figures,
     ]);

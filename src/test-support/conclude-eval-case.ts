@@ -15,7 +15,7 @@ export interface ConcludeEvalCase {
     notes: string;
   };
   navigation_files: string[];
-  underlying_outputs: string[];
+  evidence_outputs: string[];
   unpromoted_finalized_outputs: string[];
   figures: string[];
   gates: {
@@ -71,7 +71,7 @@ function validateCase(raw: unknown): ConcludeEvalCase {
       notes: requireString(provenance.notes, 'provenance.notes'),
     },
     navigation_files: requireStrings(value.navigation_files, 'navigation_files'),
-    underlying_outputs: requireStrings(value.underlying_outputs, 'underlying_outputs'),
+    evidence_outputs: requireStrings(value.evidence_outputs, 'evidence_outputs'),
     unpromoted_finalized_outputs: requireStrings(
       value.unpromoted_finalized_outputs,
       'unpromoted_finalized_outputs'
@@ -126,7 +126,7 @@ export async function loadConcludeEvalCase(casePath?: string): Promise<{
 
   const requiredPaths = new Set([
     ...definition.navigation_files,
-    ...definition.underlying_outputs,
+    ...definition.evidence_outputs,
     ...definition.unpromoted_finalized_outputs,
     ...definition.figures,
   ]);
