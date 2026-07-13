@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const REQUIRED_FILES = ['main.tex', 'references.bib', 'sn-jnl.cls', 'latexmkrc', 'bst/sn-nature.bst'];
 const REQUIRED_SECTIONS = ['Introduction', 'Results', 'Discussion', 'Methods'];
 const PLACEHOLDER = /\b(?:TODO|TBD|citation needed)\b|待补/i;
+const BIBTEX_PLACEHOLDER = /\b(?:pending|provisional|unverified|author follow-up)\b|=\s*\{\s*\}/i;
 
 export interface TexCompiler {
   kind: 'latexmk' | 'tectonic' | 'pdflatex';
@@ -118,9 +119,12 @@ export async function validateManuscriptPackage(packagePath: string, texCompiler
   const tex = await fs.readFile(path.join(packageDir, 'main.tex'), 'utf-8');
   const bibtex = await fs.readFile(path.join(packageDir, 'references.bib'), 'utf-8');
   if (PLACEHOLDER.test(tex) || PLACEHOLDER.test(bibtex)) throw new Error('Manuscript validation failed: drafting placeholder remains.');
+  if (BIBTEX_PLACEHOLDER.test(bibtex)) throw new Error('Manuscript validation failed: references.bib contains an unresolved or incomplete entry.');
   requireMatch(tex, /\\documentclass\[pdflatex,sn-nature\]\{sn-jnl\}/, 'main.tex must use the sn-nature document class');
   requireMatch(tex, /\\title\{\s*[^}\s][\s\S]*?\}/, 'title is empty');
-  requireMatch(tex, /\\abstract\{\s*[^}\s][\s\S]*?\}/, 'abstract is empty');
+  const hasAbstractMacro = /\\abstract\{\s*[^}\s][\s\S]*?\}/.test(tex);
+  const hasAbstractSection = /\\section\*\{Abstract\}\s*\n\s*[^\s]/.test(tex);
+  if (!hasAbstractMacro && !hasAbstractSection) throw new Error('Manuscript validation failed: abstract is empty.');
   requireMatch(tex, /\\keywords\{\s*[^}\s][\s\S]*?\}/, 'keywords are empty');
   if (/\\(?:author|affil)\b/.test(tex)) throw new Error('Manuscript validation failed: author or affiliation block is present.');
   validateBalancedEnvironments(tex);
@@ -128,6 +132,10 @@ export async function validateManuscriptPackage(packagePath: string, texCompiler
   const sections = [...tex.matchAll(/\\section\{([^}]+)\}/g)].map((match) => match[1]!);
   if (sections.join('\0') !== REQUIRED_SECTIONS.join('\0')) {
     throw new Error(`Manuscript validation failed: required section order is ${REQUIRED_SECTIONS.join(', ')}.`);
+  }
+  const abstractIndex = hasAbstractMacro ? tex.indexOf('\\abstract') : tex.indexOf('\\section*{Abstract}');
+  if (abstractIndex > tex.indexOf('\\section{Introduction}')) {
+    throw new Error('Manuscript validation failed: Abstract must precede Introduction.');
   }
   const bibliographyIndex = tex.indexOf('\\bibliography{references}');
   if (bibliographyIndex < 0 || bibliographyIndex < tex.indexOf('\\section{Methods}')) {

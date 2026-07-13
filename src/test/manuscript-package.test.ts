@@ -58,6 +58,18 @@ test('mechanically validates an agent-authored Nature package without rendering 
   await fs.access(path.join(packageDir, 'manuscript-validation.json'));
 });
 
+test('accepts a nonempty unnumbered Abstract section in an otherwise compliant Nature package', async () => {
+  const packageDir = await createPackage();
+  const mainTex = path.join(packageDir, 'main.tex');
+  const tex = await fs.readFile(mainTex, 'utf-8');
+  await fs.writeFile(mainTex, tex.replace(
+    '\\abstract{An abstract with a verified citation-free summary.}',
+    '\\section*{Abstract}\nAn abstract with a verified citation-free summary.'
+  ));
+  const report = await validateManuscriptPackage(packageDir, null);
+  assert.equal(report.checks.tex_structure, 'passed');
+});
+
 test('rejects placeholders and floats before the bibliography', async () => {
   const packageDir = await createPackage();
   const mainTex = path.join(packageDir, 'main.tex');
@@ -69,4 +81,11 @@ test('rejects placeholders and floats before the bibliography', async () => {
     .replace('\\bibliography{references}\n\\begin{figure}', '\\begin{figure}')
     .replace('\\end{figure}\n\\end{document}', '\\end{figure}\n\\bibliography{references}\n\\end{document}'));
   await assert.rejects(validateManuscriptPackage(packageDir, null), /figures and tables must follow/);
+});
+
+test('rejects unresolved or incomplete BibTeX entries', async () => {
+  const packageDir = await createPackage();
+  const bibliography = path.join(packageDir, 'references.bib');
+  await fs.writeFile(bibliography, '@article{source2024, author={}, title={Verified support}, journal={Journal}, year={2024}, note={PMID pending verification}}\n');
+  await assert.rejects(validateManuscriptPackage(packageDir, null), /unresolved or incomplete entry/);
 });

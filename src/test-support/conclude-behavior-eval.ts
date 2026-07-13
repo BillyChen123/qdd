@@ -300,6 +300,24 @@ const EVAL_TOOLS: Tool[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'search_crossref',
+    description: 'Search Crossref for a title, dataset accession, or focused proposition when PubMed does not resolve an anchor. Verify returned title, authors, venue, year, and DOI before writing BibTeX.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Focused bibliographic query.' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_geo',
+    description: 'Look up a GEO series accession and return authoritative dataset metadata including linked PubMed IDs when available.',
+    input_schema: {
+      type: 'object',
+      properties: { accession: { type: 'string', description: 'GEO series accession such as GSE329625.' } },
+      required: ['accession'],
+    },
+  },
 ];
 
 const SEMANTIC_REVIEW_TOOLS: Tool[] = [
@@ -590,6 +608,55 @@ async function searchPubmed(query: string): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchJson(url: URL): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Literature service HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchCrossref(query: string): Promise<string> {
+  const url = new URL('https://api.crossref.org/works');
+  url.searchParams.set('query.bibliographic', query);
+  url.searchParams.set('rows', '5');
+  const response = await fetchJson(url) as { message?: { items?: Array<Record<string, unknown>> } };
+  const items = response.message?.items ?? [];
+  if (items.length === 0) return `Crossref returned no records for: ${query}`;
+  return items.map((item) => {
+    const authors = Array.isArray(item.author)
+      ? (item.author as Array<{ given?: string; family?: string }>).map((author) => [author.given, author.family].filter(Boolean).join(' ')).join(', ')
+      : '';
+    const published = Array.isArray((item.published as { 'date-parts'?: number[][] } | undefined)?.['date-parts'])
+      ? (item.published as { 'date-parts': number[][] })['date-parts'][0]?.join('-')
+      : '';
+    return [`Title: ${(item.title as string[] | undefined)?.[0] ?? ''}`, `Authors: ${authors}`, `Venue: ${String(item['container-title'] instanceof Array ? item['container-title'][0] : '')}`, `Published: ${published}`, `DOI: ${String(item.DOI ?? '')}`].join('\n');
+  }).join('\n\n');
+}
+
+async function searchGeo(accession: string): Promise<string> {
+  const normalized = accession.trim().toUpperCase();
+  if (!/^GSE\d+$/.test(normalized)) throw new Error(`Invalid GEO series accession: ${accession}`);
+  const searchUrl = new URL('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi');
+  searchUrl.searchParams.set('db', 'gds');
+  searchUrl.searchParams.set('retmode', 'json');
+  searchUrl.searchParams.set('term', `${normalized}[ACCN]`);
+  const search = await fetchJson(searchUrl) as { esearchresult?: { idlist?: string[] } };
+  const ids = search.esearchresult?.idlist ?? [];
+  if (ids.length === 0) return `GEO returned no record for: ${normalized}`;
+  const summaryUrl = new URL('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi');
+  summaryUrl.searchParams.set('db', 'gds');
+  summaryUrl.searchParams.set('retmode', 'json');
+  summaryUrl.searchParams.set('id', ids[0]!);
+  const summary = await fetchJson(summaryUrl) as { result?: Record<string, unknown> & { uids?: string[] } };
+  const record = summary.result?.[ids[0]!] as Record<string, unknown> | undefined;
+  return [`GEO accession: ${normalized}`, `Title: ${String(record?.title ?? '')}`, `Summary: ${String(record?.summary ?? '')}`, `PubMed IDs: ${String(record?.pubmedids ?? '')}`, `Submission date: ${String(record?.pdat ?? '')}`].join('\n');
 }
 
 class AnthropicEvalModel implements EvalModel {
@@ -916,6 +983,19 @@ class EvalConversation {
           if (!query) throw new Error('PubMed query is required.');
           this.addAccess('literature_search', query);
           content = await searchPubmed(query);
+          break;
+        }
+        case 'search_crossref': {
+          const query = String(toolUse.input.query ?? '').trim();
+          if (!query) throw new Error('Crossref query is required.');
+          this.addAccess('literature_search', `Crossref: ${query}`);
+          content = await searchCrossref(query);
+          break;
+        }
+        case 'search_geo': {
+          const accession = String(toolUse.input.accession ?? '').trim();
+          this.addAccess('literature_search', `GEO: ${accession}`);
+          content = await searchGeo(accession);
           break;
         }
         default:
@@ -1937,7 +2017,7 @@ export async function runConcludeManuscriptEval(options: RunConcludeManuscriptEv
     `先读取 ${synthesis}、${story} 及支持所选证据的原始 study outputs；从已接受 story 的精确 citation-needed anchors 进行真实文献检索并核验。`,
     `在 ${finalPaper}/ 生成独立 English Nature package：main.tex、references.bib、sn-jnl.cls、latexmkrc、bst/sn-nature.bst、figures/。使用 copy_nature_template 复制三个模板资产，使用 copy_project_file 复制所选 figure assets。`,
     'main.tex 必须使用 \\documentclass[pdflatex,sn-nature]{sn-jnl}，保留 title、keywords、bibliography，省略 author/affiliation，仅含 Abstract、Introduction、Results、Discussion、Methods；bibliography 在 Methods 后，所有 figure/table environments 在 bibliography 后。',
-    '这是完整英文初稿写作，而非 story 的逐段转换：可根据 synthesis 和原始 sources 扩写，但不得改变接受的中心贡献、Results logic、图表/证据选择、claim strength 或结论。不要保留 TODO、TBD、citation needed、待补或空 section。无 pixel vision 时仅依据 captions、reports、study outputs 和 provenance；不要声称未检验像素细节。写完全部文件后用一条完成消息停止。',
+    '这是完整英文初稿写作，而非 story 的逐段转换：可根据 synthesis 和原始 sources 扩写，但不得改变接受的中心贡献、Results logic、图表/证据选择、claim strength 或结论。不要保留 TODO、TBD、citation needed、待补或空 section。references.bib 不得包含 pending、provisional、unverified、author follow-up 或任何空字段；不能核验的非必要命题必须删除或保守改写。已有 final_paper 时，将其视为无效草稿并覆盖其中不合格的文件。无 pixel vision 时仅依据 captions、reports、study outputs 和 provenance；不要声称未检验像素细节。写完全部文件后用一条完成消息停止。',
   ].join(' '));
 
   let manuscriptValidation: ManuscriptPackageReport | null = null;
