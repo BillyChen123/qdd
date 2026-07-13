@@ -29,7 +29,7 @@ agent:
   max_turns: 20
   max_retry_backoff_ms: 300000
 codex:
-  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.6-sol"' --config model_reasoning_effort=xhigh app-server
+  command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.6-terra"' --config model_reasoning_effort=high app-server
   approval_policy: never
   read_timeout_ms: 30000
   thread_sandbox: danger-full-access
