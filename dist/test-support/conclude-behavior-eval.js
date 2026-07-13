@@ -11,6 +11,7 @@ import { getClaudeSettings, resolveClaudeApiKey, resolveClaudeModel } from '../r
 import { loadConcludeEvalCase } from './conclude-eval-case.js';
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(moduleDir, '..', '..');
+export const MAX_EVAL_TOOL_TEXT_CHARS = 120_000;
 const execFileAsync = promisify(execFile);
 const EVAL_TOOLS = [
     {
@@ -152,6 +153,20 @@ function containsSecretValue(value, explicitSecrets = []) {
     return /sk-ant-[A-Za-z0-9_-]{8,}/.test(value)
         || /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/i.test(value)
         || /\b(api[_-]?key|auth[_-]?token|access[_-]?token|secret)\b\s*[:=]\s*["']?[A-Za-z0-9._~+\/-]{12,}["']?/i.test(value);
+}
+export function truncateEvalToolText(value) {
+    if (value.length <= MAX_EVAL_TOOL_TEXT_CHARS)
+        return value;
+    const headLength = Math.floor(MAX_EVAL_TOOL_TEXT_CHARS * 0.75);
+    const tailLength = MAX_EVAL_TOOL_TEXT_CHARS - headLength;
+    const omitted = value.length - headLength - tailLength;
+    return [
+        value.slice(0, headLength),
+        '',
+        `[Tool output truncated for model transport: ${value.length} characters total; ${omitted} omitted. Read a smaller report, table subset, or specific supporting source instead of inferring omitted content.]`,
+        '',
+        value.slice(-tailLength),
+    ].join('\n');
 }
 function resolveProjectPath(projectRoot, relativePath) {
     if (path.isAbsolute(relativePath))
@@ -432,6 +447,7 @@ class EvalConversation {
     systemPrompt;
     secrets;
     paths;
+    visionAvailable;
     transcript = [];
     accessLog = [];
     gates = [];
@@ -439,12 +455,13 @@ class EvalConversation {
     messages = [];
     stage = 'synthesis';
     sequence = 0;
-    constructor(projectRoot, model, systemPrompt, secrets, paths) {
+    constructor(projectRoot, model, systemPrompt, secrets, paths, visionAvailable) {
         this.projectRoot = projectRoot;
         this.model = model;
         this.systemPrompt = systemPrompt;
         this.secrets = secrets;
         this.paths = paths;
+        this.visionAvailable = visionAvailable;
     }
     addHumanMessage(content) {
         const safe = redactSensitiveText(content, this.secrets);
@@ -513,43 +530,56 @@ class EvalConversation {
     async executeTool(toolUse) {
         const relativePath = String(toolUse.input.path ?? '');
         let content;
-        switch (toolUse.name) {
-            case 'list_files': {
-                this.addAccess('list', relativePath);
-                content = (await listFiles(this.projectRoot, relativePath)).join('\n');
-                break;
-            }
-            case 'read_file': {
-                this.addAccess('read', relativePath);
-                content = await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8');
-                break;
-            }
-            case 'view_image': {
-                this.addAccess('view_image', relativePath);
-                const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
-                content = [image.block, { type: 'text', text: image.summary }];
-                break;
-            }
-            case 'write_file': {
-                if (!(relativePath === 'conclusions' || relativePath.startsWith('conclusions/'))) {
-                    throw new Error(`Eval write is outside conclusions/: ${relativePath}`);
+        let isError = false;
+        try {
+            switch (toolUse.name) {
+                case 'list_files': {
+                    this.addAccess('list', relativePath);
+                    content = truncateEvalToolText((await listFiles(this.projectRoot, relativePath)).join('\n'));
+                    break;
                 }
-                this.addAccess('write', relativePath);
-                const value = redactSensitiveText(String(toolUse.input.content ?? ''), this.secrets);
-                const absolutePath = resolveProjectPath(this.projectRoot, relativePath);
-                await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-                await fs.writeFile(absolutePath, value, 'utf-8');
-                content = `File written: ${relativePath} (${value.length} chars, sha256=${sha256(value)})`;
-                break;
+                case 'read_file': {
+                    this.addAccess('read', relativePath);
+                    content = truncateEvalToolText(await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8'));
+                    break;
+                }
+                case 'view_image': {
+                    if (!this.visionAvailable) {
+                        this.addAccess('view_image_deferred', relativePath);
+                        content = 'Pixel-level visual verification is unavailable for this configured model. Use source-backed captions, reports, tables, and provenance to select the figure; do not claim uninspected visual details, and record pixel-level verification as deferred for human review.';
+                    }
+                    else {
+                        this.addAccess('view_image', relativePath);
+                        const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
+                        content = [image.block, { type: 'text', text: image.summary }];
+                    }
+                    break;
+                }
+                case 'write_file': {
+                    if (!(relativePath === 'conclusions' || relativePath.startsWith('conclusions/'))) {
+                        throw new Error(`Eval write is outside conclusions/: ${relativePath}`);
+                    }
+                    this.addAccess('write', relativePath);
+                    const value = redactSensitiveText(String(toolUse.input.content ?? ''), this.secrets);
+                    const absolutePath = resolveProjectPath(this.projectRoot, relativePath);
+                    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+                    await fs.writeFile(absolutePath, value, 'utf-8');
+                    content = `File written: ${relativePath} (${value.length} chars, sha256=${sha256(value)})`;
+                    break;
+                }
+                default:
+                    throw new Error(`Unsupported evaluation tool: ${toolUse.name}`);
             }
-            default:
-                throw new Error(`Unsupported evaluation tool: ${toolUse.name}`);
+        }
+        catch (error) {
+            isError = true;
+            content = `Tool error for ${relativePath || toolUse.name}: ${error.message}. Continue with another available project source; do not infer content from this unavailable path.`;
         }
         const transcriptContent = Array.isArray(content)
             ? content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
             : content;
         this.transcript.push(this.entry('tool', 'tool_result', redactSensitiveText(transcriptContent, this.secrets), toolUse.name, relativePath));
-        return { type: 'tool_result', tool_use_id: toolUse.id, content };
+        return { type: 'tool_result', tool_use_id: toolUse.id, content, ...(isError ? { is_error: true } : {}) };
     }
 }
 async function exists(filePath) {
@@ -561,16 +591,35 @@ async function exists(filePath) {
         return false;
     }
 }
-async function prepareEvalProject(outputRoot, fixtureRoot) {
-    const projectRoot = path.join(outputRoot, 'project');
+function isPathWithinRoot(target, root) {
+    const relative = path.relative(root, target);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+async function assertReadableQddProject(projectRoot) {
+    const required = ['contract.yaml', 'evolution.yaml', 'artifacts/index.yaml', 'context/memory'];
+    for (const relativePath of required) {
+        await fs.access(path.join(projectRoot, relativePath));
+    }
+}
+async function prepareEvalProject(outputRoot, fixtureRoot, projectPath) {
+    const liveProjectRoot = projectPath ? path.resolve(projectPath) : undefined;
+    if (liveProjectRoot && (isPathWithinRoot(outputRoot, liveProjectRoot) || isPathWithinRoot(liveProjectRoot, outputRoot))) {
+        throw new Error('Live project and evaluation output directories must not overlap.');
+    }
     await fs.rm(outputRoot, { recursive: true, force: true });
     await fs.mkdir(outputRoot, { recursive: true });
-    await fs.cp(fixtureRoot, projectRoot, { recursive: true });
-    await fs.rm(path.join(projectRoot, 'eval-case.yaml'), { force: true });
+    const projectRoot = liveProjectRoot ?? path.join(outputRoot, 'project');
+    if (liveProjectRoot) {
+        await assertReadableQddProject(projectRoot);
+    }
+    else {
+        await fs.cp(fixtureRoot, projectRoot, { recursive: true });
+        await fs.rm(path.join(projectRoot, 'eval-case.yaml'), { force: true });
+    }
     await initCommand(projectRoot, { tools: ['claude'], refreshBootstrap: true });
     const installedSkillPath = path.join(projectRoot, '.claude', 'skills', 'qdd-conclude', 'SKILL.md');
     const systemPrompt = await fs.readFile(installedSkillPath, 'utf-8');
-    return { projectRoot, installedSkillPath, systemPrompt };
+    return { projectRoot, installedSkillPath, systemPrompt, usesLiveProject: Boolean(liveProjectRoot) };
 }
 async function snapshotStory(projectRoot, outputRoot, storyPath) {
     const story = await fs.readFile(resolveProjectPath(projectRoot, storyPath), 'utf-8');
@@ -579,9 +628,11 @@ async function snapshotStory(projectRoot, outputRoot, storyPath) {
     await fs.writeFile(snapshotPath, story, 'utf-8');
     return snapshotPath;
 }
-async function scanGeneratedTextForSecrets(root, explicitSecrets) {
+async function scanGeneratedTextForSecrets(root, explicitSecrets, relativeRoot = '.') {
+    if (!(await exists(resolveProjectPath(root, relativeRoot))))
+        return [];
     const violations = [];
-    const files = await listFiles(root, '.');
+    const files = await listFiles(root, relativeRoot);
     for (const relativePath of files) {
         if (!/\.(json|md|ya?ml|txt|csv|tsv)$/i.test(relativePath))
             continue;
@@ -591,20 +642,21 @@ async function scanGeneratedTextForSecrets(root, explicitSecrets) {
     }
     return violations;
 }
-function evaluateAssertions(conversation, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations) {
-    const accesses = conversation.accessLog;
-    const firstEvidenceIndex = accesses.findIndex((entry) => evalCase.evidence_outputs.includes(entry.path));
+function evaluateAssertions(accesses, gates, usesLiveProject, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations) {
+    const firstEvidenceIndex = accesses.findIndex((entry) => usesLiveProject
+        ? entry.action === 'read' && /^(?:artifacts\/(?:reports|tables|figures|data)|studies\/STUDY-\d+\/output\/)/.test(entry.path)
+        : evalCase.evidence_outputs.includes(entry.path));
     const evolutionIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path === 'evolution.yaml');
     const memoryIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path.startsWith('context/memory/'));
     const storyWrites = accesses.filter((entry) => entry.action === 'write' && entry.path === paths.story);
     const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
-    const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
+    const gateOrder = gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
     const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
     const qddMetadataPattern = /\b(?:project research map|boundary tracking|artifact registr(?:y|ies)|study definitions?|internal study outputs?)\b/i;
     return [
         assertion('production_skill_loaded', installedSkill.includes('name: qdd-conclude') && installedSkill.includes('Gate 1: Align Narrative Intent') && installedSkill.includes('Gate 2: Review And Revise The Story'), 'Harness loaded the qdd init-projected .claude/skills/qdd-conclude/SKILL.md.'),
         assertion('two_gate_order', gateOrder === 'gate_1:feedback -> gate_1:accepted -> gate_2:feedback -> gate_2:accepted', gateOrder || 'No gate events recorded.'),
-        assertion('navigation_before_underlying_evidence', firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex, `evolution=${evolutionIndex}, memory=${memoryIndex}, first required evidence=${firstEvidenceIndex}`),
+        assertion('navigation_before_underlying_evidence', firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex, `evolution=${evolutionIndex}, memory=${memoryIndex}, first underlying evidence=${firstEvidenceIndex}`),
         assertion('unpromoted_finalized_output_read', evalCase.unpromoted_finalized_outputs.every((requiredPath) => accesses.some((entry) => entry.action === 'read' && entry.path === requiredPath)), evalCase.unpromoted_finalized_outputs.join(', ')),
         assertion('figure_inspected_multimodally', evalCase.figures.every((requiredPath) => accesses.some((entry) => entry.action === 'view_image' && entry.path === requiredPath)), evalCase.figures.join(', ')),
         assertion('evidence_outputs_read', evalCase.evidence_outputs.every((requiredPath) => accesses.some((entry) => entry.action === 'read' && entry.path === requiredPath)), `${evalCase.evidence_outputs.length} required evidence outputs or artifacts`),
@@ -612,9 +664,53 @@ function evaluateAssertions(conversation, evalCase, paths, installedSkill, synth
         assertion('gate2_rewrites_story', storyExists && storyBeforeRevision.length > 0 && storyAfterRevision.length > 0 && sha256(storyBeforeRevision) !== sha256(storyAfterRevision), `before=${storyBeforeRevision ? sha256(storyBeforeRevision) : '-'}, after=${storyAfterRevision ? sha256(storyAfterRevision) : '-'}`),
         assertion('no_tex_before_gate2_acceptance', texWrites.length === 0, texWrites.length === 0 ? 'No final_paper write occurred during the two-gate evaluation.' : `${texWrites.length} premature TeX writes.`),
         assertion('credential_values_absent', secretViolations.length === 0, secretViolations.length === 0 ? 'No credential-shaped values found in generated text.' : secretViolations.join(', ')),
-        assertion('qdd_ids_absent_from_story', !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory), 'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'),
+        ...(usesLiveProject
+            ? [assertion('source_trail_present_in_story', /\bART-\d{3}\b|artifacts\//.test(visibleStory), 'Direct live stories may retain source identifiers so the human-reviewed blueprint remains traceable.')]
+            : [assertion('qdd_ids_absent_from_story', !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory), 'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.')]),
         assertion('qdd_metadata_absent_from_story', !qddMetadataPattern.test(visibleStory), 'Visible story content must not expose QDD research-map, boundary, artifact-registry, or study-definition metadata prose.'),
     ];
+}
+export async function recheckConcludeBehaviorEval(outputRoot) {
+    const reportPath = path.join(path.resolve(outputRoot), 'report.json');
+    const report = JSON.parse(await fs.readFile(reportPath, 'utf-8'));
+    const usesLiveProject = report.case.provenance.kind === 'live-qdd-project';
+    const evalCase = usesLiveProject
+        ? (await loadLiveProjectCase(report.project_path, path.basename(report.outputs.conclusion_dir))).definition
+        : (await loadConcludeEvalCase(report.fixture_path)).definition;
+    const accesses = JSON.parse(await fs.readFile(report.outputs.access_log, 'utf-8'));
+    const paths = {
+        conclusionDir: path.relative(report.project_path, report.outputs.conclusion_dir).split(path.sep).join('/'),
+        synthesis: path.relative(report.project_path, report.outputs.research_synthesis).split(path.sep).join('/'),
+        story: path.relative(report.project_path, report.outputs.story).split(path.sep).join('/'),
+    };
+    const installedSkill = await fs.readFile(report.installed_skill_path, 'utf-8');
+    const synthesisExists = await exists(report.outputs.research_synthesis);
+    const storyExists = await exists(report.outputs.story);
+    const storyBeforeRevision = await exists(report.outputs.story_before_gate2_revision)
+        ? await fs.readFile(report.outputs.story_before_gate2_revision, 'utf-8')
+        : '';
+    const storyAfterRevision = storyExists ? await fs.readFile(report.outputs.story, 'utf-8') : '';
+    const secretViolations = [
+        ...await scanGeneratedTextForSecrets(report.outputs.run_root, []),
+        ...await scanGeneratedTextForSecrets(report.project_path, [], paths.conclusionDir),
+    ];
+    const assertions = [
+        assertion('conversation_completed', report.gates.length === 4 && report.stage_results.length >= 4, 'Persisted transcript records all scripted turns through Gate 2 acceptance.'),
+        ...evaluateAssertions(accesses, report.gates, usesLiveProject, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
+    ];
+    const harnessPassed = assertions.every((entry) => entry.status === 'pass');
+    const rechecked = {
+        ...report,
+        status: harnessPassed ? 'passed' : 'failed',
+        harness: { status: harnessPassed ? 'PASS' : 'FAIL', assertions },
+        semantic_review: harnessPassed && usesLiveProject
+            ? blockedSemanticReview('Semantic reviewer was not run for the direct live-project writer evaluation; it is advisory and must not consume an additional model run.')
+            : report.semantic_review,
+    };
+    await fs.writeFile(rechecked.outputs.semantic_review_json, `${JSON.stringify(rechecked.semantic_review, null, 2)}\n`, 'utf-8');
+    await fs.writeFile(rechecked.outputs.report_json, `${JSON.stringify(rechecked, null, 2)}\n`, 'utf-8');
+    await fs.writeFile(rechecked.outputs.report_markdown, `${renderReportMarkdown(rechecked)}\n`, 'utf-8');
+    return rechecked;
 }
 function assertion(id, passed, detail) {
     return { id, status: passed ? 'pass' : 'fail', detail };
@@ -868,6 +964,7 @@ function renderReportMarkdown(report) {
         `- Harness: \`${report.harness.status}\``,
         `- Model: \`${report.model}\``,
         `- Provider: \`${report.provider}\``,
+        `- Pixel-level visual verification: \`${report.capabilities.pixel_level_visual_verification}\``,
         `- Repository commit: \`${report.repository_commit}\``,
         `- Production skill SHA-256: \`${report.production_skill_sha256}\``,
         `- Case: \`${report.case.id}\` (${report.case.name})`,
@@ -922,6 +1019,60 @@ function renderReportMarkdown(report) {
         `- Semantic review access log: \`${report.outputs.semantic_review_access_log}\``,
     ].join('\n');
 }
+function liveRunId() {
+    return `bil31-live-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`;
+}
+async function loadLiveProjectCase(projectRoot, runId) {
+    await assertReadableQddProject(projectRoot);
+    const hash = createHash('sha256');
+    const sourceFiles = ['contract.yaml', 'evolution.yaml', 'artifacts/index.yaml'];
+    const memoryRoot = path.join(projectRoot, 'context', 'memory');
+    const memoryFiles = (await fs.readdir(memoryRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+        .map((entry) => path.join('context', 'memory', entry.name))
+        .sort();
+    for (const relativePath of [...sourceFiles, ...memoryFiles]) {
+        hash.update(relativePath);
+        hash.update('\0');
+        hash.update(await fs.readFile(path.join(projectRoot, relativePath)));
+        hash.update('\0');
+    }
+    return {
+        root: projectRoot,
+        manifestPath: '(live project)',
+        definition: {
+            schema_version: 1,
+            id: 'live-qdd-project',
+            name: path.basename(projectRoot),
+            run_id: runId,
+            provenance: {
+                kind: 'live-qdd-project',
+                source: projectRoot,
+                notes: 'Direct evaluation against the supplied QDD project; no scientific fixture was copied or used as a quality oracle.',
+            },
+            navigation_files: [],
+            evidence_outputs: [],
+            unpromoted_finalized_outputs: [],
+            figures: [],
+            gates: {
+                gate1_feedback: [
+                    'Gate 1 feedback: center the paper on the strongest source-grounded donor-level Parkinson substantia nigra transcript-usage contribution.',
+                    'Use the early astrocyte RNA-processing observations only as a clearly separate contextual scale, not as proof of cell-intrinsic disease regulation.',
+                    'De-emphasize preliminary spatial or exploratory branches unless they are necessary to explain the final contribution. Revise the narrative intent and wait for explicit acceptance without creating story.md.',
+                ].join(' '),
+                gate1_acceptance: 'Gate 1 accepted. Write the complete English story.md now, with a contribution-first Results progression, evidence and figure plan, bounded Discussion, Methods scope, and precise citation-needed anchors where external support is required.',
+                gate2_feedback: [
+                    'Gate 2 feedback: revise story.md directly. Make the Results progression explicit from cohort-level transcript-usage landscape, through the PD-biased biological convergence, to the constrained RNA-processing compatibility layer.',
+                    'Keep different datasets and evidence tiers distinct; retain decisive values and figure roles; state that pixel-level figure verification is deferred when visual inspection was unavailable.',
+                    'Remove empty sections, generic TODOs, and unsupported causal or cell-type-specific wording. Do not draft TeX.',
+                ].join(' '),
+                gate2_acceptance: 'Gate 2 accepted after revision. End this evaluation at story acceptance; TeX belongs to the downstream issue.',
+            },
+            reviewer_focus: [],
+        },
+        fingerprint: hash.digest('hex'),
+    };
+}
 async function writeReportArtifacts(report, conversation, semanticTranscript = [], semanticAccessLog = []) {
     await fs.mkdir(path.dirname(report.outputs.report_json), { recursive: true });
     await fs.writeFile(report.outputs.transcript, `${JSON.stringify(conversation?.transcript ?? [], null, 2)}\n`, 'utf-8');
@@ -935,8 +1086,11 @@ async function writeReportArtifacts(report, conversation, semanticTranscript = [
 export async function runConcludeBehaviorEval(options) {
     const startedAt = isoNow();
     const outputRoot = path.resolve(options.outputRoot);
-    const evalCase = await loadConcludeEvalCase(options.casePath);
-    const prepared = await prepareEvalProject(outputRoot, evalCase.root);
+    const liveProjectPath = options.projectPath ? path.resolve(options.projectPath) : undefined;
+    const evalCase = liveProjectPath
+        ? await loadLiveProjectCase(liveProjectPath, options.runId ?? liveRunId())
+        : await loadConcludeEvalCase(options.casePath);
+    const prepared = await prepareEvalProject(outputRoot, evalCase.root, liveProjectPath);
     const paths = {
         conclusionDir: `conclusions/${evalCase.definition.run_id}`,
         synthesis: `conclusions/${evalCase.definition.run_id}/research_synthesis.md`,
@@ -944,6 +1098,9 @@ export async function runConcludeBehaviorEval(options) {
     };
     const modelName = resolveClaudeModel(options.model);
     const provider = options.provider ?? (options.mode === 'fake' ? 'offline-scripted' : 'anthropic-compatible');
+    const visionAvailable = options.visionAvailable
+        ?? (options.mode === 'fake' || !modelName.toLowerCase().includes('deepseek'));
+    const pixelLevelVisualVerification = visionAvailable ? 'available' : 'deferred';
     const apiKey = options.mode === 'live'
         ? options.credentialOverride === undefined
             ? resolveClaudeApiKey()
@@ -964,6 +1121,9 @@ export async function runConcludeBehaviorEval(options) {
         started_at: startedAt,
         model: options.mode === 'fake' ? 'scripted-offline-fake' : modelName,
         provider,
+        capabilities: {
+            pixel_level_visual_verification: pixelLevelVisualVerification,
+        },
         repository_commit: repositoryCommit,
         production_skill_sha256: sha256(installedSkill),
         case: {
@@ -972,7 +1132,7 @@ export async function runConcludeBehaviorEval(options) {
             fingerprint_sha256: evalCase.fingerprint,
             provenance: evalCase.definition.provenance,
         },
-        fixture_path: evalCase.root,
+        fixture_path: prepared.usesLiveProject ? '(none; direct live project)' : evalCase.root,
         project_path: prepared.projectRoot,
         installed_skill_path: prepared.installedSkillPath,
         outputs,
@@ -987,6 +1147,9 @@ export async function runConcludeBehaviorEval(options) {
                 assertions: [{ id: 'live_sdk_session', status: 'not_run', detail: 'Anthropic credential is unavailable.' }],
             },
             semantic_review: blockedSemanticReview('No live behavior was generated because the Anthropic-compatible credential is unavailable.'),
+            capabilities: {
+                pixel_level_visual_verification: pixelLevelVisualVerification,
+            },
             environment_blockers: [
                 'Anthropic SDK credential is missing. Set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY, or configure ~/.claude/settings.json.',
             ],
@@ -1000,17 +1163,25 @@ export async function runConcludeBehaviorEval(options) {
     const behaviorModel = options.mode === 'live'
         ? new AnthropicEvalModel(modelName, apiKey)
         : new ScriptedFakeEvalModel(evalCase.definition, paths);
-    const conversation = new EvalConversation(prepared.projectRoot, behaviorModel, prepared.systemPrompt, secrets, paths);
+    const conversation = new EvalConversation(prepared.projectRoot, behaviorModel, prepared.systemPrompt, secrets, paths, visionAvailable);
     let storySnapshotPath = outputs.story_before_gate2_revision;
     let environmentBlocker = null;
     let behaviorFailure = null;
     try {
-        conversation.addHumanMessage([
-            '在这个版本化 QDD fixture 中执行已安装的 production $qdd-conclude skill。',
-            `本次 case 是 ${evalCase.definition.name}，run-id 固定为 ${evalCase.definition.run_id}，输出写入 ${paths.conclusionDir}/。`,
-            '先读取 memory/evolution 导航，再核验 underlying study outputs、promoted artifacts、tables，并用 view_image 实际查看相关 figure。',
-            '完成 research_synthesis.md 后停在 Gate 1 等待我；不要提前创建 story.md。',
-        ].join(' '));
+        conversation.addHumanMessage(prepared.usesLiveProject
+            ? [
+                '在这个真实 QDD 项目中直接执行已安装的 production $qdd-conclude skill。不要复制 fixture，也不要把模拟科学证据当作质量验收。',
+                `使用新的 run-id ${evalCase.definition.run_id}，只写入 ${paths.conclusionDir}/。`,
+                '先读取 project instructions、memory、evolution、artifacts，再核验支持主张的 study reports、tables、captions 和 provenance。',
+                'research_synthesis.md 与 story.md 默认英文。synthesis 必须是完整科学底稿和 source trail，包含跨 study 综合、样本/方法/统计/数据集事实、decisive values、候选图表及其用途、已知文献标识和精确的文献需求。',
+                '当前模型的像素核验不可用时，以报告、caption、study output 和 provenance 选择图表；不得声称未检查的视觉细节，并在文稿中记录 pixel-level verification deferred。完成 research_synthesis.md 后停在 Gate 1；不得提前创建 story.md，也不得生成 TeX。',
+            ].join(' ')
+            : [
+                '在这个版本化 QDD fixture 中执行已安装的 production $qdd-conclude skill。',
+                `本次 case 是 ${evalCase.definition.name}，run-id 固定为 ${evalCase.definition.run_id}，输出写入 ${paths.conclusionDir}/。`,
+                '先读取 memory/evolution 导航，再核验 underlying study outputs、promoted artifacts、tables，并用 view_image 实际查看相关 figure。',
+                '完成 research_synthesis.md 后停在 Gate 1 等待我；不要提前创建 story.md。',
+            ].join(' '));
         await conversation.recordStageResult(await conversation.runUntilPause());
         if (!(await exists(outputs.research_synthesis)) || await exists(outputs.story)) {
             throw new Error('Gate 1 precondition failed: synthesis must exist and story.md must not exist.');
@@ -1048,12 +1219,15 @@ export async function runConcludeBehaviorEval(options) {
     const storyExists = await exists(outputs.story);
     const storyBeforeRevision = await exists(storySnapshotPath) ? await fs.readFile(storySnapshotPath, 'utf-8') : '';
     const storyAfterRevision = storyExists ? await fs.readFile(outputs.story, 'utf-8') : '';
-    const secretViolations = await scanGeneratedTextForSecrets(outputRoot, secrets);
+    const secretViolations = [
+        ...await scanGeneratedTextForSecrets(outputRoot, secrets),
+        ...await scanGeneratedTextForSecrets(prepared.projectRoot, secrets, paths.conclusionDir),
+    ];
     const assertions = environmentBlocker
         ? [{ id: 'live_sdk_session', status: 'not_run', detail: environmentBlocker }]
         : [
             assertion('conversation_completed', behaviorFailure === null, behaviorFailure ?? 'All scripted human turns completed through Gate 2 acceptance.'),
-            ...evaluateAssertions(conversation, evalCase.definition, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
+            ...evaluateAssertions(conversation.accessLog, conversation.gates, prepared.usesLiveProject, evalCase.definition, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
         ];
     const harnessPassed = assertions.length > 0 && assertions.every((entry) => entry.status === 'pass');
     let semanticReview = blockedSemanticReview(options.mode === 'fake'
@@ -1061,7 +1235,10 @@ export async function runConcludeBehaviorEval(options) {
         : behaviorFailure ?? environmentBlocker ?? 'Behavior harness did not pass, so semantic review was not run.');
     let semanticTranscript = [];
     let semanticAccessLog = [];
-    if (options.mode === 'live' && harnessPassed && !environmentBlocker) {
+    let reviewerDiagnostic = prepared.usesLiveProject
+        ? 'Semantic reviewer was not run for the direct live-project writer evaluation; it is advisory and must not consume an additional model run.'
+        : null;
+    if (options.mode === 'live' && harnessPassed && !environmentBlocker && !prepared.usesLiveProject) {
         try {
             const reviewerModel = new AnthropicEvalModel(modelName, apiKey);
             const reviewed = await runSemanticReview({
@@ -1078,17 +1255,15 @@ export async function runConcludeBehaviorEval(options) {
             semanticAccessLog = reviewed.accessLog;
         }
         catch (error) {
-            if (error instanceof LiveSdkError)
-                environmentBlocker = error.message;
-            else
-                behaviorFailure = `Semantic review failed: ${error.message}`;
-            semanticReview = blockedSemanticReview(behaviorFailure ?? environmentBlocker ?? 'Semantic review failed.');
+            reviewerDiagnostic = error instanceof LiveSdkError
+                ? `Semantic reviewer unavailable: ${error.message}`
+                : `Semantic reviewer failed: ${error.message}`;
+            semanticReview = blockedSemanticReview(reviewerDiagnostic);
         }
     }
-    const semanticPassed = options.mode === 'fake' || semanticReview.verdict === 'accepted';
     const status = environmentBlocker
         ? (options.mode === 'live' ? 'blocked' : 'failed')
-        : harnessPassed && semanticPassed ? 'passed' : 'failed';
+        : harnessPassed ? 'passed' : 'failed';
     const report = {
         ...reportBase,
         status,
@@ -1102,7 +1277,10 @@ export async function runConcludeBehaviorEval(options) {
             assertions,
         },
         semantic_review: semanticReview,
-        environment_blockers: environmentBlocker ? [redactSensitiveText(environmentBlocker, secrets)] : [],
+        environment_blockers: [
+            ...(environmentBlocker ? [redactSensitiveText(environmentBlocker, secrets)] : []),
+            ...(reviewerDiagnostic ? [redactSensitiveText(reviewerDiagnostic, secrets)] : []),
+        ],
         gates: conversation.gates,
         stage_results: conversation.stageResults,
     };

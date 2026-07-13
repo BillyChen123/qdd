@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runConcludeBehaviorEval } from '../test-support/conclude-behavior-eval.js';
+import { MAX_EVAL_TOOL_TEXT_CHARS, recheckConcludeBehaviorEval, runConcludeBehaviorEval, truncateEvalToolText } from '../test-support/conclude-behavior-eval.js';
+
+test('conclude evaluator bounds oversized text tool results without discarding provenance', () => {
+  const source = `${'A'.repeat(MAX_EVAL_TOOL_TEXT_CHARS)}SOURCE-TAIL`;
+  const truncated = truncateEvalToolText(source);
+
+  assert.match(truncated, /Tool output truncated for model transport/);
+  assert.ok(truncated.startsWith('A'));
+  assert.ok(truncated.endsWith('SOURCE-TAIL'));
+  assert.ok(truncated.length < MAX_EVAL_TOOL_TEXT_CHARS + 400);
+});
 
 for (const caseName of ['sdk-two-gate', 'catalyst-cycle']) {
 test(`conclude behavior eval fake path enforces source access and two human gates for ${caseName}`, async () => {
@@ -63,6 +73,17 @@ test(`conclude behavior eval fake path enforces source access and two human gate
 });
 }
 
+test('conclude evaluator rechecks a completed run without requesting another model response', async () => {
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-recheck-'));
+  const original = await runConcludeBehaviorEval({ mode: 'fake', outputRoot, casePath: 'sdk-two-gate' });
+  const rechecked = await recheckConcludeBehaviorEval(outputRoot);
+
+  assert.equal(original.status, 'passed');
+  assert.equal(rechecked.status, 'passed');
+  assert.equal(rechecked.harness.status, 'PASS');
+  assert.deepEqual(rechecked.gates, original.gates);
+});
+
 test('conclude behavior eval live path cleanly blocks without credentials', async () => {
   const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-live-blocked-'));
   const report = await runConcludeBehaviorEval({ mode: 'live', outputRoot, credentialOverride: null });
@@ -73,4 +94,26 @@ test('conclude behavior eval live path cleanly blocks without credentials', asyn
   assert.equal(report.environment_blockers.length, 1);
   assert.match(report.environment_blockers[0] ?? '', /credential is missing/);
   assert.doesNotMatch(await fs.readFile(report.outputs.report_json, 'utf-8'), /sk-ant-/);
+});
+
+test('conclude behavior eval accepts a direct live QDD project without copying it as a fixture', async () => {
+  const source = path.join(process.cwd(), 'src', 'test', 'fixtures', 'conclude', 'sdk-two-gate');
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-direct-project-'));
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-direct-output-'));
+  await fs.cp(source, projectRoot, { recursive: true });
+
+  const report = await runConcludeBehaviorEval({
+    mode: 'live',
+    projectPath: projectRoot,
+    outputRoot,
+    runId: 'direct-project-no-credential',
+    credentialOverride: null,
+  });
+
+  assert.equal(report.status, 'blocked');
+  assert.equal(report.project_path, projectRoot);
+  assert.equal(report.fixture_path, '(none; direct live project)');
+  assert.equal(report.case.provenance.kind, 'live-qdd-project');
+  assert.equal(report.capabilities.pixel_level_visual_verification, 'deferred');
+  await assert.rejects(fs.access(path.join(projectRoot, 'conclusions', 'direct-project-no-credential')));
 });

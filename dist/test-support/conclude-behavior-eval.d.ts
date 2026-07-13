@@ -1,4 +1,5 @@
 import { type ConcludeEvalCase } from './conclude-eval-case.js';
+export declare const MAX_EVAL_TOOL_TEXT_CHARS = 120000;
 export type ConcludeEvalMode = 'fake' | 'live';
 export type ConcludeEvalStatus = 'passed' | 'failed' | 'blocked';
 export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'semantic_review';
@@ -17,7 +18,7 @@ export interface ConcludeEvalAccessEntry {
     sequence: number;
     timestamp: string;
     stage: ConcludeEvalStage;
-    action: 'list' | 'read' | 'write' | 'view_image';
+    action: 'list' | 'read' | 'write' | 'view_image' | 'view_image_deferred';
     path: string;
 }
 export interface ConcludeEvalAssertion {
@@ -63,6 +64,9 @@ export interface ConcludeEvalReport {
         assertions: ConcludeEvalAssertion[];
     };
     semantic_review: ConcludeSemanticReview;
+    capabilities: {
+        pixel_level_visual_verification: 'available' | 'deferred';
+    };
     environment_blockers: string[];
     gates: Array<{
         gate: 'gate_1' | 'gate_2';
@@ -82,6 +86,9 @@ export interface RunConcludeEvalOptions {
     model?: string;
     provider?: string;
     casePath?: string;
+    projectPath?: string;
+    runId?: string;
+    visionAvailable?: boolean;
     credentialOverride?: string | null;
 }
 export interface ConcludeSemanticReview {
@@ -111,5 +118,7 @@ export interface ConcludeSemanticReview {
         evidence_paths: string[];
     }>;
 }
+export declare function truncateEvalToolText(value: string): string;
+export declare function recheckConcludeBehaviorEval(outputRoot: string): Promise<ConcludeEvalReport>;
 export declare function runConcludeBehaviorEval(options: RunConcludeEvalOptions): Promise<ConcludeEvalReport>;
 //# sourceMappingURL=conclude-behavior-eval.d.ts.map
