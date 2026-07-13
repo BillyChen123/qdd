@@ -607,6 +607,8 @@ async function snapshotStory(projectRoot, outputRoot, storyPath) {
     return snapshotPath;
 }
 async function scanGeneratedTextForSecrets(root, explicitSecrets, relativeRoot = '.') {
+    if (!(await exists(resolveProjectPath(root, relativeRoot))))
+        return [];
     const violations = [];
     const files = await listFiles(root, relativeRoot);
     for (const relativePath of files) {
