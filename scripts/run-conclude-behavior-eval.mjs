@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import path from 'node:path';
-import { runConcludeBehaviorEval } from '../dist/test-support/conclude-behavior-eval.js';
+import { recheckConcludeBehaviorEval, runConcludeBehaviorEval } from '../dist/test-support/conclude-behavior-eval.js';
 
 const args = process.argv.slice(2);
 const mode = args.includes('--live') ? 'live' : 'fake';
@@ -11,6 +11,7 @@ const providerIndex = args.indexOf('--provider');
 const caseIndex = args.indexOf('--case');
 const projectIndex = args.indexOf('--project');
 const runIdIndex = args.indexOf('--run-id');
+const recheckIndex = args.indexOf('--recheck');
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const outputRoot = path.resolve(
   outputIndex >= 0 && args[outputIndex + 1]
@@ -22,12 +23,18 @@ const provider = providerIndex >= 0 ? args[providerIndex + 1] : undefined;
 const casePath = caseIndex >= 0 ? args[caseIndex + 1] : undefined;
 const projectPath = projectIndex >= 0 ? args[projectIndex + 1] : undefined;
 const runId = runIdIndex >= 0 ? args[runIdIndex + 1] : undefined;
+const recheckOutput = recheckIndex >= 0 ? args[recheckIndex + 1] : undefined;
 
 if (projectPath && mode !== 'live') {
   throw new Error('--project is supported only with --live so a real QDD project is never treated as a fixture.');
 }
+if (recheckOutput && (args.includes('--live') || projectPath || model || provider || casePath || runId)) {
+  throw new Error('--recheck only accepts an existing evaluation output directory.');
+}
 
-const report = await runConcludeBehaviorEval({ mode, outputRoot, model, provider, casePath, projectPath, runId });
+const report = recheckOutput
+  ? await recheckConcludeBehaviorEval(path.resolve(recheckOutput))
+  : await runConcludeBehaviorEval({ mode, outputRoot, model, provider, casePath, projectPath, runId });
 console.log(JSON.stringify({
   status: report.status,
   mode: report.mode,

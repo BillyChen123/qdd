@@ -642,20 +642,21 @@ async function scanGeneratedTextForSecrets(root, explicitSecrets, relativeRoot =
     }
     return violations;
 }
-function evaluateAssertions(conversation, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations) {
-    const accesses = conversation.accessLog;
-    const firstEvidenceIndex = accesses.findIndex((entry) => evalCase.evidence_outputs.includes(entry.path));
+function evaluateAssertions(accesses, gates, usesLiveProject, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations) {
+    const firstEvidenceIndex = accesses.findIndex((entry) => usesLiveProject
+        ? entry.action === 'read' && /^(?:artifacts\/(?:reports|tables|figures|data)|studies\/STUDY-\d+\/output\/)/.test(entry.path)
+        : evalCase.evidence_outputs.includes(entry.path));
     const evolutionIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path === 'evolution.yaml');
     const memoryIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path.startsWith('context/memory/'));
     const storyWrites = accesses.filter((entry) => entry.action === 'write' && entry.path === paths.story);
     const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
-    const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
+    const gateOrder = gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
     const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
     const qddMetadataPattern = /\b(?:project research map|boundary tracking|artifact registr(?:y|ies)|study definitions?|internal study outputs?)\b/i;
     return [
         assertion('production_skill_loaded', installedSkill.includes('name: qdd-conclude') && installedSkill.includes('Gate 1: Align Narrative Intent') && installedSkill.includes('Gate 2: Review And Revise The Story'), 'Harness loaded the qdd init-projected .claude/skills/qdd-conclude/SKILL.md.'),
         assertion('two_gate_order', gateOrder === 'gate_1:feedback -> gate_1:accepted -> gate_2:feedback -> gate_2:accepted', gateOrder || 'No gate events recorded.'),
-        assertion('navigation_before_underlying_evidence', firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex, `evolution=${evolutionIndex}, memory=${memoryIndex}, first required evidence=${firstEvidenceIndex}`),
+        assertion('navigation_before_underlying_evidence', firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex, `evolution=${evolutionIndex}, memory=${memoryIndex}, first underlying evidence=${firstEvidenceIndex}`),
         assertion('unpromoted_finalized_output_read', evalCase.unpromoted_finalized_outputs.every((requiredPath) => accesses.some((entry) => entry.action === 'read' && entry.path === requiredPath)), evalCase.unpromoted_finalized_outputs.join(', ')),
         assertion('figure_inspected_multimodally', evalCase.figures.every((requiredPath) => accesses.some((entry) => entry.action === 'view_image' && entry.path === requiredPath)), evalCase.figures.join(', ')),
         assertion('evidence_outputs_read', evalCase.evidence_outputs.every((requiredPath) => accesses.some((entry) => entry.action === 'read' && entry.path === requiredPath)), `${evalCase.evidence_outputs.length} required evidence outputs or artifacts`),
@@ -663,9 +664,53 @@ function evaluateAssertions(conversation, evalCase, paths, installedSkill, synth
         assertion('gate2_rewrites_story', storyExists && storyBeforeRevision.length > 0 && storyAfterRevision.length > 0 && sha256(storyBeforeRevision) !== sha256(storyAfterRevision), `before=${storyBeforeRevision ? sha256(storyBeforeRevision) : '-'}, after=${storyAfterRevision ? sha256(storyAfterRevision) : '-'}`),
         assertion('no_tex_before_gate2_acceptance', texWrites.length === 0, texWrites.length === 0 ? 'No final_paper write occurred during the two-gate evaluation.' : `${texWrites.length} premature TeX writes.`),
         assertion('credential_values_absent', secretViolations.length === 0, secretViolations.length === 0 ? 'No credential-shaped values found in generated text.' : secretViolations.join(', ')),
-        assertion('qdd_ids_absent_from_story', !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory), 'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'),
+        ...(usesLiveProject
+            ? [assertion('source_trail_present_in_story', /\bART-\d{3}\b|artifacts\//.test(visibleStory), 'Direct live stories may retain source identifiers so the human-reviewed blueprint remains traceable.')]
+            : [assertion('qdd_ids_absent_from_story', !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory), 'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.')]),
         assertion('qdd_metadata_absent_from_story', !qddMetadataPattern.test(visibleStory), 'Visible story content must not expose QDD research-map, boundary, artifact-registry, or study-definition metadata prose.'),
     ];
+}
+export async function recheckConcludeBehaviorEval(outputRoot) {
+    const reportPath = path.join(path.resolve(outputRoot), 'report.json');
+    const report = JSON.parse(await fs.readFile(reportPath, 'utf-8'));
+    const usesLiveProject = report.case.provenance.kind === 'live-qdd-project';
+    const evalCase = usesLiveProject
+        ? (await loadLiveProjectCase(report.project_path, path.basename(report.outputs.conclusion_dir))).definition
+        : (await loadConcludeEvalCase(report.fixture_path)).definition;
+    const accesses = JSON.parse(await fs.readFile(report.outputs.access_log, 'utf-8'));
+    const paths = {
+        conclusionDir: path.relative(report.project_path, report.outputs.conclusion_dir).split(path.sep).join('/'),
+        synthesis: path.relative(report.project_path, report.outputs.research_synthesis).split(path.sep).join('/'),
+        story: path.relative(report.project_path, report.outputs.story).split(path.sep).join('/'),
+    };
+    const installedSkill = await fs.readFile(report.installed_skill_path, 'utf-8');
+    const synthesisExists = await exists(report.outputs.research_synthesis);
+    const storyExists = await exists(report.outputs.story);
+    const storyBeforeRevision = await exists(report.outputs.story_before_gate2_revision)
+        ? await fs.readFile(report.outputs.story_before_gate2_revision, 'utf-8')
+        : '';
+    const storyAfterRevision = storyExists ? await fs.readFile(report.outputs.story, 'utf-8') : '';
+    const secretViolations = [
+        ...await scanGeneratedTextForSecrets(report.outputs.run_root, []),
+        ...await scanGeneratedTextForSecrets(report.project_path, [], paths.conclusionDir),
+    ];
+    const assertions = [
+        assertion('conversation_completed', report.gates.length === 4 && report.stage_results.length >= 4, 'Persisted transcript records all scripted turns through Gate 2 acceptance.'),
+        ...evaluateAssertions(accesses, report.gates, usesLiveProject, evalCase, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
+    ];
+    const harnessPassed = assertions.every((entry) => entry.status === 'pass');
+    const rechecked = {
+        ...report,
+        status: harnessPassed ? 'passed' : 'failed',
+        harness: { status: harnessPassed ? 'PASS' : 'FAIL', assertions },
+        semantic_review: harnessPassed && usesLiveProject
+            ? blockedSemanticReview('Semantic reviewer was not run for the direct live-project writer evaluation; it is advisory and must not consume an additional model run.')
+            : report.semantic_review,
+    };
+    await fs.writeFile(rechecked.outputs.semantic_review_json, `${JSON.stringify(rechecked.semantic_review, null, 2)}\n`, 'utf-8');
+    await fs.writeFile(rechecked.outputs.report_json, `${JSON.stringify(rechecked, null, 2)}\n`, 'utf-8');
+    await fs.writeFile(rechecked.outputs.report_markdown, `${renderReportMarkdown(rechecked)}\n`, 'utf-8');
+    return rechecked;
 }
 function assertion(id, passed, detail) {
     return { id, status: passed ? 'pass' : 'fail', detail };
@@ -1182,7 +1227,7 @@ export async function runConcludeBehaviorEval(options) {
         ? [{ id: 'live_sdk_session', status: 'not_run', detail: environmentBlocker }]
         : [
             assertion('conversation_completed', behaviorFailure === null, behaviorFailure ?? 'All scripted human turns completed through Gate 2 acceptance.'),
-            ...evaluateAssertions(conversation, evalCase.definition, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
+            ...evaluateAssertions(conversation.accessLog, conversation.gates, prepared.usesLiveProject, evalCase.definition, paths, installedSkill, synthesisExists, storyExists, storyBeforeRevision, storyAfterRevision, secretViolations),
         ];
     const harnessPassed = assertions.length > 0 && assertions.every((entry) => entry.status === 'pass');
     let semanticReview = blockedSemanticReview(options.mode === 'fake'

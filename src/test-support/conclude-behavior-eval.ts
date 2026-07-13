@@ -867,7 +867,9 @@ async function scanGeneratedTextForSecrets(root: string, explicitSecrets: string
 }
 
 function evaluateAssertions(
-  conversation: EvalConversation,
+  accesses: ConcludeEvalAccessEntry[],
+  gates: ConcludeEvalReport['gates'],
+  usesLiveProject: boolean,
   evalCase: ConcludeEvalCase,
   paths: EvalPaths,
   installedSkill: string,
@@ -877,13 +879,14 @@ function evaluateAssertions(
   storyAfterRevision: string,
   secretViolations: string[]
 ): ConcludeEvalAssertion[] {
-  const accesses = conversation.accessLog;
-  const firstEvidenceIndex = accesses.findIndex((entry) => evalCase.evidence_outputs.includes(entry.path));
+  const firstEvidenceIndex = accesses.findIndex((entry) => usesLiveProject
+    ? entry.action === 'read' && /^(?:artifacts\/(?:reports|tables|figures|data)|studies\/STUDY-\d+\/output\/)/.test(entry.path)
+    : evalCase.evidence_outputs.includes(entry.path));
   const evolutionIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path === 'evolution.yaml');
   const memoryIndex = accesses.findIndex((entry) => entry.action === 'read' && entry.path.startsWith('context/memory/'));
   const storyWrites = accesses.filter((entry) => entry.action === 'write' && entry.path === paths.story);
   const texWrites = accesses.filter((entry) => entry.action === 'write' && entry.path.includes('/final_paper/'));
-  const gateOrder = conversation.gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
+  const gateOrder = gates.map((entry) => `${entry.gate}:${entry.action}`).join(' -> ');
   const visibleStory = storyAfterRevision.replace(/\]\([^)]+\)/g, ']');
   const qddMetadataPattern = /\b(?:project research map|boundary tracking|artifact registr(?:y|ies)|study definitions?|internal study outputs?)\b/i;
 
@@ -901,7 +904,7 @@ function evaluateAssertions(
     assertion(
       'navigation_before_underlying_evidence',
       firstEvidenceIndex >= 0 && evolutionIndex >= 0 && memoryIndex >= 0 && evolutionIndex < firstEvidenceIndex && memoryIndex < firstEvidenceIndex,
-      `evolution=${evolutionIndex}, memory=${memoryIndex}, first required evidence=${firstEvidenceIndex}`
+      `evolution=${evolutionIndex}, memory=${memoryIndex}, first underlying evidence=${firstEvidenceIndex}`
     ),
     assertion(
       'unpromoted_finalized_output_read',
@@ -944,17 +947,82 @@ function evaluateAssertions(
       secretViolations.length === 0,
       secretViolations.length === 0 ? 'No credential-shaped values found in generated text.' : secretViolations.join(', ')
     ),
-    assertion(
-      'qdd_ids_absent_from_story',
-      !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory),
-      'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'
-    ),
+    ...(usesLiveProject
+      ? [assertion(
+        'source_trail_present_in_story',
+        /\bART-\d{3}\b|artifacts\//.test(visibleStory),
+        'Direct live stories may retain source identifiers so the human-reviewed blueprint remains traceable.'
+      )]
+      : [assertion(
+        'qdd_ids_absent_from_story',
+        !/(?:\b(?:STUDY|TASK|ART)-\d{3}\b|\bB\d{3}\b)/.test(visibleStory),
+        'Visible story content must not expose QDD study, task, artifact, or boundary identifiers.'
+      )]),
     assertion(
       'qdd_metadata_absent_from_story',
       !qddMetadataPattern.test(visibleStory),
       'Visible story content must not expose QDD research-map, boundary, artifact-registry, or study-definition metadata prose.'
     ),
   ];
+}
+
+export async function recheckConcludeBehaviorEval(outputRoot: string): Promise<ConcludeEvalReport> {
+  const reportPath = path.join(path.resolve(outputRoot), 'report.json');
+  const report = JSON.parse(await fs.readFile(reportPath, 'utf-8')) as ConcludeEvalReport;
+  const usesLiveProject = report.case.provenance.kind === 'live-qdd-project';
+  const evalCase = usesLiveProject
+    ? (await loadLiveProjectCase(report.project_path, path.basename(report.outputs.conclusion_dir))).definition
+    : (await loadConcludeEvalCase(report.fixture_path)).definition;
+  const accesses = JSON.parse(await fs.readFile(report.outputs.access_log, 'utf-8')) as ConcludeEvalAccessEntry[];
+  const paths: EvalPaths = {
+    conclusionDir: path.relative(report.project_path, report.outputs.conclusion_dir).split(path.sep).join('/'),
+    synthesis: path.relative(report.project_path, report.outputs.research_synthesis).split(path.sep).join('/'),
+    story: path.relative(report.project_path, report.outputs.story).split(path.sep).join('/'),
+  };
+  const installedSkill = await fs.readFile(report.installed_skill_path, 'utf-8');
+  const synthesisExists = await exists(report.outputs.research_synthesis);
+  const storyExists = await exists(report.outputs.story);
+  const storyBeforeRevision = await exists(report.outputs.story_before_gate2_revision)
+    ? await fs.readFile(report.outputs.story_before_gate2_revision, 'utf-8')
+    : '';
+  const storyAfterRevision = storyExists ? await fs.readFile(report.outputs.story, 'utf-8') : '';
+  const secretViolations = [
+    ...await scanGeneratedTextForSecrets(report.outputs.run_root, []),
+    ...await scanGeneratedTextForSecrets(report.project_path, [], paths.conclusionDir),
+  ];
+  const assertions = [
+    assertion(
+      'conversation_completed',
+      report.gates.length === 4 && report.stage_results.length >= 4,
+      'Persisted transcript records all scripted turns through Gate 2 acceptance.'
+    ),
+    ...evaluateAssertions(
+      accesses,
+      report.gates,
+      usesLiveProject,
+      evalCase,
+      paths,
+      installedSkill,
+      synthesisExists,
+      storyExists,
+      storyBeforeRevision,
+      storyAfterRevision,
+      secretViolations
+    ),
+  ];
+  const harnessPassed = assertions.every((entry) => entry.status === 'pass');
+  const rechecked: ConcludeEvalReport = {
+    ...report,
+    status: harnessPassed ? 'passed' : 'failed',
+    harness: { status: harnessPassed ? 'PASS' : 'FAIL', assertions },
+    semantic_review: harnessPassed && usesLiveProject
+      ? blockedSemanticReview('Semantic reviewer was not run for the direct live-project writer evaluation; it is advisory and must not consume an additional model run.')
+      : report.semantic_review,
+  };
+  await fs.writeFile(rechecked.outputs.semantic_review_json, `${JSON.stringify(rechecked.semantic_review, null, 2)}\n`, 'utf-8');
+  await fs.writeFile(rechecked.outputs.report_json, `${JSON.stringify(rechecked, null, 2)}\n`, 'utf-8');
+  await fs.writeFile(rechecked.outputs.report_markdown, `${renderReportMarkdown(rechecked)}\n`, 'utf-8');
+  return rechecked;
 }
 
 function assertion(id: string, passed: boolean, detail: string): ConcludeEvalAssertion {
@@ -1539,7 +1607,9 @@ export async function runConcludeBehaviorEval(options: RunConcludeEvalOptions): 
         behaviorFailure ?? 'All scripted human turns completed through Gate 2 acceptance.'
       ),
       ...evaluateAssertions(
-        conversation,
+        conversation.accessLog,
+        conversation.gates,
+        prepared.usesLiveProject,
         evalCase.definition,
         paths,
         installedSkill,

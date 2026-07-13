@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { MAX_EVAL_TOOL_TEXT_CHARS, runConcludeBehaviorEval, truncateEvalToolText } from '../test-support/conclude-behavior-eval.js';
+import { MAX_EVAL_TOOL_TEXT_CHARS, recheckConcludeBehaviorEval, runConcludeBehaviorEval, truncateEvalToolText } from '../test-support/conclude-behavior-eval.js';
 
 test('conclude evaluator bounds oversized text tool results without discarding provenance', () => {
   const source = `${'A'.repeat(MAX_EVAL_TOOL_TEXT_CHARS)}SOURCE-TAIL`;
@@ -72,6 +72,17 @@ test(`conclude behavior eval fake path enforces source access and two human gate
   assert.match(installedSkill, /a plausible-looking reference list is not a substitute/);
 });
 }
+
+test('conclude evaluator rechecks a completed run without requesting another model response', async () => {
+  const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-recheck-'));
+  const original = await runConcludeBehaviorEval({ mode: 'fake', outputRoot, casePath: 'sdk-two-gate' });
+  const rechecked = await recheckConcludeBehaviorEval(outputRoot);
+
+  assert.equal(original.status, 'passed');
+  assert.equal(rechecked.status, 'passed');
+  assert.equal(rechecked.harness.status, 'PASS');
+  assert.deepEqual(rechecked.gates, original.gates);
+});
 
 test('conclude behavior eval live path cleanly blocks without credentials', async () => {
   const outputRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'qdd-conclude-live-blocked-'));

@@ -119,5 +119,6 @@ export interface ConcludeSemanticReview {
     }>;
 }
 export declare function truncateEvalToolText(value: string): string;
+export declare function recheckConcludeBehaviorEval(outputRoot: string): Promise<ConcludeEvalReport>;
 export declare function runConcludeBehaviorEval(options: RunConcludeEvalOptions): Promise<ConcludeEvalReport>;
 //# sourceMappingURL=conclude-behavior-eval.d.ts.map
