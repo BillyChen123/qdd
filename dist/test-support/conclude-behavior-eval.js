@@ -11,6 +11,7 @@ import { getClaudeSettings, resolveClaudeApiKey, resolveClaudeModel } from '../r
 import { loadConcludeEvalCase } from './conclude-eval-case.js';
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(moduleDir, '..', '..');
+export const MAX_EVAL_TOOL_TEXT_CHARS = 120_000;
 const execFileAsync = promisify(execFile);
 const EVAL_TOOLS = [
     {
@@ -152,6 +153,20 @@ function containsSecretValue(value, explicitSecrets = []) {
     return /sk-ant-[A-Za-z0-9_-]{8,}/.test(value)
         || /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/i.test(value)
         || /\b(api[_-]?key|auth[_-]?token|access[_-]?token|secret)\b\s*[:=]\s*["']?[A-Za-z0-9._~+\/-]{12,}["']?/i.test(value);
+}
+export function truncateEvalToolText(value) {
+    if (value.length <= MAX_EVAL_TOOL_TEXT_CHARS)
+        return value;
+    const headLength = Math.floor(MAX_EVAL_TOOL_TEXT_CHARS * 0.75);
+    const tailLength = MAX_EVAL_TOOL_TEXT_CHARS - headLength;
+    const omitted = value.length - headLength - tailLength;
+    return [
+        value.slice(0, headLength),
+        '',
+        `[Tool output truncated for model transport: ${value.length} characters total; ${omitted} omitted. Read a smaller report, table subset, or specific supporting source instead of inferring omitted content.]`,
+        '',
+        value.slice(-tailLength),
+    ].join('\n');
 }
 function resolveProjectPath(projectRoot, relativePath) {
     if (path.isAbsolute(relativePath))
@@ -520,12 +535,12 @@ class EvalConversation {
             switch (toolUse.name) {
                 case 'list_files': {
                     this.addAccess('list', relativePath);
-                    content = (await listFiles(this.projectRoot, relativePath)).join('\n');
+                    content = truncateEvalToolText((await listFiles(this.projectRoot, relativePath)).join('\n'));
                     break;
                 }
                 case 'read_file': {
                     this.addAccess('read', relativePath);
-                    content = await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8');
+                    content = truncateEvalToolText(await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8'));
                     break;
                 }
                 case 'view_image': {

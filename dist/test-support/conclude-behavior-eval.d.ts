@@ -1,4 +1,5 @@
 import { type ConcludeEvalCase } from './conclude-eval-case.js';
+export declare const MAX_EVAL_TOOL_TEXT_CHARS = 120000;
 export type ConcludeEvalMode = 'fake' | 'live';
 export type ConcludeEvalStatus = 'passed' | 'failed' | 'blocked';
 export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'semantic_review';
@@ -117,5 +118,6 @@ export interface ConcludeSemanticReview {
         evidence_paths: string[];
     }>;
 }
+export declare function truncateEvalToolText(value: string): string;
 export declare function runConcludeBehaviorEval(options: RunConcludeEvalOptions): Promise<ConcludeEvalReport>;
 //# sourceMappingURL=conclude-behavior-eval.d.ts.map

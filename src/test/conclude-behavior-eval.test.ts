@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runConcludeBehaviorEval } from '../test-support/conclude-behavior-eval.js';
+import { MAX_EVAL_TOOL_TEXT_CHARS, runConcludeBehaviorEval, truncateEvalToolText } from '../test-support/conclude-behavior-eval.js';
+
+test('conclude evaluator bounds oversized text tool results without discarding provenance', () => {
+  const source = `${'A'.repeat(MAX_EVAL_TOOL_TEXT_CHARS)}SOURCE-TAIL`;
+  const truncated = truncateEvalToolText(source);
+
+  assert.match(truncated, /Tool output truncated for model transport/);
+  assert.ok(truncated.startsWith('A'));
+  assert.ok(truncated.endsWith('SOURCE-TAIL'));
+  assert.ok(truncated.length < MAX_EVAL_TOOL_TEXT_CHARS + 400);
+});
 
 for (const caseName of ['sdk-two-gate', 'catalyst-cycle']) {
 test(`conclude behavior eval fake path enforces source access and two human gates for ${caseName}`, async () => {
