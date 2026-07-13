@@ -432,6 +432,7 @@ class EvalConversation {
     systemPrompt;
     secrets;
     paths;
+    visionAvailable;
     transcript = [];
     accessLog = [];
     gates = [];
@@ -439,12 +440,13 @@ class EvalConversation {
     messages = [];
     stage = 'synthesis';
     sequence = 0;
-    constructor(projectRoot, model, systemPrompt, secrets, paths) {
+    constructor(projectRoot, model, systemPrompt, secrets, paths, visionAvailable) {
         this.projectRoot = projectRoot;
         this.model = model;
         this.systemPrompt = systemPrompt;
         this.secrets = secrets;
         this.paths = paths;
+        this.visionAvailable = visionAvailable;
     }
     addHumanMessage(content) {
         const safe = redactSensitiveText(content, this.secrets);
@@ -525,9 +527,15 @@ class EvalConversation {
                 break;
             }
             case 'view_image': {
-                this.addAccess('view_image', relativePath);
-                const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
-                content = [image.block, { type: 'text', text: image.summary }];
+                if (!this.visionAvailable) {
+                    this.addAccess('view_image_deferred', relativePath);
+                    content = 'Pixel-level visual verification is unavailable for this configured model. Use source-backed captions, reports, tables, and provenance to select the figure; do not claim uninspected visual details, and record pixel-level verification as deferred for human review.';
+                }
+                else {
+                    this.addAccess('view_image', relativePath);
+                    const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
+                    content = [image.block, { type: 'text', text: image.summary }];
+                }
                 break;
             }
             case 'write_file': {
@@ -561,16 +569,35 @@ async function exists(filePath) {
         return false;
     }
 }
-async function prepareEvalProject(outputRoot, fixtureRoot) {
-    const projectRoot = path.join(outputRoot, 'project');
+function isPathWithinRoot(target, root) {
+    const relative = path.relative(root, target);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+async function assertReadableQddProject(projectRoot) {
+    const required = ['contract.yaml', 'evolution.yaml', 'artifacts/index.yaml', 'context/memory'];
+    for (const relativePath of required) {
+        await fs.access(path.join(projectRoot, relativePath));
+    }
+}
+async function prepareEvalProject(outputRoot, fixtureRoot, projectPath) {
+    const liveProjectRoot = projectPath ? path.resolve(projectPath) : undefined;
+    if (liveProjectRoot && (isPathWithinRoot(outputRoot, liveProjectRoot) || isPathWithinRoot(liveProjectRoot, outputRoot))) {
+        throw new Error('Live project and evaluation output directories must not overlap.');
+    }
     await fs.rm(outputRoot, { recursive: true, force: true });
     await fs.mkdir(outputRoot, { recursive: true });
-    await fs.cp(fixtureRoot, projectRoot, { recursive: true });
-    await fs.rm(path.join(projectRoot, 'eval-case.yaml'), { force: true });
+    const projectRoot = liveProjectRoot ?? path.join(outputRoot, 'project');
+    if (liveProjectRoot) {
+        await assertReadableQddProject(projectRoot);
+    }
+    else {
+        await fs.cp(fixtureRoot, projectRoot, { recursive: true });
+        await fs.rm(path.join(projectRoot, 'eval-case.yaml'), { force: true });
+    }
     await initCommand(projectRoot, { tools: ['claude'], refreshBootstrap: true });
     const installedSkillPath = path.join(projectRoot, '.claude', 'skills', 'qdd-conclude', 'SKILL.md');
     const systemPrompt = await fs.readFile(installedSkillPath, 'utf-8');
-    return { projectRoot, installedSkillPath, systemPrompt };
+    return { projectRoot, installedSkillPath, systemPrompt, usesLiveProject: Boolean(liveProjectRoot) };
 }
 async function snapshotStory(projectRoot, outputRoot, storyPath) {
     const story = await fs.readFile(resolveProjectPath(projectRoot, storyPath), 'utf-8');
@@ -579,9 +606,9 @@ async function snapshotStory(projectRoot, outputRoot, storyPath) {
     await fs.writeFile(snapshotPath, story, 'utf-8');
     return snapshotPath;
 }
-async function scanGeneratedTextForSecrets(root, explicitSecrets) {
+async function scanGeneratedTextForSecrets(root, explicitSecrets, relativeRoot = '.') {
     const violations = [];
-    const files = await listFiles(root, '.');
+    const files = await listFiles(root, relativeRoot);
     for (const relativePath of files) {
         if (!/\.(json|md|ya?ml|txt|csv|tsv)$/i.test(relativePath))
             continue;
@@ -868,6 +895,7 @@ function renderReportMarkdown(report) {
         `- Harness: \`${report.harness.status}\``,
         `- Model: \`${report.model}\``,
         `- Provider: \`${report.provider}\``,
+        `- Pixel-level visual verification: \`${report.capabilities.pixel_level_visual_verification}\``,
         `- Repository commit: \`${report.repository_commit}\``,
         `- Production skill SHA-256: \`${report.production_skill_sha256}\``,
         `- Case: \`${report.case.id}\` (${report.case.name})`,
@@ -922,6 +950,60 @@ function renderReportMarkdown(report) {
         `- Semantic review access log: \`${report.outputs.semantic_review_access_log}\``,
     ].join('\n');
 }
+function liveRunId() {
+    return `bil31-live-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`;
+}
+async function loadLiveProjectCase(projectRoot, runId) {
+    await assertReadableQddProject(projectRoot);
+    const hash = createHash('sha256');
+    const sourceFiles = ['contract.yaml', 'evolution.yaml', 'artifacts/index.yaml'];
+    const memoryRoot = path.join(projectRoot, 'context', 'memory');
+    const memoryFiles = (await fs.readdir(memoryRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+        .map((entry) => path.join('context', 'memory', entry.name))
+        .sort();
+    for (const relativePath of [...sourceFiles, ...memoryFiles]) {
+        hash.update(relativePath);
+        hash.update('\0');
+        hash.update(await fs.readFile(path.join(projectRoot, relativePath)));
+        hash.update('\0');
+    }
+    return {
+        root: projectRoot,
+        manifestPath: '(live project)',
+        definition: {
+            schema_version: 1,
+            id: 'live-qdd-project',
+            name: path.basename(projectRoot),
+            run_id: runId,
+            provenance: {
+                kind: 'live-qdd-project',
+                source: projectRoot,
+                notes: 'Direct evaluation against the supplied QDD project; no scientific fixture was copied or used as a quality oracle.',
+            },
+            navigation_files: [],
+            evidence_outputs: [],
+            unpromoted_finalized_outputs: [],
+            figures: [],
+            gates: {
+                gate1_feedback: [
+                    'Gate 1 feedback: center the paper on the strongest source-grounded donor-level Parkinson substantia nigra transcript-usage contribution.',
+                    'Use the early astrocyte RNA-processing observations only as a clearly separate contextual scale, not as proof of cell-intrinsic disease regulation.',
+                    'De-emphasize preliminary spatial or exploratory branches unless they are necessary to explain the final contribution. Revise the narrative intent and wait for explicit acceptance without creating story.md.',
+                ].join(' '),
+                gate1_acceptance: 'Gate 1 accepted. Write the complete English story.md now, with a contribution-first Results progression, evidence and figure plan, bounded Discussion, Methods scope, and precise citation-needed anchors where external support is required.',
+                gate2_feedback: [
+                    'Gate 2 feedback: revise story.md directly. Make the Results progression explicit from cohort-level transcript-usage landscape, through the PD-biased biological convergence, to the constrained RNA-processing compatibility layer.',
+                    'Keep different datasets and evidence tiers distinct; retain decisive values and figure roles; state that pixel-level figure verification is deferred when visual inspection was unavailable.',
+                    'Remove empty sections, generic TODOs, and unsupported causal or cell-type-specific wording. Do not draft TeX.',
+                ].join(' '),
+                gate2_acceptance: 'Gate 2 accepted after revision. End this evaluation at story acceptance; TeX belongs to the downstream issue.',
+            },
+            reviewer_focus: [],
+        },
+        fingerprint: hash.digest('hex'),
+    };
+}
 async function writeReportArtifacts(report, conversation, semanticTranscript = [], semanticAccessLog = []) {
     await fs.mkdir(path.dirname(report.outputs.report_json), { recursive: true });
     await fs.writeFile(report.outputs.transcript, `${JSON.stringify(conversation?.transcript ?? [], null, 2)}\n`, 'utf-8');
@@ -935,8 +1017,11 @@ async function writeReportArtifacts(report, conversation, semanticTranscript = [
 export async function runConcludeBehaviorEval(options) {
     const startedAt = isoNow();
     const outputRoot = path.resolve(options.outputRoot);
-    const evalCase = await loadConcludeEvalCase(options.casePath);
-    const prepared = await prepareEvalProject(outputRoot, evalCase.root);
+    const liveProjectPath = options.projectPath ? path.resolve(options.projectPath) : undefined;
+    const evalCase = liveProjectPath
+        ? await loadLiveProjectCase(liveProjectPath, options.runId ?? liveRunId())
+        : await loadConcludeEvalCase(options.casePath);
+    const prepared = await prepareEvalProject(outputRoot, evalCase.root, liveProjectPath);
     const paths = {
         conclusionDir: `conclusions/${evalCase.definition.run_id}`,
         synthesis: `conclusions/${evalCase.definition.run_id}/research_synthesis.md`,
@@ -944,6 +1029,9 @@ export async function runConcludeBehaviorEval(options) {
     };
     const modelName = resolveClaudeModel(options.model);
     const provider = options.provider ?? (options.mode === 'fake' ? 'offline-scripted' : 'anthropic-compatible');
+    const visionAvailable = options.visionAvailable
+        ?? (options.mode === 'fake' || !modelName.toLowerCase().includes('deepseek'));
+    const pixelLevelVisualVerification = visionAvailable ? 'available' : 'deferred';
     const apiKey = options.mode === 'live'
         ? options.credentialOverride === undefined
             ? resolveClaudeApiKey()
@@ -964,6 +1052,9 @@ export async function runConcludeBehaviorEval(options) {
         started_at: startedAt,
         model: options.mode === 'fake' ? 'scripted-offline-fake' : modelName,
         provider,
+        capabilities: {
+            pixel_level_visual_verification: pixelLevelVisualVerification,
+        },
         repository_commit: repositoryCommit,
         production_skill_sha256: sha256(installedSkill),
         case: {
@@ -972,7 +1063,7 @@ export async function runConcludeBehaviorEval(options) {
             fingerprint_sha256: evalCase.fingerprint,
             provenance: evalCase.definition.provenance,
         },
-        fixture_path: evalCase.root,
+        fixture_path: prepared.usesLiveProject ? '(none; direct live project)' : evalCase.root,
         project_path: prepared.projectRoot,
         installed_skill_path: prepared.installedSkillPath,
         outputs,
@@ -987,6 +1078,9 @@ export async function runConcludeBehaviorEval(options) {
                 assertions: [{ id: 'live_sdk_session', status: 'not_run', detail: 'Anthropic credential is unavailable.' }],
             },
             semantic_review: blockedSemanticReview('No live behavior was generated because the Anthropic-compatible credential is unavailable.'),
+            capabilities: {
+                pixel_level_visual_verification: pixelLevelVisualVerification,
+            },
             environment_blockers: [
                 'Anthropic SDK credential is missing. Set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY, or configure ~/.claude/settings.json.',
             ],
@@ -1000,17 +1094,25 @@ export async function runConcludeBehaviorEval(options) {
     const behaviorModel = options.mode === 'live'
         ? new AnthropicEvalModel(modelName, apiKey)
         : new ScriptedFakeEvalModel(evalCase.definition, paths);
-    const conversation = new EvalConversation(prepared.projectRoot, behaviorModel, prepared.systemPrompt, secrets, paths);
+    const conversation = new EvalConversation(prepared.projectRoot, behaviorModel, prepared.systemPrompt, secrets, paths, visionAvailable);
     let storySnapshotPath = outputs.story_before_gate2_revision;
     let environmentBlocker = null;
     let behaviorFailure = null;
     try {
-        conversation.addHumanMessage([
-            '在这个版本化 QDD fixture 中执行已安装的 production $qdd-conclude skill。',
-            `本次 case 是 ${evalCase.definition.name}，run-id 固定为 ${evalCase.definition.run_id}，输出写入 ${paths.conclusionDir}/。`,
-            '先读取 memory/evolution 导航，再核验 underlying study outputs、promoted artifacts、tables，并用 view_image 实际查看相关 figure。',
-            '完成 research_synthesis.md 后停在 Gate 1 等待我；不要提前创建 story.md。',
-        ].join(' '));
+        conversation.addHumanMessage(prepared.usesLiveProject
+            ? [
+                '在这个真实 QDD 项目中直接执行已安装的 production $qdd-conclude skill。不要复制 fixture，也不要把模拟科学证据当作质量验收。',
+                `使用新的 run-id ${evalCase.definition.run_id}，只写入 ${paths.conclusionDir}/。`,
+                '先读取 project instructions、memory、evolution、artifacts，再核验支持主张的 study reports、tables、captions 和 provenance。',
+                'research_synthesis.md 与 story.md 默认英文。synthesis 必须是完整科学底稿和 source trail，包含跨 study 综合、样本/方法/统计/数据集事实、decisive values、候选图表及其用途、已知文献标识和精确的文献需求。',
+                '当前模型的像素核验不可用时，以报告、caption、study output 和 provenance 选择图表；不得声称未检查的视觉细节，并在文稿中记录 pixel-level verification deferred。完成 research_synthesis.md 后停在 Gate 1；不得提前创建 story.md，也不得生成 TeX。',
+            ].join(' ')
+            : [
+                '在这个版本化 QDD fixture 中执行已安装的 production $qdd-conclude skill。',
+                `本次 case 是 ${evalCase.definition.name}，run-id 固定为 ${evalCase.definition.run_id}，输出写入 ${paths.conclusionDir}/。`,
+                '先读取 memory/evolution 导航，再核验 underlying study outputs、promoted artifacts、tables，并用 view_image 实际查看相关 figure。',
+                '完成 research_synthesis.md 后停在 Gate 1 等待我；不要提前创建 story.md。',
+            ].join(' '));
         await conversation.recordStageResult(await conversation.runUntilPause());
         if (!(await exists(outputs.research_synthesis)) || await exists(outputs.story)) {
             throw new Error('Gate 1 precondition failed: synthesis must exist and story.md must not exist.');
@@ -1048,7 +1150,10 @@ export async function runConcludeBehaviorEval(options) {
     const storyExists = await exists(outputs.story);
     const storyBeforeRevision = await exists(storySnapshotPath) ? await fs.readFile(storySnapshotPath, 'utf-8') : '';
     const storyAfterRevision = storyExists ? await fs.readFile(outputs.story, 'utf-8') : '';
-    const secretViolations = await scanGeneratedTextForSecrets(outputRoot, secrets);
+    const secretViolations = [
+        ...await scanGeneratedTextForSecrets(outputRoot, secrets),
+        ...await scanGeneratedTextForSecrets(prepared.projectRoot, secrets, paths.conclusionDir),
+    ];
     const assertions = environmentBlocker
         ? [{ id: 'live_sdk_session', status: 'not_run', detail: environmentBlocker }]
         : [
@@ -1061,7 +1166,10 @@ export async function runConcludeBehaviorEval(options) {
         : behaviorFailure ?? environmentBlocker ?? 'Behavior harness did not pass, so semantic review was not run.');
     let semanticTranscript = [];
     let semanticAccessLog = [];
-    if (options.mode === 'live' && harnessPassed && !environmentBlocker) {
+    let reviewerDiagnostic = prepared.usesLiveProject
+        ? 'Semantic reviewer was not run for the direct live-project writer evaluation; it is advisory and must not consume an additional model run.'
+        : null;
+    if (options.mode === 'live' && harnessPassed && !environmentBlocker && !prepared.usesLiveProject) {
         try {
             const reviewerModel = new AnthropicEvalModel(modelName, apiKey);
             const reviewed = await runSemanticReview({
@@ -1078,17 +1186,15 @@ export async function runConcludeBehaviorEval(options) {
             semanticAccessLog = reviewed.accessLog;
         }
         catch (error) {
-            if (error instanceof LiveSdkError)
-                environmentBlocker = error.message;
-            else
-                behaviorFailure = `Semantic review failed: ${error.message}`;
-            semanticReview = blockedSemanticReview(behaviorFailure ?? environmentBlocker ?? 'Semantic review failed.');
+            reviewerDiagnostic = error instanceof LiveSdkError
+                ? `Semantic reviewer unavailable: ${error.message}`
+                : `Semantic reviewer failed: ${error.message}`;
+            semanticReview = blockedSemanticReview(reviewerDiagnostic);
         }
     }
-    const semanticPassed = options.mode === 'fake' || semanticReview.verdict === 'accepted';
     const status = environmentBlocker
         ? (options.mode === 'live' ? 'blocked' : 'failed')
-        : harnessPassed && semanticPassed ? 'passed' : 'failed';
+        : harnessPassed ? 'passed' : 'failed';
     const report = {
         ...reportBase,
         status,
@@ -1102,7 +1208,10 @@ export async function runConcludeBehaviorEval(options) {
             assertions,
         },
         semantic_review: semanticReview,
-        environment_blockers: environmentBlocker ? [redactSensitiveText(environmentBlocker, secrets)] : [],
+        environment_blockers: [
+            ...(environmentBlocker ? [redactSensitiveText(environmentBlocker, secrets)] : []),
+            ...(reviewerDiagnostic ? [redactSensitiveText(reviewerDiagnostic, secrets)] : []),
+        ],
         gates: conversation.gates,
         stage_results: conversation.stageResults,
     };

@@ -9,6 +9,8 @@ const outputIndex = args.indexOf('--output');
 const modelIndex = args.indexOf('--model');
 const providerIndex = args.indexOf('--provider');
 const caseIndex = args.indexOf('--case');
+const projectIndex = args.indexOf('--project');
+const runIdIndex = args.indexOf('--run-id');
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const outputRoot = path.resolve(
   outputIndex >= 0 && args[outputIndex + 1]
@@ -18,8 +20,14 @@ const outputRoot = path.resolve(
 const model = modelIndex >= 0 ? args[modelIndex + 1] : undefined;
 const provider = providerIndex >= 0 ? args[providerIndex + 1] : undefined;
 const casePath = caseIndex >= 0 ? args[caseIndex + 1] : undefined;
+const projectPath = projectIndex >= 0 ? args[projectIndex + 1] : undefined;
+const runId = runIdIndex >= 0 ? args[runIdIndex + 1] : undefined;
 
-const report = await runConcludeBehaviorEval({ mode, outputRoot, model, provider, casePath });
+if (projectPath && mode !== 'live') {
+  throw new Error('--project is supported only with --live so a real QDD project is never treated as a fixture.');
+}
+
+const report = await runConcludeBehaviorEval({ mode, outputRoot, model, provider, casePath, projectPath, runId });
 console.log(JSON.stringify({
   status: report.status,
   mode: report.mode,

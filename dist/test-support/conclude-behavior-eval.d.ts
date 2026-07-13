@@ -17,7 +17,7 @@ export interface ConcludeEvalAccessEntry {
     sequence: number;
     timestamp: string;
     stage: ConcludeEvalStage;
-    action: 'list' | 'read' | 'write' | 'view_image';
+    action: 'list' | 'read' | 'write' | 'view_image' | 'view_image_deferred';
     path: string;
 }
 export interface ConcludeEvalAssertion {
@@ -63,6 +63,9 @@ export interface ConcludeEvalReport {
         assertions: ConcludeEvalAssertion[];
     };
     semantic_review: ConcludeSemanticReview;
+    capabilities: {
+        pixel_level_visual_verification: 'available' | 'deferred';
+    };
     environment_blockers: string[];
     gates: Array<{
         gate: 'gate_1' | 'gate_2';
@@ -82,6 +85,9 @@ export interface RunConcludeEvalOptions {
     model?: string;
     provider?: string;
     casePath?: string;
+    projectPath?: string;
+    runId?: string;
+    visionAvailable?: boolean;
     credentialOverride?: string | null;
 }
 export interface ConcludeSemanticReview {
