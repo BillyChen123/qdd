@@ -13,7 +13,7 @@ import { contextCommand } from '../commands/context.js';
 import { boundariesApplyCommand, boundariesCommand, boundariesRenderCommand, boundariesScoreCommand } from '../commands/boundaries.js';
 import { skillsSuggestCommand } from '../commands/skills-suggest.js';
 import { autoCommand } from '../commands/auto.js';
-import { renderStoryCommand } from '../commands/render-story.js';
+import { validateManuscriptCommand } from '../commands/validate-manuscript.js';
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
 const program = new Command();
@@ -265,15 +265,12 @@ program
     }
 });
 program
-    .command('render-story <storyPath>')
-    .description('Mechanically render a Gate-2-accepted story.md as a validated TeX package')
-    .requiredOption('--gate2-accepted', 'Confirm that the user accepted the complete story.md at Gate 2')
-    .option('--bibliography <path>', 'Verified BibTeX source used only to resolve citation anchors already in story.md')
-    .option('--output <path>', 'Final paper output directory; defaults to final_paper beside story.md')
-    .option('--json', 'Output the render report as JSON')
-    .action(async (storyPath, options) => {
+    .command('validate-manuscript <packagePath>')
+    .description('Mechanically validate an agent-authored Nature manuscript package')
+    .option('--json', 'Output the validation report as JSON')
+    .action(async (packagePath, options) => {
     try {
-        await renderStoryCommand(storyPath, options);
+        await validateManuscriptCommand(packagePath, options);
     }
     catch (error) {
         console.error(`Error: ${error.message}`);

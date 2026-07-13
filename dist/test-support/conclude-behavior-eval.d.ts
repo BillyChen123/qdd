@@ -1,8 +1,9 @@
+import { type ManuscriptPackageReport } from '../services/manuscript-package.js';
 import { type ConcludeEvalCase } from './conclude-eval-case.js';
 export declare const MAX_EVAL_TOOL_TEXT_CHARS = 120000;
 export type ConcludeEvalMode = 'fake' | 'live';
 export type ConcludeEvalStatus = 'passed' | 'failed' | 'blocked';
-export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'semantic_review';
+export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'manuscript' | 'semantic_review';
 export type SemanticReviewStatus = 'pass' | 'fail' | 'cannot_assess';
 export interface ConcludeEvalTranscriptEntry {
     sequence: number;
@@ -18,7 +19,7 @@ export interface ConcludeEvalAccessEntry {
     sequence: number;
     timestamp: string;
     stage: ConcludeEvalStage;
-    action: 'list' | 'read' | 'write' | 'view_image' | 'view_image_deferred';
+    action: 'list' | 'read' | 'write' | 'copy' | 'literature_search' | 'view_image' | 'view_image_deferred';
     path: string;
 }
 export interface ConcludeEvalAssertion {
@@ -91,6 +92,38 @@ export interface RunConcludeEvalOptions {
     visionAvailable?: boolean;
     credentialOverride?: string | null;
 }
+export interface RunConcludeManuscriptEvalOptions {
+    projectPath: string;
+    resumeConclusion: string;
+    outputRoot: string;
+    model?: string;
+    provider?: string;
+    visionAvailable?: boolean;
+    credentialOverride?: string | null;
+}
+export interface ConcludeManuscriptEvalReport {
+    schema_version: 1;
+    status: ConcludeEvalStatus;
+    started_at: string;
+    finished_at: string;
+    model: string;
+    provider: string;
+    repository_commit: string;
+    production_skill_sha256: string;
+    project_path: string;
+    resume_conclusion: string;
+    final_paper: string;
+    transcript: string;
+    access_log: string;
+    report_json: string;
+    report_markdown: string;
+    capabilities: {
+        pixel_level_visual_verification: 'available' | 'deferred';
+    };
+    pdf_status: 'compiled' | 'unavailable' | 'not_run';
+    manuscript_validation: ManuscriptPackageReport | null;
+    environment_blockers: string[];
+}
 export interface ConcludeSemanticReview {
     protocol_version: 1;
     verdict: 'accepted' | 'revision_required' | 'blocked';
@@ -121,4 +154,5 @@ export interface ConcludeSemanticReview {
 export declare function truncateEvalToolText(value: string): string;
 export declare function recheckConcludeBehaviorEval(outputRoot: string): Promise<ConcludeEvalReport>;
 export declare function runConcludeBehaviorEval(options: RunConcludeEvalOptions): Promise<ConcludeEvalReport>;
+export declare function runConcludeManuscriptEval(options: RunConcludeManuscriptEvalOptions): Promise<ConcludeManuscriptEvalReport>;
 //# sourceMappingURL=conclude-behavior-eval.d.ts.map
