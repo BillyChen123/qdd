@@ -33,7 +33,7 @@ const WORKFLOW_METADATA = {
         tags: ['qdd', 'research', 'workflow', 'close'],
     },
     'qdd-conclude': {
-        description: 'Synthesize a QDD project, align and write its manuscript story, then render accepted content as TeX',
+        description: 'Synthesize a QDD project, align its manuscript story, then complete a Nature-style TeX draft',
         tags: ['qdd', 'research', 'workflow', 'conclude', 'writing'],
     },
 };

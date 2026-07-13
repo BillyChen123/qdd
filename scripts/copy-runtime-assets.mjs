@@ -10,6 +10,10 @@ const copies = [
     from: path.join(repoRoot, 'src', 'runtime', 'bootstrap-prompts'),
     to: path.join(repoRoot, 'dist', 'runtime', 'bootstrap-prompts'),
   },
+  {
+    from: path.join(repoRoot, 'src', 'runtime', 'manuscript-templates'),
+    to: path.join(repoRoot, 'dist', 'runtime', 'manuscript-templates'),
+  },
 ];
 
 for (const entry of copies) {

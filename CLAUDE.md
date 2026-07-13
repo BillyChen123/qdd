@@ -243,7 +243,20 @@ If working on the current conclude workstream, use these feature-local sources o
 
 - `docs/09-qdd-conclude-prd.md`
 - `src/runtime/bootstrap-prompts/qdd-conclude.md`
+- `src/runtime/manuscript-templates/nature/`
 - `WORKFLOW.md`
+
+Current conclude document roles:
+
+- `research_synthesis.md` is the complete English scientific substrate and source trail
+- `story.md` is the English narrative contract shown to the human at Gate 2
+- `main.tex` is a source-grounded Nature-style manuscript draft written after story acceptance, not a mechanical rendering
+
+For current conclude behavior development, use the real local Parkinson QDD
+project resolved from `QDD_CONCLUDE_LIVE_PROJECT` or from the issue's explicit
+local input path for live acceptance. Do not add a new fabricated scientific
+fixture. Missing model vision and missing local TeX tooling are nonblocking
+capabilities, not retry reasons.
 
 ## Repository Structure
 

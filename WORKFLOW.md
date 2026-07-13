@@ -77,7 +77,7 @@ Before implementation, read:
 1. the root `AGENTS.md`
 2. the Linear issue, acceptance criteria, and dependency relations
 3. files named in the issue's `References` or `Required Reading`
-4. for conclude work, `docs/09-qdd-conclude-prd.md` and `src/runtime/bootstrap-prompts/qdd-conclude.md`
+4. for conclude work, `docs/09-qdd-conclude-prd.md`, `src/runtime/bootstrap-prompts/qdd-conclude.md`, and `src/runtime/manuscript-templates/nature/`
 5. the code and tests directly related to the requested slice
 
 Repository product truth priority is:
@@ -162,7 +162,7 @@ Do not report a local run as evidence for a cloud commit unless the local checko
 
 If validation cannot run, record the failed command, missing dependency or credential, and the unverified acceptance criteria. Do not translate a skipped or blocked test into success.
 
-For conclude live evaluation, use `deepseek-v4-pro` through the configured Anthropic-compatible endpoint unless the issue explicitly changes the target model. Fake evaluation may validate harness contracts, but it is not a substitute for required live evidence.
+For conclude live evaluation, use `deepseek-v4-pro` through the configured Anthropic-compatible endpoint unless the issue explicitly changes the target model. Resolve the current real Parkinson QDD evaluation project from `QDD_CONCLUDE_LIVE_PROJECT` or an exact local input path in the issue; if neither resolves to a readable project, record the input blocker before any paid call. Existing deterministic fixtures may remain for narrow harness regression, but do not add a new fabricated scientific fixture or treat fake evidence as manuscript-quality acceptance.
 
 Conclude live evaluation is capability-aware. The writer and mechanical harness determine whether the generated synthesis and story are ready for `Human Review`; a model-based semantic reviewer is advisory and must not act as a hard gate. In particular:
 
@@ -171,11 +171,13 @@ Conclude live evaluation is capability-aware. The writer and mechanical harness 
 - reviewer outcomes such as `revision_required`, `blocked`, or `cannot_assess` are diagnostic findings, not live-evaluation failure, when they result from model capability limits
 - lack of model vision must not block `Human Review`, trigger autonomous retries, or cause production-code changes
 
-Before any paid conclude live evaluation, complete build, deterministic tests, fixture checks, credential checks, and provider-availability checks that can fail without a model call. Reuse an existing accepted `story.md` when the issue tests only downstream rendering or validation. A renderer-only issue must not rerun the full synthesis, two-gate writer, or semantic-review flow.
+Before any paid conclude live evaluation, complete build, deterministic tests, input checks, credential checks, and provider-availability checks that can fail without a model call. Reuse an existing accepted `story.md`, its `research_synthesis.md`, and the underlying project sources when an issue tests only downstream manuscript drafting or validation. A manuscript-only issue must not rerun synthesis, Gate 1, story writing, Gate 2, or the semantic reviewer.
 
 Do not repeat a paid writer run merely to improve an advisory reviewer outcome. A live retry is allowed only for a concrete writer or harness defect that the issue is in scope to fix; record the reason before retrying. Model vision limitations and unchanged provider failures are not retry reasons.
 
 PDF compilation is capability-aware and optional. Probe once for an existing local TeX compiler, but do not install, download, or configure a TeX distribution during a Symphony issue unless the issue explicitly scopes that environment work. If no compiler is available, validate `main.tex`, `references.bib`, figures, paths, references, citations, and story coverage mechanically; report PDF status as `unavailable`. Missing local TeX tooling must not fail the issue, block `Human Review`, trigger retries, or consume model calls.
+
+The default conclude manuscript package must use the tracked `sn-nature` template. It omits the author and affiliation block; retains title, keywords, and bibliography; limits manuscript content to Abstract, Introduction, Results, Discussion, and Methods; and places all figure and table environments after the bibliography. Final `main.tex` must resolve every precise citation-needed marker allowed in `story.md` and contain no `TODO`, `TBD`, `citation needed`, `待补`, or empty required section. These are manuscript acceptance requirements, not reasons to rerun upstream gates.
 
 Before moving a conclude issue to `Human Review`, render its primary human-review output directly in the Linear workpad. For manuscript behavior evaluation, include the final `story.md`; a local filesystem path alone is not sufficient.
 

@@ -1,0 +1,4 @@
+# Keep the upstream bibliography style in bst/ while allowing a final_paper/
+# directory to compile without machine-specific TEXINPUTS configuration.
+$ENV{'BSTINPUTS'} = './bst//:' . ($ENV{'BSTINPUTS'} || '');
+$ENV{'BIBINPUTS'} = '.:' . ($ENV{'BIBINPUTS'} || '');

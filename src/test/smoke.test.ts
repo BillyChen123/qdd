@@ -61,18 +61,36 @@ function assertConcludeSkillContent(content: string): void {
   assert.match(content, /research_synthesis\.md/);
   assert.match(content, /Gate 1: Align Narrative Intent/);
   assert.match(content, /Gate 2: Review And Revise The Story/);
+  assert.match(content, /Draft The Nature Manuscript And Finish/);
+  assert.match(content, /documentclass\[pdflatex,sn-nature\]/);
   assert.match(content, /Do not create `story\.md` before Gate 1 passes/);
   assert.match(content, /Do not create the final TeX package before Gate 2 passes/);
-  assert.match(content, /qdd render-story/);
-  assert.match(content, /--gate2-accepted/);
-  assert.match(content, /render-report\.json/);
-  assert.match(content, /\{#fig:key\}/);
-  assert.match(content, /\{#tbl:key\}/);
-  assert.match(content, /do not probe separately/);
-  assert.match(content, /Do not\s+ask for a third approval/);
+  assert.match(content, /constrained manuscript writing, not mechanical Markdown rendering/);
+  assert.match(content, /Do not ask for a third approval/);
+  assert.doesNotMatch(content, /qdd render-story/);
   assert.doesNotMatch(content, /qdd conclude/);
   assert.doesNotMatch(content, /evidence dossier/i);
 }
+
+test('qdd-conclude ships a minimal Nature manuscript template', async () => {
+  const templateRoot = path.join(process.cwd(), 'dist', 'runtime', 'manuscript-templates', 'nature');
+  const mainTemplate = await fs.readFile(path.join(templateRoot, 'main.tex'), 'utf-8');
+
+  assert.match(mainTemplate, /\\documentclass\[pdflatex,sn-nature\]\{sn-jnl\}/);
+  assert.match(mainTemplate, /\\abstract\{\}/);
+  assert.match(mainTemplate, /\\keywords\{\}/);
+  assert.doesNotMatch(mainTemplate, /\\author|\\affil/);
+  assert.deepEqual(
+    [...mainTemplate.matchAll(/\\section\{([^}]+)\}/g)].map((match) => match[1]),
+    ['Introduction', 'Results', 'Discussion', 'Methods']
+  );
+  assert.ok(mainTemplate.indexOf('\\bibliography{references}') < mainTemplate.indexOf('% Figures'));
+  assert.ok(mainTemplate.indexOf('% Figures') < mainTemplate.indexOf('% Tables'));
+
+  await assert.doesNotReject(fs.access(path.join(templateRoot, 'sn-jnl.cls')));
+  await assert.doesNotReject(fs.access(path.join(templateRoot, 'bst', 'sn-nature.bst')));
+  await assert.doesNotReject(fs.access(path.join(templateRoot, 'latexmkrc')));
+});
 
 async function readBootstrapManifest(projectRoot: string): Promise<{
   version: number;

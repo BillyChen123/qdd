@@ -31,7 +31,7 @@ export function createDefaultInstructionsMarkdown() {
         '- `qdd-explore` - stress-test the study and converge to a resource-supported plan',
         '- `qdd-apply` - execute within the active study until it reaches a decision point',
         '- `qdd-close` - validate, synthesize, carry forward stable context, and close the study',
-        '- `qdd-conclude` - synthesize a mature project, align and write the complete manuscript story, then render accepted content as TeX',
+        '- `qdd-conclude` - synthesize a mature project, align a detailed manuscript story, then complete a Nature-style TeX draft',
         '',
         '### CLI Checkpoints',
         '',
