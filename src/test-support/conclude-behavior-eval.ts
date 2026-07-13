@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { deflateSync } from 'node:zlib';
 import { initCommand } from '../commands/init.js';
 import { getClaudeSettings, resolveClaudeApiKey, resolveClaudeModel } from '../runtime/agent-runner.js';
+import { natureTemplateRoot, validateManuscriptPackage, type ManuscriptPackageReport } from '../services/manuscript-package.js';
 import { type ConcludeEvalCase, loadConcludeEvalCase } from './conclude-eval-case.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,7 @@ export const MAX_EVAL_TOOL_TEXT_CHARS = 120_000;
 
 export type ConcludeEvalMode = 'fake' | 'live';
 export type ConcludeEvalStatus = 'passed' | 'failed' | 'blocked';
-export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'semantic_review';
+export type ConcludeEvalStage = 'synthesis' | 'gate1_feedback' | 'story_draft' | 'gate2_revision' | 'manuscript' | 'semantic_review';
 export type SemanticReviewStatus = 'pass' | 'fail' | 'cannot_assess';
 
 interface EvalTextBlock {
@@ -73,7 +74,7 @@ export interface ConcludeEvalAccessEntry {
   sequence: number;
   timestamp: string;
   stage: ConcludeEvalStage;
-  action: 'list' | 'read' | 'write' | 'view_image' | 'view_image_deferred';
+  action: 'list' | 'read' | 'write' | 'copy' | 'literature_search' | 'view_image' | 'view_image_deferred';
   path: string;
 }
 
@@ -148,6 +149,38 @@ export interface RunConcludeEvalOptions {
   runId?: string;
   visionAvailable?: boolean;
   credentialOverride?: string | null;
+}
+
+export interface RunConcludeManuscriptEvalOptions {
+  projectPath: string;
+  resumeConclusion: string;
+  outputRoot: string;
+  model?: string;
+  provider?: string;
+  visionAvailable?: boolean;
+  credentialOverride?: string | null;
+}
+
+export interface ConcludeManuscriptEvalReport {
+  schema_version: 1;
+  status: ConcludeEvalStatus;
+  started_at: string;
+  finished_at: string;
+  model: string;
+  provider: string;
+  repository_commit: string;
+  production_skill_sha256: string;
+  project_path: string;
+  resume_conclusion: string;
+  final_paper: string;
+  transcript: string;
+  access_log: string;
+  report_json: string;
+  report_markdown: string;
+  capabilities: { pixel_level_visual_verification: 'available' | 'deferred' };
+  pdf_status: 'compiled' | 'unavailable' | 'not_run';
+  manuscript_validation: ManuscriptPackageReport | null;
+  environment_blockers: string[];
 }
 
 export interface ConcludeSemanticReview {
@@ -230,6 +263,41 @@ const EVAL_TOOLS: Tool[] = [
         content: { type: 'string', description: 'Complete file content.' },
       },
       required: ['path', 'content'],
+    },
+  },
+  {
+    name: 'copy_project_file',
+    description: 'Copy one existing project-local source asset into the current conclusion final_paper package.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Existing project-relative source file path.' },
+        destination: { type: 'string', description: 'Destination path under the current conclusions/<run-id>/final_paper/ directory.' },
+      },
+      required: ['source', 'destination'],
+    },
+  },
+  {
+    name: 'copy_nature_template',
+    description: 'Copy a tracked QDD Nature template file into the current final_paper package. Allowed source paths are sn-jnl.cls, latexmkrc, and bst/sn-nature.bst.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Tracked template-relative source path.' },
+        destination: { type: 'string', description: 'Destination path under the current conclusions/<run-id>/final_paper/ directory.' },
+      },
+      required: ['source', 'destination'],
+    },
+  },
+  {
+    name: 'search_literature',
+    description: 'Search PubMed and return bibliographic metadata for proposition-level citation verification. Use exact PMIDs when available; otherwise use a focused scientific query. Verify the returned title and journal support before citing it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'A PubMed ID or focused literature query.' },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -482,6 +550,46 @@ async function imageForModel(filePath: string): Promise<{ block: EvalImageBlock;
     },
     summary: `multimodal image supplied (${buffer.length} bytes, sha256=${sha256(buffer)})`,
   };
+}
+
+async function searchPubmed(query: string): Promise<string> {
+  const searchUrl = new URL('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi');
+  searchUrl.searchParams.set('db', 'pubmed');
+  searchUrl.searchParams.set('retmode', 'json');
+  searchUrl.searchParams.set('retmax', '5');
+  searchUrl.searchParams.set('term', query);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const searchResponse = await fetch(searchUrl, { signal: controller.signal });
+    if (!searchResponse.ok) throw new Error(`PubMed search HTTP ${searchResponse.status}`);
+    const search = await searchResponse.json() as { esearchresult?: { idlist?: string[] } };
+    const ids = search.esearchresult?.idlist ?? [];
+    if (ids.length === 0) return `PubMed returned no records for: ${query}`;
+    const summaryUrl = new URL('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi');
+    summaryUrl.searchParams.set('db', 'pubmed');
+    summaryUrl.searchParams.set('retmode', 'json');
+    summaryUrl.searchParams.set('id', ids.join(','));
+    const summaryResponse = await fetch(summaryUrl, { signal: controller.signal });
+    if (!summaryResponse.ok) throw new Error(`PubMed summary HTTP ${summaryResponse.status}`);
+    const summary = await summaryResponse.json() as { result?: Record<string, unknown> & { uids?: string[] } };
+    return (summary.result?.uids ?? []).map((id) => {
+      const record = summary.result?.[id] as Record<string, unknown> | undefined;
+      const authors = Array.isArray(record?.authors)
+        ? (record.authors as Array<{ name?: string }>).map((author) => author.name).filter(Boolean).join(', ')
+        : '';
+      return [
+        `PMID: ${id}`,
+        `Title: ${String(record?.title ?? '')}`,
+        `Journal: ${String(record?.fulljournalname ?? record?.source ?? '')}`,
+        `Date: ${String(record?.pubdate ?? '')}`,
+        `Authors: ${authors}`,
+        `DOI: ${String(record?.elocationid ?? '')}`,
+      ].join('\n');
+    }).join('\n\n');
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 class AnthropicEvalModel implements EvalModel {
@@ -778,6 +886,38 @@ class EvalConversation {
           content = `File written: ${relativePath} (${value.length} chars, sha256=${sha256(value)})`;
           break;
         }
+        case 'copy_project_file': {
+          const source = String(toolUse.input.source ?? '');
+          const destination = String(toolUse.input.destination ?? '');
+          this.assertFinalPaperDestination(destination);
+          this.addAccess('copy', `${source} -> ${destination}`);
+          const sourcePath = resolveProjectPath(this.projectRoot, source);
+          const destinationPath = resolveProjectPath(this.projectRoot, destination);
+          await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+          await fs.copyFile(sourcePath, destinationPath);
+          content = `File copied: ${source} -> ${destination}`;
+          break;
+        }
+        case 'copy_nature_template': {
+          const source = String(toolUse.input.source ?? '');
+          const destination = String(toolUse.input.destination ?? '');
+          const allowed = new Set(['sn-jnl.cls', 'latexmkrc', 'bst/sn-nature.bst']);
+          if (!allowed.has(source)) throw new Error(`Unsupported Nature template asset: ${source}`);
+          this.assertFinalPaperDestination(destination);
+          this.addAccess('copy', `template:${source} -> ${destination}`);
+          const destinationPath = resolveProjectPath(this.projectRoot, destination);
+          await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+          await fs.copyFile(path.join(natureTemplateRoot(), source), destinationPath);
+          content = `Nature template copied: ${source} -> ${destination}`;
+          break;
+        }
+        case 'search_literature': {
+          const query = String(toolUse.input.query ?? '').trim();
+          if (!query) throw new Error('PubMed query is required.');
+          this.addAccess('literature_search', query);
+          content = await searchPubmed(query);
+          break;
+        }
         default:
           throw new Error(`Unsupported evaluation tool: ${toolUse.name}`);
       }
@@ -797,6 +937,13 @@ class EvalConversation {
       relativePath
     ));
     return { type: 'tool_result', tool_use_id: toolUse.id, content, ...(isError ? { is_error: true } : {}) };
+  }
+
+  private assertFinalPaperDestination(destination: string): void {
+    const finalPaperPrefix = `${this.paths.conclusionDir}/final_paper/`;
+    if (!destination.startsWith(finalPaperPrefix)) {
+      throw new Error(`Eval copy destination must be under ${finalPaperPrefix}: ${destination}`);
+    }
   }
 }
 
@@ -1679,5 +1826,145 @@ export async function runConcludeBehaviorEval(options: RunConcludeEvalOptions): 
     stage_results: conversation.stageResults,
   };
   await writeReportArtifacts(report, conversation, semanticTranscript, semanticAccessLog);
+  return report;
+}
+
+function relativePathInsideProject(projectRoot: string, candidatePath: string, field: string): string {
+  const resolved = path.resolve(candidatePath);
+  const relative = path.relative(projectRoot, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`${field} must be inside the supplied QDD project.`);
+  return relative.split(path.sep).join('/');
+}
+
+async function currentRepositoryCommit(): Promise<string> {
+  try {
+    return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: packageRoot })).stdout.trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+export async function runConcludeManuscriptEval(options: RunConcludeManuscriptEvalOptions): Promise<ConcludeManuscriptEvalReport> {
+  const startedAt = isoNow();
+  const projectRoot = path.resolve(options.projectPath);
+  await assertReadableQddProject(projectRoot);
+  const resumeConclusion = path.resolve(options.resumeConclusion);
+  const conclusionDir = relativePathInsideProject(projectRoot, resumeConclusion, 'resumeConclusion');
+  const synthesis = `${conclusionDir}/research_synthesis.md`;
+  const story = `${conclusionDir}/story.md`;
+  await fs.access(resolveProjectPath(projectRoot, synthesis));
+  await fs.access(resolveProjectPath(projectRoot, story));
+  const finalPaper = `${conclusionDir}/final_paper`;
+  const outputRoot = path.resolve(options.outputRoot);
+  if (isPathWithinRoot(outputRoot, projectRoot) || isPathWithinRoot(projectRoot, outputRoot)) {
+    throw new Error('Manuscript evaluation output directory must not overlap the QDD project.');
+  }
+  await fs.rm(outputRoot, { recursive: true, force: true });
+  await fs.mkdir(outputRoot, { recursive: true });
+  await initCommand(projectRoot, { tools: ['claude'], refreshBootstrap: true });
+  const installedSkillPath = path.join(projectRoot, '.claude', 'skills', 'qdd-conclude', 'SKILL.md');
+  const installedSkill = await fs.readFile(installedSkillPath, 'utf-8');
+  const modelName = resolveClaudeModel(options.model);
+  const provider = options.provider ?? 'anthropic-compatible';
+  const visionAvailable = options.visionAvailable ?? !modelName.toLowerCase().includes('deepseek');
+  const pixelLevelVisualVerification: 'available' | 'deferred' = visionAvailable ? 'available' : 'deferred';
+  const apiKey = options.credentialOverride === undefined ? resolveClaudeApiKey() : options.credentialOverride ?? undefined;
+  const transcriptPath = path.join(outputRoot, 'transcript.json');
+  const accessLogPath = path.join(outputRoot, 'access-log.json');
+  const reportJsonPath = path.join(outputRoot, 'report.json');
+  const reportMarkdownPath = path.join(outputRoot, 'report.md');
+  const base = {
+    schema_version: 1 as const,
+    started_at: startedAt,
+    model: modelName,
+    provider,
+    repository_commit: await currentRepositoryCommit(),
+    production_skill_sha256: sha256(installedSkill),
+    project_path: projectRoot,
+    resume_conclusion: resumeConclusion,
+    final_paper: path.join(projectRoot, finalPaper),
+    transcript: transcriptPath,
+    access_log: accessLogPath,
+    report_json: reportJsonPath,
+    report_markdown: reportMarkdownPath,
+    capabilities: { pixel_level_visual_verification: pixelLevelVisualVerification },
+  };
+  const writeReport = async (report: ConcludeManuscriptEvalReport, conversation: EvalConversation | null): Promise<void> => {
+    await fs.writeFile(transcriptPath, `${JSON.stringify(conversation?.transcript ?? [], null, 2)}\n`, 'utf-8');
+    await fs.writeFile(accessLogPath, `${JSON.stringify(conversation?.accessLog ?? [], null, 2)}\n`, 'utf-8');
+    await fs.writeFile(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf-8');
+    const checks = report.manuscript_validation
+      ? Object.entries(report.manuscript_validation.checks).map(([name, status]) => `- ${status.toUpperCase()} \`${name}\``)
+      : ['- Not run.'];
+    await fs.writeFile(reportMarkdownPath, [
+      '# QDD Conclude Manuscript Evaluation', '',
+      `- Status: \`${report.status}\``, `- Model: \`${report.model}\``, `- Provider: \`${report.provider}\``,
+      `- Resume conclusion: \`${report.resume_conclusion}\``, `- Final paper: \`${report.final_paper}\``,
+      `- Pixel-level visual verification: \`${report.capabilities.pixel_level_visual_verification}\``,
+      `- PDF status: \`${report.pdf_status}\``, '', '## Mechanical Validation', '', ...checks,
+      '', '## Environment Blockers', '', ...(report.environment_blockers.length > 0 ? report.environment_blockers.map((entry) => `- ${entry}`) : ['- None.']),
+      '', '## Outputs', '', `- Transcript: \`${transcriptPath}\``, `- Access log: \`${accessLogPath}\``,
+    ].join('\n').concat('\n'), 'utf-8');
+  };
+
+  if (!apiKey) {
+    const report: ConcludeManuscriptEvalReport = {
+      ...base,
+      status: 'blocked',
+      finished_at: isoNow(),
+      pdf_status: 'not_run',
+      manuscript_validation: null,
+      environment_blockers: ['Anthropic SDK credential is missing. Set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY, or configure ~/.claude/settings.json.'],
+    };
+    await writeReport(report, null);
+    return report;
+  }
+
+  const paths: EvalPaths = { conclusionDir, synthesis, story };
+  const synthesisBefore = await fs.readFile(resolveProjectPath(projectRoot, synthesis), 'utf-8');
+  const storyBefore = await fs.readFile(resolveProjectPath(projectRoot, story), 'utf-8');
+  const conversation = new EvalConversation(
+    projectRoot,
+    new AnthropicEvalModel(modelName, apiKey),
+    installedSkill,
+    [apiKey],
+    paths,
+    visionAvailable
+  );
+  conversation.stage = 'manuscript';
+  conversation.addHumanMessage([
+    'Gate 2 已经接受下列已存在的 story.md。现在只执行 $qdd-conclude 的 manuscript drafting 阶段：绝不能重跑 synthesis、Gate 1、story writing、Gate 2 或 semantic review，也不得改写 research_synthesis.md 或 story.md。',
+    `先读取 ${synthesis}、${story} 及支持所选证据的原始 study outputs；从已接受 story 的精确 citation-needed anchors 进行真实文献检索并核验。`,
+    `在 ${finalPaper}/ 生成独立 English Nature package：main.tex、references.bib、sn-jnl.cls、latexmkrc、bst/sn-nature.bst、figures/。使用 copy_nature_template 复制三个模板资产，使用 copy_project_file 复制所选 figure assets。`,
+    'main.tex 必须使用 \\documentclass[pdflatex,sn-nature]{sn-jnl}，保留 title、keywords、bibliography，省略 author/affiliation，仅含 Abstract、Introduction、Results、Discussion、Methods；bibliography 在 Methods 后，所有 figure/table environments 在 bibliography 后。',
+    '这是完整英文初稿写作，而非 story 的逐段转换：可根据 synthesis 和原始 sources 扩写，但不得改变接受的中心贡献、Results logic、图表/证据选择、claim strength 或结论。不要保留 TODO、TBD、citation needed、待补或空 section。无 pixel vision 时仅依据 captions、reports、study outputs 和 provenance；不要声称未检验像素细节。写完全部文件后用一条完成消息停止。',
+  ].join(' '));
+
+  let manuscriptValidation: ManuscriptPackageReport | null = null;
+  let environmentBlockers: string[] = [];
+  let status: ConcludeEvalStatus = 'passed';
+  try {
+    await conversation.runUntilPause(32);
+    if (sha256(await fs.readFile(resolveProjectPath(projectRoot, synthesis), 'utf-8')) !== sha256(synthesisBefore)
+      || sha256(await fs.readFile(resolveProjectPath(projectRoot, story), 'utf-8')) !== sha256(storyBefore)) {
+      throw new Error('Manuscript stage modified the accepted synthesis or story.');
+    }
+    const evidenceRead = conversation.accessLog.some((entry) => entry.action === 'read'
+      && entry.path !== synthesis && entry.path !== story && /^(?:artifacts\/|studies\/)/.test(entry.path));
+    if (!evidenceRead) throw new Error('Manuscript stage did not read an underlying project evidence source.');
+    manuscriptValidation = await validateManuscriptPackage(path.join(projectRoot, finalPaper));
+  } catch (error) {
+    status = error instanceof LiveSdkError ? 'blocked' : 'failed';
+    environmentBlockers = [redactSensitiveText((error as Error).message, [apiKey])];
+  }
+  const report: ConcludeManuscriptEvalReport = {
+    ...base,
+    status,
+    finished_at: isoNow(),
+    pdf_status: manuscriptValidation?.pdf_status ?? 'not_run',
+    manuscript_validation: manuscriptValidation,
+    environment_blockers: environmentBlockers,
+  };
+  await writeReport(report, conversation);
   return report;
 }
