@@ -725,43 +725,49 @@ class EvalConversation {
   private async executeTool(toolUse: EvalToolUseBlock): Promise<EvalToolResultBlock> {
     const relativePath = String(toolUse.input.path ?? '');
     let content: EvalToolResultBlock['content'];
+    let isError = false;
 
-    switch (toolUse.name) {
-      case 'list_files': {
-        this.addAccess('list', relativePath);
-        content = (await listFiles(this.projectRoot, relativePath)).join('\n');
-        break;
-      }
-      case 'read_file': {
-        this.addAccess('read', relativePath);
-        content = await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8');
-        break;
-      }
-      case 'view_image': {
-        if (!this.visionAvailable) {
-          this.addAccess('view_image_deferred', relativePath);
-          content = 'Pixel-level visual verification is unavailable for this configured model. Use source-backed captions, reports, tables, and provenance to select the figure; do not claim uninspected visual details, and record pixel-level verification as deferred for human review.';
-        } else {
-          this.addAccess('view_image', relativePath);
-          const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
-          content = [image.block, { type: 'text', text: image.summary }];
+    try {
+      switch (toolUse.name) {
+        case 'list_files': {
+          this.addAccess('list', relativePath);
+          content = (await listFiles(this.projectRoot, relativePath)).join('\n');
+          break;
         }
-        break;
-      }
-      case 'write_file': {
-        if (!(relativePath === 'conclusions' || relativePath.startsWith('conclusions/'))) {
-          throw new Error(`Eval write is outside conclusions/: ${relativePath}`);
+        case 'read_file': {
+          this.addAccess('read', relativePath);
+          content = await fs.readFile(resolveProjectPath(this.projectRoot, relativePath), 'utf-8');
+          break;
         }
-        this.addAccess('write', relativePath);
-        const value = redactSensitiveText(String(toolUse.input.content ?? ''), this.secrets);
-        const absolutePath = resolveProjectPath(this.projectRoot, relativePath);
-        await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-        await fs.writeFile(absolutePath, value, 'utf-8');
-        content = `File written: ${relativePath} (${value.length} chars, sha256=${sha256(value)})`;
-        break;
+        case 'view_image': {
+          if (!this.visionAvailable) {
+            this.addAccess('view_image_deferred', relativePath);
+            content = 'Pixel-level visual verification is unavailable for this configured model. Use source-backed captions, reports, tables, and provenance to select the figure; do not claim uninspected visual details, and record pixel-level verification as deferred for human review.';
+          } else {
+            this.addAccess('view_image', relativePath);
+            const image = await imageForModel(resolveProjectPath(this.projectRoot, relativePath));
+            content = [image.block, { type: 'text', text: image.summary }];
+          }
+          break;
+        }
+        case 'write_file': {
+          if (!(relativePath === 'conclusions' || relativePath.startsWith('conclusions/'))) {
+            throw new Error(`Eval write is outside conclusions/: ${relativePath}`);
+          }
+          this.addAccess('write', relativePath);
+          const value = redactSensitiveText(String(toolUse.input.content ?? ''), this.secrets);
+          const absolutePath = resolveProjectPath(this.projectRoot, relativePath);
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+          await fs.writeFile(absolutePath, value, 'utf-8');
+          content = `File written: ${relativePath} (${value.length} chars, sha256=${sha256(value)})`;
+          break;
+        }
+        default:
+          throw new Error(`Unsupported evaluation tool: ${toolUse.name}`);
       }
-      default:
-        throw new Error(`Unsupported evaluation tool: ${toolUse.name}`);
+    } catch (error) {
+      isError = true;
+      content = `Tool error for ${relativePath || toolUse.name}: ${(error as Error).message}. Continue with another available project source; do not infer content from this unavailable path.`;
     }
 
     const transcriptContent = Array.isArray(content)
@@ -774,7 +780,7 @@ class EvalConversation {
       toolUse.name,
       relativePath
     ));
-    return { type: 'tool_result', tool_use_id: toolUse.id, content };
+    return { type: 'tool_result', tool_use_id: toolUse.id, content, ...(isError ? { is_error: true } : {}) };
   }
 }
 
