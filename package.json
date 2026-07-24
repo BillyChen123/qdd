@@ -1,7 +1,16 @@
 {
   "name": "qdd",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "description": "Question-Driven Discovery CLI",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BillyChen123/qdd.git"
+  },
+  "homepage": "https://github.com/BillyChen123/qdd#readme",
+  "bugs": {
+    "url": "https://github.com/BillyChen123/qdd/issues"
+  },
   "type": "module",
   "files": [
     "bin/",

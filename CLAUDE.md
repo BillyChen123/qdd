@@ -8,6 +8,12 @@ Keep `AGENTS.md` and `CLAUDE.md` aligned. If one changes, update the other in th
 
 QDD is the active TypeScript CLI implementation of Question-Driven Discovery.
 
+This public repository is the manuscript release and maintenance line. Changes
+must be limited to reproducibility, bug fixes, documentation, security, and
+requirements arising from manuscript review. New research-agent architectures
+belong in a separate repository and must not be introduced through QDD
+maintenance issues.
+
 QDD is a research-first orchestration framework. Its core job is to keep long-running scientific work legible to both humans and agents through durable project state, bounded studies, evidence-producing tasks, reusable artifacts, and explicit question evolution.
 
 Primary object model:

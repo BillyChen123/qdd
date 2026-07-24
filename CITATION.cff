@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: >-
+  If you use QDD in your research, cite this software release. The associated
+  manuscript citation will be added after publication.
+title: "QDD: Question-Driven Discovery"
+type: software
+authors:
+  - name: "QDD contributors"
+repository-code: "https://github.com/BillyChen123/qdd"
+url: "https://github.com/BillyChen123/qdd"
+version: "0.1.0-rc.1"
+date-released: 2026-07-24
+license: Apache-2.0
+keywords:
+  - scientific agents
+  - question-driven discovery
+  - biomedical research
+  - research orchestration

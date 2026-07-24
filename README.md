@@ -19,6 +19,12 @@
   </p>
 </div>
 
+> **Release status:** QDD `v0.1.0-rc.1` is the public submission-candidate
+> line. This repository accepts reproducibility fixes, bug fixes,
+> documentation improvements, and changes required by manuscript review. New
+> research architectures are developed separately so this line remains a
+> stable reference for the paper.
+
 ## Quick Start
 
 Requirements:

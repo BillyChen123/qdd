@@ -66,6 +66,9 @@ Continuation context:
 Implement only the executable slice described by the Linear issue.
 
 - Keep issue scope bounded.
+- Treat this public repository as the manuscript maintenance line. Accept only
+  reproducibility, bug, documentation, security, or manuscript-review work;
+  reject new research-agent architecture scope.
 - Use Chinese for workpad updates, handoffs, PR summaries, and final reports unless the issue requests English.
 - If the issue conflicts with a repository source of truth, stop the conflicting work and record the conflict.
 - Do not invent product requirements in this workflow file.

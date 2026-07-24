@@ -1,6 +1,8 @@
 node_modules/
 tmp/
 *.tgz
+__pycache__/
+*.py[cod]
 .env
 .env.*
 
